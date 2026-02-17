@@ -1,0 +1,82 @@
+triple_decline:
+  name: "トリプル安"
+  description: "株安・円安・債券安の同時発生"
+  shocks:
+    equity: -0.20
+    bond: -0.10
+    fx_jpy: -0.15
+  etf_overrides:
+    gold: 0.10
+    long_bond: -0.15
+
+tech_crash:
+  name: "テック暴落"
+  description: "テクノロジーセクター急落"
+  shocks:
+    technology: -0.35
+    other_equity: -0.10
+  sector_multipliers:
+    Technology: 2.0
+    Communication Services: 1.5
+
+yen_appreciation:
+  name: "円高ドル安"
+  description: "急激な円高進行"
+  shocks:
+    fx_jpy: 0.20
+    export_equity: -0.15
+    import_equity: 0.05
+
+rate_spike:
+  name: "金利急騰"
+  description: "長期金利の急上昇"
+  shocks:
+    bond: -0.20
+    real_estate: -0.15
+    equity: -0.08
+  etf_overrides:
+    long_bond: -0.25
+
+recession:
+  name: "リセッション"
+  description: "景気後退シナリオ"
+  shocks:
+    equity: -0.30
+    corporate_bond: -0.15
+    commodity: -0.20
+  etf_overrides:
+    gold: 0.15
+    treasury: 0.10
+
+geopolitical:
+  name: "地政学リスク"
+  description: "国際的な政治リスク"
+  shocks:
+    equity: -0.15
+    oil: 0.25
+    fx_jpy: -0.10
+  etf_overrides:
+    gold: 0.20
+    defense: 0.10
+
+inflation_surge:
+  name: "インフレ加速"
+  description: "予想以上のインフレ"
+  shocks:
+    bond: -0.25
+    equity: -0.10
+    commodity: 0.20
+  etf_overrides:
+    gold: 0.15
+    tips: 0.05
+
+pandemic:
+  name: "パンデミック"
+  description: "感染症パンデミック"
+  shocks:
+    equity: -0.35
+    travel_leisure: -0.50
+    healthcare: 0.10
+  etf_overrides:
+    gold: 0.10
+    treasury: 0.15

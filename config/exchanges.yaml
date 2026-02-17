@@ -1,0 +1,59 @@
+japan:
+  name: "日本"
+  exchanges: ["JPX"]
+  currency: "JPY"
+  equity_query_region: "jp"
+
+us:
+  name: "米国"
+  exchanges: ["NYSE", "NASDAQ"]
+  currency: "USD"
+  equity_query_region: "us"
+
+europe:
+  name: "欧州"
+  exchanges: ["LSE", "FRA", "PAR", "AMS"]
+  currency: null
+  equity_query_region: "gb"
+
+hongkong:
+  name: "香港"
+  exchanges: ["HKEX"]
+  currency: "HKD"
+  equity_query_region: "hk"
+
+asean:
+  name: "ASEAN"
+  exchanges: ["SGX", "SET", "BURSA", "IDX", "PSE"]
+  currency: null
+  equity_query_region: "sg"
+
+china:
+  name: "中国"
+  exchanges: ["SSE", "SZSE"]
+  currency: "CNY"
+  equity_query_region: "cn"
+
+korea:
+  name: "韓国"
+  exchanges: ["KRX"]
+  currency: "KRW"
+  equity_query_region: "kr"
+
+australia:
+  name: "オーストラリア"
+  exchanges: ["ASX"]
+  currency: "AUD"
+  equity_query_region: "au"
+
+india:
+  name: "インド"
+  exchanges: ["NSE", "BSE"]
+  currency: "INR"
+  equity_query_region: "in"
+
+canada:
+  name: "カナダ"
+  exchanges: ["TSX"]
+  currency: "CAD"
+  equity_query_region: "ca"

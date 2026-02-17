@@ -1,0 +1,90 @@
+value:
+  description: "バリュー (標準)"
+  filters:
+    per_max: 15
+    pbr_max: 1.5
+    dividend_yield_min: 2.0
+    market_cap_min: 10000000000
+  score_weights:
+    per: 25
+    pbr: 25
+    dividend_yield: 20
+    roe: 15
+    revenue_growth: 15
+
+high-dividend:
+  description: "高配当"
+  filters:
+    dividend_yield_min: 3.5
+    per_max: 20
+    payout_ratio_max: 80
+  score_weights:
+    dividend_yield: 40
+    per: 20
+    pbr: 15
+    roe: 15
+    revenue_growth: 10
+
+growth-value:
+  description: "成長割安"
+  filters:
+    per_max: 25
+    pbr_max: 3.0
+    revenue_growth_min: 10.0
+  score_weights:
+    per: 15
+    pbr: 15
+    dividend_yield: 10
+    roe: 20
+    revenue_growth: 40
+
+deep-value:
+  description: "ディープバリュー"
+  filters:
+    pbr_max: 0.8
+    per_max: 12
+  score_weights:
+    per: 20
+    pbr: 40
+    dividend_yield: 20
+    roe: 10
+    revenue_growth: 10
+
+quality:
+  description: "クオリティ"
+  filters:
+    per_max: 25
+    dividend_yield_min: 1.5
+    market_cap_min: 50000000000
+  score_weights:
+    per: 15
+    pbr: 15
+    dividend_yield: 20
+    roe: 35
+    revenue_growth: 15
+
+pullback:
+  description: "押し目買い"
+  filters:
+    per_max: 20
+    pbr_max: 2.0
+    market_cap_min: 10000000000
+  score_weights:
+    per: 25
+    pbr: 25
+    dividend_yield: 15
+    roe: 20
+    revenue_growth: 15
+
+alpha:
+  description: "アルファ (割安+業績改善)"
+  filters:
+    per_max: 20
+    pbr_max: 2.0
+    market_cap_min: 10000000000
+  score_weights:
+    per: 20
+    pbr: 20
+    dividend_yield: 15
+    roe: 25
+    revenue_growth: 20

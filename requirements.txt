@@ -1,0 +1,17 @@
+# Data
+yfinance>=0.2.40
+numpy>=1.24.0
+pandas>=2.0.0
+
+# UI
+gradio>=5.0.0
+
+# Config
+pyyaml>=6.0
+
+# LLM
+requests>=2.31.0
+
+# Testing
+pytest>=7.0.0
+pytest-mock>=3.10.0
