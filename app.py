@@ -46,30 +46,30 @@ def build_app() -> gr.Blocks:
     yahoo = YahooClient(cache_manager=cache)
     llm = LLMClient()
 
-    llm_status = "🟢 LLM 接続中" if llm.is_available() else "🔴 LLM 未接続"
+    llm_status = "LLM 接続中" if llm.is_available() else "LLM 未接続"
     logger.info("LLM status: %s (model=%s)", llm_status, llm.model)
 
     with gr.Blocks(title="Stock Advisor") as app:
-        gr.Markdown("# 📊 Stock Advisor")
+        gr.Markdown("# Stock Advisor")
         gr.Markdown(
             f"{llm_status} | "
             "**投資は自己責任です。本システムの出力は投資助言ではありません。**"
         )
 
         with gr.Tabs():
-            with gr.Tab("🔍 スクリーニング"):
+            with gr.Tab("スクリーニング"):
                 build_screening_tab(yahoo, presets, exchanges)
 
-            with gr.Tab("📋 銘柄レポート"):
+            with gr.Tab("銘柄レポート"):
                 build_report_tab(yahoo, llm)
 
-            with gr.Tab("💼 ポートフォリオ"):
+            with gr.Tab("ポートフォリオ"):
                 build_portfolio_tab(yahoo)
 
-            with gr.Tab("⚡ ストレステスト"):
+            with gr.Tab("ストレステスト"):
                 build_stress_test_tab(yahoo, scenarios)
 
-            with gr.Tab("💬 AI アシスタント"):
+            with gr.Tab("AI アシスタント"):
                 build_chat_tab(yahoo, llm)
 
     return app

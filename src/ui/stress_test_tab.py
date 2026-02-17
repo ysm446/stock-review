@@ -15,7 +15,7 @@ _PORTFOLIO_CSV = "data/portfolio.csv"
 
 def build_stress_test_tab(yahoo_client, scenarios: dict) -> None:
     """Build the stress test tab UI."""
-    gr.Markdown("## ⚡ ストレステスト")
+    gr.Markdown("## ストレステスト")
     gr.Markdown(
         "銘柄リストとシナリオを選択して、ショック感応度・VaR・推奨アクションを分析します。"
     )
@@ -41,7 +41,7 @@ def build_stress_test_tab(yahoo_client, scenarios: dict) -> None:
             label="シナリオ",
             scale=2,
         )
-        run_btn = gr.Button("⚡ テスト実行", variant="primary", scale=1)
+        run_btn = gr.Button("テスト実行", variant="primary", scale=1)
 
     result_out = gr.Markdown("*ティッカーとシナリオを選択して実行してください。*")
 
@@ -49,30 +49,30 @@ def build_stress_test_tab(yahoo_client, scenarios: dict) -> None:
     def load_from_portfolio():
         positions = manager.get_positions()
         if not positions:
-            return "⚠️ ポートフォリオに銘柄がありません。"
+            return "ポートフォリオに銘柄がありません。"
         return ", ".join(positions.keys())
 
     load_portfolio_btn.click(load_from_portfolio, outputs=[ticker_input])
 
     def run_stress_test(tickers_raw: str, scenario_key: str):
-        yield "⏳ 分析中..."
+        yield "分析中..."
         tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
         if not tickers:
-            yield "⚠️ ティッカーを入力してください。"
+            yield "ティッカーを入力してください。"
             return
         if not scenario_key:
-            yield "⚠️ シナリオを選択してください。"
+            yield "シナリオを選択してください。"
             return
 
         try:
             result = run_scenario(tickers, scenario_key, scenarios, yahoo_client)
         except Exception as e:
             logger.exception("run_scenario failed")
-            yield f"❌ エラー: {e}"
+            yield f"エラー: {e}"
             return
 
         if result.get("error"):
-            yield f"❌ {result['error']}"
+            yield f"{result['error']}"
             return
 
         yield _format_result(result)
@@ -115,7 +115,7 @@ def _format_result(result: dict) -> str:
     impact_rows = [
         [
             f"{item['name']} ({item['ticker']})",
-            "ETF" if item["is_etf"] else item["sector"],
+            "ETF"if item["is_etf"] else item["sector"],
             item["shock_applied"],
             fmt_pct(item["impact_pct"]),
         ]

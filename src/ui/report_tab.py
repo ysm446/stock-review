@@ -6,7 +6,7 @@ from src.core.report_generator import ReportGenerator
 
 def build_report_tab(yahoo_client, llm_client) -> None:
     """Build the stock report tab."""
-    gr.Markdown("## 📋 銘柄レポート")
+    gr.Markdown("## 銘柄レポート")
     gr.Markdown("ティッカーを入力して個別銘柄の財務分析レポートを生成します。")
 
     with gr.Row():
@@ -15,7 +15,7 @@ def build_report_tab(yahoo_client, llm_client) -> None:
             placeholder="例: 7203.T または AAPL",
             scale=3,
         )
-        run_btn = gr.Button("📋 レポート生成", variant="primary", scale=1)
+        run_btn = gr.Button("レポート生成", variant="primary", scale=1)
 
     report_output = gr.Markdown("*ティッカーを入力して実行してください。*")
 
@@ -24,12 +24,12 @@ def build_report_tab(yahoo_client, llm_client) -> None:
     def generate_report(ticker: str) -> str:
         ticker = ticker.strip()
         if not ticker:
-            return "⚠️ ティッカーを入力してください。"
+            return "ティッカーを入力してください。"
         data = generator.generate(ticker)
         return generator.format_markdown(data)
 
     def on_run(ticker: str):
-        yield "⏳ データを取得中..."
+        yield "データを取得中..."
         result = generate_report(ticker)
         yield result
 

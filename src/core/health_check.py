@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 # Alert level labels
 _LEVEL_LABELS = {
-    "ok": "✅ 正常",
-    "watch": "👀 早期警告",
-    "caution": "⚠️ 注意",
-    "exit": "🔴 撤退検討",
+    "ok": "正常",
+    "watch": "早期警告",
+    "caution": "注意",
+    "exit": "撤退検討",
 }
 
 _LEVEL_ACTIONS = {

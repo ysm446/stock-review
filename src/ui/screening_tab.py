@@ -70,7 +70,7 @@ def build_screening_tab(yahoo_client, presets: dict, exchanges: dict) -> None:
                 visible=True,
             )
 
-            run_btn = gr.Button("🔍 スクリーニング実行", variant="primary", size="lg")
+            run_btn = gr.Button("スクリーニング実行", variant="primary", size="lg")
             status_md = gr.Markdown("")
 
         # ── Right panel: results ──────────────────────────────────────────
@@ -109,19 +109,19 @@ def build_screening_tab(yahoo_client, presets: dict, exchanges: dict) -> None:
             if mode == "個別リスト指定":
                 tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
                 if not tickers:
-                    return pd.DataFrame(), "⚠️ ティッカーを入力してください。"
+                    return pd.DataFrame(), "ティッカーを入力してください。"
                 results = value_screener.screen(tickers, preset=preset_list)
                 df = results_to_dataframe(results)
-                return df, f"✅ {len(results)} 件の銘柄を分析しました。"
+                return df, f"{len(results)} 件の銘柄を分析しました。"
             else:
                 results = query_screener.screen(region, preset, limit=int(limit))
                 df = results_to_dataframe(results)
                 if df.empty:
-                    return df, "⚠️ 条件に一致する銘柄が見つかりませんでした。フィルターを緩めてみてください。"
-                return df, f"✅ {len(results)} 件の銘柄が見つかりました。"
+                    return df, "条件に一致する銘柄が見つかりませんでした。フィルターを緩めてみてください。"
+                return df, f"{len(results)} 件の銘柄が見つかりました。"
         except Exception as e:
             logger.exception("Screening failed")
-            return pd.DataFrame(), f"❌ エラー: {e}"
+            return pd.DataFrame(), f"エラー: {e}"
 
     run_btn.click(
         run_screening,

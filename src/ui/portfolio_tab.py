@@ -16,7 +16,7 @@ _PORTFOLIO_CSV = "data/portfolio.csv"
 
 def build_portfolio_tab(yahoo_client) -> None:
     """Build the portfolio management tab UI."""
-    gr.Markdown("## 💼 ポートフォリオ管理")
+    gr.Markdown("## ポートフォリオ管理")
 
     manager = PortfolioManager(_PORTFOLIO_CSV)
 
@@ -53,18 +53,18 @@ def build_portfolio_tab(yahoo_client) -> None:
             def add_trade(action, ticker, qty, price, currency, notes):
                 ticker = (ticker or "").strip()
                 if not ticker:
-                    return "⚠️ ティッカーを入力してください。", refresh_trades()
+                    return "ティッカーを入力してください。", refresh_trades()
                 if qty <= 0:
-                    return "⚠️ 数量は 0 より大きい値を入力してください。", refresh_trades()
+                    return "数量は 0 より大きい値を入力してください。", refresh_trades()
                 try:
                     manager.add_trade(action, ticker, qty, price, currency, notes or "")
                     return (
-                        f"✅ {action.upper()} {ticker} × {qty} @ {price} {currency} を記録しました。",
+                        f"{action.upper()} {ticker} × {qty} @ {price} {currency} を記録しました。",
                         refresh_trades(),
                     )
                 except Exception as e:
                     logger.exception("add_trade failed")
-                    return f"❌ エラー: {e}", refresh_trades()
+                    return f"エラー: {e}", refresh_trades()
 
             record_btn.click(
                 add_trade,
@@ -81,7 +81,7 @@ def build_portfolio_tab(yahoo_client) -> None:
             snapshot_df = gr.DataFrame(label="保有銘柄一覧", interactive=False)
 
             def run_snapshot():
-                yield "⏳ 評価額を取得中...", pd.DataFrame()
+                yield "評価額を取得中...", pd.DataFrame()
                 positions = manager.get_positions()
                 if not positions:
                     yield "ポートフォリオに銘柄がありません。売買記録から銘柄を追加してください。", pd.DataFrame()
@@ -100,7 +100,7 @@ def build_portfolio_tab(yahoo_client) -> None:
                         "損益": fmt_price(item["gain"], cur) if item["gain"] is not None else "-",
                         "損益率": fmt_pct(item["gain_pct"]) if item["gain_pct"] is not None else "-",
                     })
-                yield "✅ 更新完了", pd.DataFrame(rows)
+                yield "更新完了", pd.DataFrame(rows)
 
             snapshot_btn.click(run_snapshot, outputs=[snapshot_status, snapshot_df])
 
@@ -111,7 +111,7 @@ def build_portfolio_tab(yahoo_client) -> None:
             structure_out = gr.Markdown("*[分析] ボタンを押してください。*")
 
             def run_structure():
-                yield "⏳ 分析中..."
+                yield "分析中..."
                 positions = manager.get_positions()
                 if not positions:
                     yield "ポートフォリオに銘柄がありません。"
@@ -158,7 +158,7 @@ def build_portfolio_tab(yahoo_client) -> None:
             health_out = gr.Markdown("*[チェック] ボタンを押してください。*")
 
             def run_health(tickers_raw: str):
-                yield "⏳ チェック中..."
+                yield "チェック中..."
                 if tickers_raw.strip():
                     tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
                 else:
@@ -210,7 +210,7 @@ def build_portfolio_tab(yahoo_client) -> None:
             return_out = gr.Markdown("*[試算] ボタンを押してください。*")
 
             def run_return(tickers_raw: str):
-                yield "⏳ 試算中..."
+                yield "試算中..."
                 if tickers_raw.strip():
                     tickers = [t.strip() for t in tickers_raw.split(",") if t.strip()]
                 else:
