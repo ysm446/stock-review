@@ -51,17 +51,25 @@ def build_report_tab(yahoo_client, llm_client) -> None:
         run_btn = gr.Button("レポート生成", variant="primary", scale=1)
 
     resolved_md = gr.Markdown(visible=False)
-    report_output = gr.Markdown("*ティッカーまたは会社名を入力して実行してください。*")
+
+    # Two-column report layout
+    with gr.Row():
+        with gr.Column(scale=3):
+            left_output = gr.Markdown(
+                "*ティッカーまたは会社名を入力して実行してください。*"
+            )
+        with gr.Column(scale=2):
+            right_output = gr.Markdown("")
 
     generator = ReportGenerator(yahoo_client, llm_client)
 
     def on_run(query: str):
         query = query.strip()
         if not query:
-            yield gr.update(visible=False), "ティッカーまたは会社名を入力してください。"
+            yield gr.update(visible=False), "ティッカーまたは会社名を入力してください。", ""
             return
 
-        yield gr.update(visible=False), "データを取得中..."
+        yield gr.update(visible=False), "データを取得中...", ""
 
         # --- Ticker resolution ---
         if _looks_like_ticker(query):
@@ -74,7 +82,7 @@ def build_report_tab(yahoo_client, llm_client) -> None:
 
             if is_japanese:
                 if llm_client.is_available():
-                    yield gr.update(visible=False), f"「{query}」を検索中..."
+                    yield gr.update(visible=False), f"「{query}」を検索中...", ""
                     english_name = _llm_translate_to_english(query, llm_client)
                     if english_name:
                         search_query = english_name
@@ -83,7 +91,7 @@ def build_report_tab(yahoo_client, llm_client) -> None:
                     yield gr.update(visible=False), (
                         f"「{query}」は日本語の会社名のようですが、LLM が未接続のため英語変換できません。"
                         "ティッカー記号 (例: 7011.T) を直接入力してください。"
-                    )
+                    ), ""
                     return
 
             candidates = yahoo_client.search_tickers(
@@ -93,11 +101,10 @@ def build_report_tab(yahoo_client, llm_client) -> None:
                 yield gr.update(visible=False), (
                     f"「{query}」に対応するティッカーが見つかりませんでした。"
                     "ティッカー記号を直接入力してください。"
-                )
+                ), ""
                 return
 
             ticker = candidates[0]
-            # Fetch display name to confirm the right company was found
             info = yahoo_client.get_ticker_info(ticker)
             display_name = info.get("longName") or info.get("shortName") or ticker
 
@@ -107,11 +114,19 @@ def build_report_tab(yahoo_client, llm_client) -> None:
                 note_lines.append(f"他の候補: {others}")
 
             resolved_note = gr.update(value="\n\n".join(note_lines), visible=True)
-            yield resolved_note, "データを取得中..."
+            yield resolved_note, "データを取得中...", ""
 
         data = generator.generate(ticker)
-        result = generator.format_markdown(data)
-        yield resolved_note, result
+        left_md, right_md = generator.format_columns(data)
+        yield resolved_note, left_md, right_md
 
-    run_btn.click(on_run, inputs=[ticker_input], outputs=[resolved_md, report_output])
-    ticker_input.submit(on_run, inputs=[ticker_input], outputs=[resolved_md, report_output])
+    run_btn.click(
+        on_run,
+        inputs=[ticker_input],
+        outputs=[resolved_md, left_output, right_output],
+    )
+    ticker_input.submit(
+        on_run,
+        inputs=[ticker_input],
+        outputs=[resolved_md, left_output, right_output],
+    )

@@ -265,6 +265,141 @@ class ReportGenerator:
 
         return "\n".join(lines)
 
+    def format_columns(self, data: dict) -> tuple[str, str]:
+        """Format report dict as two Markdown strings for a two-column layout.
+
+        Returns:
+            (left_md, right_md) where:
+              left  — header, 基本情報, バリュエーション, 財務サマリー, 収益性
+              right — バリュースコア, アナリストコンセンサス, AI分析, ニュース
+        """
+        if data.get("error"):
+            err = f"## エラー\n\n{data['error']}"
+            return err, ""
+
+        currency = data.get("currency")
+        left: list[str] = []
+        right: list[str] = []
+
+        # --- ヘッダー (左) ---
+        ticker = data["ticker"]
+        name = data["name"]
+        left.append(f"## {name}  `{ticker}`")
+        left.append("")
+        left.append(f"**セクター:** {data['sector']}　｜　**業種:** {data['industry']}")
+        left.append("")
+
+        # --- 基本情報 (左) ---
+        left.append("### 基本情報")
+        basic_rows = [
+            ["時価総額", fmt_market_cap(data.get("market_cap"), currency)],
+            ["現在株価", fmt_price(data.get("current_price"), currency)],
+            ["52週高値", fmt_price(data.get("week52_high"), currency)],
+            ["52週安値", fmt_price(data.get("week52_low"), currency)],
+        ]
+        left.append(markdown_table(["項目", "値"], basic_rows))
+        left.append("")
+
+        # --- バリュエーション (左) ---
+        left.append("### バリュエーション")
+        val_rows = [
+            ["PER (実績)", fmt_float(data.get("per"), 1) + "倍" if data.get("per") else "-"],
+            ["PBR", fmt_float(data.get("pbr"), 2) + "倍" if data.get("pbr") else "-"],
+            ["EV/EBITDA", fmt_float(data.get("ev_ebitda"), 1) + "倍" if data.get("ev_ebitda") else "-"],
+            ["配当利回り", fmt_pct(data.get("dividend_yield"))],
+        ]
+        left.append(markdown_table(["指標", "値"], val_rows))
+        left.append("")
+
+        # --- 財務サマリー (左) ---
+        financials = data.get("financials", {})
+        revenue = financials.get("revenue", {})
+        op_income = financials.get("operating_income", {})
+        net_income = financials.get("net_income", {})
+
+        if revenue:
+            left.append("### 財務サマリー")
+            dates = sorted(revenue.keys(), reverse=True)[:3]
+
+            def _fmt_fin(val: Optional[float]) -> str:
+                if val is None:
+                    return "-"
+                if currency == "JPY":
+                    return f"¥{val / 1e8:.0f}億"
+                return f"${val / 1e9:.2f}B"
+
+            fin_headers = ["期間"] + dates
+            fin_rows = [
+                ["売上高"] + [_fmt_fin(revenue.get(d)) for d in dates],
+                ["営業利益"] + [_fmt_fin(op_income.get(d)) for d in dates],
+                ["純利益"] + [_fmt_fin(net_income.get(d)) for d in dates],
+            ]
+            left.append(markdown_table(fin_headers, fin_rows))
+            left.append("")
+
+        # --- 収益性 (左) ---
+        left.append("### 収益性")
+        prof_rows = [
+            ["ROE", fmt_pct(data.get("roe"))],
+            ["ROA", fmt_pct(data.get("roa"))],
+            ["営業利益率", fmt_pct(data.get("operating_margin"))],
+            ["FCF マージン", fmt_pct(data.get("fcf_margin"))],
+        ]
+        left.append(markdown_table(["指標", "値"], prof_rows))
+        left.append("")
+
+        # --- バリュースコア (右) ---
+        score = data.get("value_score", 0.0)
+        label = data.get("score_label", "-")
+        right.append("### バリュースコア")
+        right.append(f"**{score:.1f} / 100** — {label}")
+        right.append("")
+        right.append(_score_bar(score))
+        right.append("")
+
+        # --- アナリストコンセンサス (右) ---
+        analyst = data.get("analyst", {})
+        if any(v is not None for v in analyst.values()):
+            right.append("### アナリストコンセンサス")
+            rec_key = analyst.get("recommendation") or ""
+            rec_label = _REC_LABELS.get(rec_key, rec_key or "-")
+            count = analyst.get("analyst_count")
+            count_str = f"{count}名" if count else "-"
+            ana_rows = [
+                ["目標株価 (高値)", fmt_price(analyst.get("target_high"), currency)],
+                ["目標株価 (平均)", fmt_price(analyst.get("target_mean"), currency)],
+                ["目標株価 (安値)", fmt_price(analyst.get("target_low"), currency)],
+                ["レーティング", rec_label],
+                ["アナリスト数", count_str],
+            ]
+            right.append(markdown_table(["項目", "値"], ana_rows))
+            right.append("")
+
+        # --- AI 分析 (右) ---
+        llm = data.get("llm_analysis", "")
+        if llm:
+            right.append("### AI アシスタントの分析")
+            right.append("> *以下は AI による情報提供です。投資助言ではありません。*")
+            right.append("")
+            right.append(llm)
+            right.append("")
+
+        # --- ニュース (右) ---
+        news = data.get("news", [])
+        if news:
+            right.append("### 最新ニュース")
+            for n in news:
+                title = n.get("title") or ""
+                link = n.get("link") or ""
+                publisher = n.get("publisher") or ""
+                if link:
+                    right.append(f"- [{title}]({link})　_{publisher}_")
+                else:
+                    right.append(f"- {title}　_{publisher}_")
+            right.append("")
+
+        return "\n".join(left), "\n".join(right)
+
 
 def _score_bar(score: float, width: int = 20) -> str:
     """Return a simple text progress bar for the score."""
