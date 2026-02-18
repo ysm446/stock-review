@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(PYTHONIOENCODING=utf-8 /d/miniconda3/conda_envs/main/python.exe:*)"
     ]
   }
 }

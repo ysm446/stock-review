@@ -90,6 +90,13 @@ def _build_context(message: str, yahoo_client, manager: PortfolioManager) -> str
 
     # Stock data for mentioned tickers
     tickers = _extract_tickers(message)
+    if not tickers:
+        # Fallback: search by company name when no ticker symbol found in message
+        try:
+            tickers = yahoo_client.search_tickers(message, max_results=2)
+        except Exception as e:
+            logger.warning("Ticker search fallback failed: %s", e)
+
     for ticker in tickers[:3]:  # Limit to 3 tickers to avoid token explosion
         try:
             info = yahoo_client.get_ticker_info(ticker)

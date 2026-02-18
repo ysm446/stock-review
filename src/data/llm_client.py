@@ -26,7 +26,7 @@ class LLMClient:
 
     def __init__(
         self,
-        model: str = "qwen3:14b",
+        model: str = "qwen3:8b",
         base_url: str = "http://localhost:11434",
     ):
         """

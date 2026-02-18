@@ -44,7 +44,7 @@ def build_app() -> gr.Blocks:
 
     cache = CacheManager(cache_dir=str(BASE_DIR / "data" / "cache"))
     yahoo = YahooClient(cache_manager=cache)
-    llm = LLMClient()
+    llm = LLMClient(model="qwen3:8b")
 
     llm_status = "LLM 接続中" if llm.is_available() else "LLM 未接続"
     logger.info("LLM status: %s (model=%s)", llm_status, llm.model)

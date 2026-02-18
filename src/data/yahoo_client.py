@@ -345,6 +345,49 @@ class YahooClient:
             logger.warning("get_localized_names failed: %s", e)
             return {}
 
+    def search_tickers(
+        self,
+        query: str,
+        max_results: int = 3,
+        prefer_jpx: bool = False,
+    ) -> list[str]:
+        """Search for ticker symbols matching a company name or keyword.
+
+        Uses yfinance.Search to look up by English company name.
+        Note: Yahoo Finance search API does not accept Japanese text; callers
+        should translate Japanese company names to English before calling this.
+
+        Args:
+            query: Search query in English (e.g. "Toyota", "Kioxia").
+            max_results: Maximum number of tickers to return.
+            prefer_jpx: If True, prefer Tokyo Stock Exchange (.T) tickers.
+
+        Returns:
+            List of ticker symbols. Empty list on failure.
+        """
+        cache_key_str = f"{query}|jpx={prefer_jpx}"
+        key = f"search_{hashlib.md5(cache_key_str.encode('utf-8')).hexdigest()[:12]}"
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+        self._rate_limit()
+        try:
+            search = yf.Search(query, max_results=max_results * 3, news_count=0)
+            quotes = search.quotes or []
+
+            if prefer_jpx:
+                # Prefer Tokyo Stock Exchange tickers (.T suffix)
+                t_quotes = [q for q in quotes if q.get("symbol", "").endswith(".T")]
+                if t_quotes:
+                    quotes = t_quotes
+
+            result = [q["symbol"] for q in quotes if "symbol" in q][:max_results]
+            self.cache.set(key, result)
+            return result
+        except Exception as e:
+            logger.warning("search_tickers(%r) failed: %s", query, e)
+            return []
+
     def is_etf(self, ticker: str) -> bool:
         """Return True if the ticker is an ETF.
 

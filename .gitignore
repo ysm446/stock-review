@@ -39,3 +39,11 @@ models/*/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 永続データ (個人データ・APIキャッシュ)
+data/cache/
+data/*.csv
+data/*.json
+
+# Claude Code ローカル設定
+.claude/settings.local.json

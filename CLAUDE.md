@@ -317,6 +317,8 @@ class YahooClient:
     def get_analyst_data(self, ticker: str) -> dict
     def get_news(self, ticker: str) -> list[dict]
     def screen_equities(self, region: str, filters: dict) -> list[dict]
+    def search_tickers(self, query: str, max_results: int = 3, prefer_jpx: bool = False) -> list[str]
+    def get_localized_names(self, tickers: list[str], lang: str = "ja-JP", region: str = "JP") -> dict[str, str]
     def is_etf(self, ticker: str) -> bool
 ```
 
@@ -326,7 +328,7 @@ class YahooClient:
 
 ```python
 class LLMClient:
-    def __init__(self, model: str = "qwen3:14b", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "qwen3:8b", base_url: str = "http://localhost:11434"):
         ...
 
     def generate(self, prompt: str, system: str = None, temperature: float = 0.3) -> str:
@@ -348,9 +350,14 @@ RTX PRO 5000 (48GB VRAM) 環境:
 
 | モデル | サイズ | 用途 | 備考 |
 |--------|------|------|------|
-| qwen3:14b | ~10GB | 日本語レポート生成・対話 | 日本語性能が高い |
-| qwen3:32b | ~22GB | より高品質な分析 | VRAM に余裕があれば |
+| qwen3:8b | ~6GB | 日本語レポート生成・対話 | **現在使用中** |
+| qwen3:14b | ~10GB | より高品質な分析 | VRAM に余裕があれば |
+| qwen3:32b | ~22GB | 最高品質 | さらに余裕があれば |
 | gemma3:27b | ~18GB | 代替選択肢 | 多言語対応 |
+
+> **重要:** `app.py` の `LLMClient(model="qwen3:8b")` をインストール済みモデル名と一致させること。
+> モデル名不一致は「LLM からの応答が取得できませんでした」エラーの原因になる。
+> インストール済みモデルは `ollama list` で確認できる。
 
 #### Graceful Degradation
 
@@ -570,7 +577,8 @@ export OLLAMA_MODELS=/path/to/stock-advisor/models
 # $env:OLLAMA_MODELS = "D:\GitHub\stock-advisor\models"
 
 # 推奨モデルのダウンロード (models/ フォルダに保存される)
-ollama pull qwen3:14b
+ollama pull qwen3:8b   # 現在使用中
+# ollama pull qwen3:14b  # より高品質
 
 # サーバー起動 (デフォルト: http://localhost:11434)
 OLLAMA_MODELS=/path/to/stock-advisor/models ollama serve
@@ -684,39 +692,87 @@ Phase 6: テスト・リファクタ
 4. **ETF リターンの年率換算:** 月次リターン×12 (単利) ではなく CAGR (複利年率) を使う
 5. **EquityQuery の地域コード:** yfinance 側の仕様変更に注意
 
+### Yahoo Finance 銘柄検索 API の制約 (重要)
+
+`yf.Search` および `/v1/finance/search` エンドポイントは**日本語テキストを受け付けない** (400 エラー)。
+
+```
+yf.Search("三菱重工")   → 結果なし (空)
+yf.Search("Mitsubishi Heavy Industries")  → 7011.T を含む結果が返る
+```
+
+**対策 (report_tab.py / chat_tab.py に実装済み):**
+1. 入力に日本語文字が含まれる場合、LLM に英語社名へ翻訳させる
+2. 英語社名で検索し、`prefer_jpx=True` で `.T` ティッカーを優先取得
+3. LLM 未接続時はティッカー直接入力を促すメッセージを表示
+
+```python
+# LLM による日本語→英語変換 (report_tab.py)
+english_name = _llm_translate_to_english("三菱重工", llm_client)
+# → "Mitsubishi Heavy Industries"
+candidates = yahoo_client.search_tickers(english_name, prefer_jpx=True)
+# → ["7011.T", ...]
+```
+
 ### Graceful Degradation パターン
 
 - Ollama 未起動 → LLM 機能スキップ、データ分析のみで動作
 - yfinance API エラー → キャッシュからフォールバック
 - アナリストデータ欠損 → 過去リターンベースに切り替え
+- LLM モデル名不一致 → `chat()` / `generate()` が空文字を返す → `ollama list` でモデル名確認
 
 ---
 
-## 実装済み状況 (Phase 1 完了)
+## 実装済み状況 (Phase 1〜5 完了 / Phase 6 残)
 
 ### 完了ファイル
 
 ```
-app.py                          # Gradio エントリーポイント
+app.py                          # Gradio エントリーポイント (LLMClient model="qwen3:8b")
 start.bat                       # Windows 起動用バッチ (Python フルパス指定)
 config/presets.yaml             # 7 プリセット定義
 config/exchanges.yaml           # 10 地域定義
 config/scenarios.yaml           # 8 シナリオ定義
+
+# Data 層
 src/data/cache_manager.py       # JSON キャッシュ (24h TTL)
-src/data/yahoo_client.py        # yfinance 1.x ラッパー
-src/data/llm_client.py          # Ollama クライアント
+src/data/yahoo_client.py        # yfinance 1.x ラッパー + search_tickers (prefer_jpx対応)
+src/data/llm_client.py          # Ollama クライアント (model="qwen3:8b")
+
+# Core 層
 src/core/indicators.py          # バリュースコア計算
-src/core/screener.py            # QueryScreener / ValueScreener
+src/core/screener.py            # QueryScreener / ValueScreener / PullbackScreener / AlphaScreener
+src/core/alpha.py               # 変化スコア計算
+src/core/technicals.py          # テクニカル指標・押し目判定
+src/core/health_check.py        # ヘルスチェック (3段階アラート)
+src/core/return_estimate.py     # 推定利回り (3シナリオ)
+src/core/concentration.py       # HHI 集中度分析
+src/core/correlation.py         # 相関分析・ファクター分解・VaR
+src/core/shock_sensitivity.py   # ショック感応度
+src/core/scenario_analysis.py   # シナリオ分析 (8シナリオ)
+src/core/recommender.py         # 推奨アクション生成
+src/core/portfolio_manager.py   # ポートフォリオ管理 (売買記録・損益)
+src/core/report_generator.py    # 個別銘柄レポート生成 (LLM分析付き)
+
+# UI 層
 src/ui/components.py            # 共通 UI
-src/ui/screening_tab.py         # スクリーニングタブ (実装済み)
-src/ui/report_tab.py            # 銘柄レポートタブ (Phase 2 スタブ)
-src/ui/portfolio_tab.py         # ポートフォリオタブ (Phase 3 スタブ)
-src/ui/stress_test_tab.py       # ストレステストタブ (Phase 4 スタブ)
-src/ui/chat_tab.py              # AI アシスタントタブ (Phase 5 スタブ)
+src/ui/screening_tab.py         # スクリーニングタブ
+src/ui/report_tab.py            # 銘柄レポートタブ (会社名→ティッカー解決・LLM翻訳対応)
+src/ui/portfolio_tab.py         # ポートフォリオ管理タブ
+src/ui/stress_test_tab.py       # ストレステストタブ
+src/ui/chat_tab.py              # AI アシスタントタブ (LLM統合・会社名検索フォールバック)
+
+# Utils
 src/utils/formatter.py          # フォーマッタ
 src/utils/validators.py         # バリデータ
 tests/conftest.py               # pytest フィクスチャ
 ```
+
+### 残作業 (Phase 6)
+
+- テスト拡充 (Core 層ユニットテスト)
+- パフォーマンス最適化
+- UI ブラッシュアップ
 
 ### 起動方法
 
