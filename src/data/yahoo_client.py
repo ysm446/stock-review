@@ -51,6 +51,10 @@ class YahooClient:
     def _sanitize_info(self, info: dict) -> dict:
         """Normalize and filter unreasonable values from ticker info."""
         info = dict(info)
+        # Fallback: Japanese stocks often have dividendYield=None while
+        # trailingAnnualDividendYield is populated
+        if not info.get("dividendYield") and info.get("trailingAnnualDividendYield"):
+            info["dividendYield"] = info["trailingAnnualDividendYield"]
         # yfinance sometimes returns dividend yield as percentage (e.g. 3.5 instead of 0.035)
         div_yield = info.get("dividendYield")
         if div_yield is not None and div_yield > 1.0:

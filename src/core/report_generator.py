@@ -22,6 +22,58 @@ _REC_LABELS: dict[str, str] = {
     "strongSell": "強気売り",
 }
 
+_COLOR_GOOD = "#67e8f9"   # cyan (good value)
+_COLOR_BAD  = "#f97316"   # orange (bad value)
+
+
+def _colored(text: str, good: Optional[bool]) -> str:
+    """Wrap text in a colored HTML span. good=True→cyan, False→orange, None→plain."""
+    if good is True:
+        return f'<span style="color:{_COLOR_GOOD}">{text}</span>'
+    if good is False:
+        return f'<span style="color:{_COLOR_BAD}">{text}</span>'
+    return text
+
+
+def _eval(value: Optional[float], good_thresh: float, bad_thresh: float,
+          higher_is_good: bool = True) -> Optional[bool]:
+    """Return True (good), False (bad), or None (neutral) for a metric value."""
+    if value is None:
+        return None
+    if higher_is_good:
+        if value >= good_thresh:
+            return True
+        if value <= bad_thresh:
+            return False
+    else:
+        if value <= good_thresh:
+            return True
+        if value >= bad_thresh:
+            return False
+    return None
+
+
+def _eval_rec(rec_key: str) -> Optional[bool]:
+    """Return color rating for an analyst recommendation key."""
+    if rec_key in ("strongBuy", "buy"):
+        return True
+    if rec_key in ("sell", "strongSell"):
+        return False
+    return None
+
+
+def _eval_target_vs_price(target_mean: Optional[float],
+                           current_price: Optional[float]) -> Optional[bool]:
+    """Return True if target_mean implies ≥10% upside, False if downside."""
+    if target_mean is None or current_price is None or current_price == 0:
+        return None
+    ratio = target_mean / current_price
+    if ratio >= 1.10:
+        return True
+    if ratio < 1.00:
+        return False
+    return None
+
 
 class ReportGenerator:
     """Generate individual stock reports combining fundamental data and LLM analysis."""
@@ -67,7 +119,7 @@ class ReportGenerator:
                 "sector": info.get("sector"),
                 "per": info.get("trailingPE") or info.get("forwardPE"),
                 "pbr": info.get("priceToBook"),
-                "dividend_yield_pct": (info.get("dividendYield") or 0) * 100,
+                "dividend_yield_pct": ((info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0) * 100),
                 "roe_pct": (info.get("returnOnEquity") or 0) * 100,
                 "revenue_growth_pct": (info.get("revenueGrowth") or 0) * 100,
                 "value_score": value_score,
@@ -96,7 +148,7 @@ class ReportGenerator:
             "per": info.get("trailingPE") or info.get("forwardPE"),
             "pbr": info.get("priceToBook"),
             "ev_ebitda": info.get("enterpriseToEbitda"),
-            "dividend_yield": info.get("dividendYield"),
+            "dividend_yield": info.get("dividendYield") or info.get("trailingAnnualDividendYield"),
             # Financials (up to 3 periods)
             "financials": {
                 "revenue": dict(list(financials.get("revenue", {}).items())[:3]),
@@ -304,11 +356,27 @@ class ReportGenerator:
 
         # --- バリュエーション (左) ---
         left.append("### バリュエーション")
+        per_val = data.get("per")
+        pbr_val = data.get("pbr")
+        ev_val  = data.get("ev_ebitda")
+        dy_val  = data.get("dividend_yield")
         val_rows = [
-            ["PER (実績)", fmt_float(data.get("per"), 1) + "倍" if data.get("per") else "-"],
-            ["PBR", fmt_float(data.get("pbr"), 2) + "倍" if data.get("pbr") else "-"],
-            ["EV/EBITDA", fmt_float(data.get("ev_ebitda"), 1) + "倍" if data.get("ev_ebitda") else "-"],
-            ["配当利回り", fmt_pct(data.get("dividend_yield"))],
+            ["PER (実績)", _colored(
+                fmt_float(per_val, 1) + "倍" if per_val else "-",
+                _eval(per_val, 12, 25, higher_is_good=False),
+            )],
+            ["PBR", _colored(
+                fmt_float(pbr_val, 2) + "倍" if pbr_val else "-",
+                _eval(pbr_val, 1.0, 2.5, higher_is_good=False),
+            )],
+            ["EV/EBITDA", _colored(
+                fmt_float(ev_val, 1) + "倍" if ev_val else "-",
+                _eval(ev_val, 8.0, 15.0, higher_is_good=False),
+            )],
+            ["配当利回り", _colored(
+                fmt_pct(dy_val),
+                _eval(dy_val, 0.03, 0.01, higher_is_good=True),
+            )],
         ]
         left.append(markdown_table(["指標", "値"], val_rows))
         left.append("")
@@ -330,11 +398,33 @@ class ReportGenerator:
                     return f"¥{val / 1e8:.0f}億"
                 return f"${val / 1e9:.2f}B"
 
+            def _fin_color(series: dict, date: str, prev_date: Optional[str]) -> Optional[bool]:
+                """Color based on year-over-year growth."""
+                if prev_date is None:
+                    return None
+                cur = series.get(date)
+                prv = series.get(prev_date)
+                if cur is None or prv is None or prv == 0:
+                    return None
+                return True if cur > prv else False
+
             fin_headers = ["期間"] + dates
             fin_rows = [
-                ["売上高"] + [_fmt_fin(revenue.get(d)) for d in dates],
-                ["営業利益"] + [_fmt_fin(op_income.get(d)) for d in dates],
-                ["純利益"] + [_fmt_fin(net_income.get(d)) for d in dates],
+                ["売上高"] + [
+                    _colored(_fmt_fin(revenue.get(d)),
+                             _fin_color(revenue, d, dates[i + 1] if i + 1 < len(dates) else None))
+                    for i, d in enumerate(dates)
+                ],
+                ["営業利益"] + [
+                    _colored(_fmt_fin(op_income.get(d)),
+                             _fin_color(op_income, d, dates[i + 1] if i + 1 < len(dates) else None))
+                    for i, d in enumerate(dates)
+                ],
+                ["純利益"] + [
+                    _colored(_fmt_fin(net_income.get(d)),
+                             _fin_color(net_income, d, dates[i + 1] if i + 1 < len(dates) else None))
+                    for i, d in enumerate(dates)
+                ],
             ]
             left.append(markdown_table(fin_headers, fin_rows))
             left.append("")
@@ -342,10 +432,14 @@ class ReportGenerator:
         # --- 収益性 (左) ---
         left.append("### 収益性")
         prof_rows = [
-            ["ROE", fmt_pct(data.get("roe"))],
-            ["ROA", fmt_pct(data.get("roa"))],
-            ["営業利益率", fmt_pct(data.get("operating_margin"))],
-            ["FCF マージン", fmt_pct(data.get("fcf_margin"))],
+            ["ROE", _colored(fmt_pct(data.get("roe")),
+                             _eval(data.get("roe"), 0.15, 0.05))],
+            ["ROA", _colored(fmt_pct(data.get("roa")),
+                             _eval(data.get("roa"), 0.05, 0.02))],
+            ["営業利益率", _colored(fmt_pct(data.get("operating_margin")),
+                                   _eval(data.get("operating_margin"), 0.15, 0.05))],
+            ["FCF マージン", _colored(fmt_pct(data.get("fcf_margin")),
+                                     _eval(data.get("fcf_margin"), 0.10, 0.0))],
         ]
         left.append(markdown_table(["指標", "値"], prof_rows))
         left.append("")
@@ -367,11 +461,14 @@ class ReportGenerator:
             rec_label = _REC_LABELS.get(rec_key, rec_key or "-")
             count = analyst.get("analyst_count")
             count_str = f"{count}名" if count else "-"
+            current_price = data.get("current_price")
+            target_color = _eval_target_vs_price(analyst.get("target_mean"), current_price)
             ana_rows = [
                 ["目標株価 (高値)", fmt_price(analyst.get("target_high"), currency)],
-                ["目標株価 (平均)", fmt_price(analyst.get("target_mean"), currency)],
+                ["目標株価 (平均)", _colored(fmt_price(analyst.get("target_mean"), currency),
+                                            target_color)],
                 ["目標株価 (安値)", fmt_price(analyst.get("target_low"), currency)],
-                ["レーティング", rec_label],
+                ["レーティング", _colored(rec_label, _eval_rec(rec_key))],
                 ["アナリスト数", count_str],
             ]
             mid.append(markdown_table(["項目", "値"], ana_rows))
