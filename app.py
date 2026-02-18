@@ -23,6 +23,57 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).parent
 
 
+def _build_theme() -> gr.themes.Base:
+    """Build a dark mode theme with orange primary accents."""
+    return gr.themes.Base(
+        primary_hue="orange",
+        secondary_hue="orange",
+        neutral_hue="zinc",
+    ).set(
+        # ── Body ──────────────────────────────────────────────
+        body_background_fill="#141414",
+        body_text_color="#e0e0e0",
+        body_text_color_subdued="#999999",
+        body_text_size="*text_md",
+        # ── Block / Card ──────────────────────────────────────
+        block_background_fill="#1e1e1e",
+        block_border_color="#333333",
+        block_border_width="1px",
+        block_label_background_fill="#1e1e1e",
+        block_label_text_color="#aaaaaa",
+        block_label_text_size="*text_sm",
+        block_title_text_color="#e0e0e0",
+        block_title_text_weight="600",
+        block_shadow="none",
+        # ── Input fields ──────────────────────────────────────
+        input_background_fill="#2a2a2a",
+        input_border_color="#3d3d3d",
+        input_border_width="1px",
+        input_text_size="*text_md",
+        input_placeholder_color="#666666",
+        # ── Primary button (orange) ───────────────────────────
+        button_primary_background_fill="#f97316",
+        button_primary_background_fill_hover="#fb923c",
+        button_primary_text_color="#ffffff",
+        button_primary_border_color="transparent",
+        button_primary_shadow="none",
+        # ── Secondary button ──────────────────────────────────
+        button_secondary_background_fill="#2d2d2d",
+        button_secondary_background_fill_hover="#3a3a3a",
+        button_secondary_text_color="#e0e0e0",
+        button_secondary_border_color="#444444",
+        button_secondary_shadow="none",
+        # ── Table ─────────────────────────────────────────────
+        table_even_background_fill="#1e1e1e",
+        table_odd_background_fill="#252525",
+        table_border_color="#333333",
+        # ── Code / Chatbot ────────────────────────────────────
+        code_background_fill="#2a2a2a",
+        # ── Tab ───────────────────────────────────────────────
+        border_color_primary="#3d3d3d",
+    )
+
+
 def load_config() -> tuple[dict, dict, dict]:
     """Load YAML config files.
 
@@ -82,7 +133,7 @@ def main() -> None:
         share=False,
         show_error=True,
         inbrowser=True,
-        theme=gr.themes.Soft(),
+        theme=_build_theme(),
     )
 
 
