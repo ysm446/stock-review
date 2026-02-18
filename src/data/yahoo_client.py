@@ -157,6 +157,41 @@ class YahooClient:
             logger.warning("get_history(%s) failed: %s", ticker, e)
             return pd.DataFrame()
 
+    def get_balance_sheet(self, ticker: str) -> dict:
+        """Get annual balance sheet data.
+
+        Returns:
+            Dict with keys: total_assets, total_equity.
+            Each value is a {date_str: amount} dict (latest year first).
+        """
+        key = f"balance_{ticker}"
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+        self._rate_limit()
+        result: dict = {}
+        try:
+            t = yf.Ticker(ticker)
+            bs = t.balance_sheet
+            if bs is not None and not bs.empty:
+                if "Total Assets" in bs.index:
+                    row = bs.loc["Total Assets"].dropna()
+                    result["total_assets"] = {
+                        str(k.date()): float(v) for k, v in row.items()
+                    }
+                for eq_label in ("Stockholders Equity", "Total Stockholders Equity",
+                                 "Common Stock Equity"):
+                    if eq_label in bs.index:
+                        row = bs.loc[eq_label].dropna()
+                        result["total_equity"] = {
+                            str(k.date()): float(v) for k, v in row.items()
+                        }
+                        break
+            self.cache.set(key, result)
+        except Exception as e:
+            logger.warning("get_balance_sheet(%s) failed: %s", ticker, e)
+        return result
+
     def get_analyst_data(self, ticker: str) -> dict:
         """Get analyst price targets and recommendation.
 

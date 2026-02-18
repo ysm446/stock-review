@@ -106,12 +106,31 @@ class ReportGenerator:
             return {"ticker": ticker, "error": f"ティッカー '{ticker}' のデータが取得できませんでした。"}
 
         financials = self.yahoo.get_financials(ticker)
+        balance = self.yahoo.get_balance_sheet(ticker)
         analyst = self.yahoo.get_analyst_data(ticker)
         news = self.yahoo.get_news(ticker)
 
         currency = info.get("currency")
         value_score = calculate_value_score(info)
         score_label = get_score_label(value_score)
+
+        # ROE / ROA: prefer yfinance info fields; fall back to balance sheet calculation
+        roe_raw = info.get("returnOnEquity")
+        roa_raw = info.get("returnOnAssets")
+        if roe_raw is None or roa_raw is None:
+            net_income_map = financials.get("net_income", {})
+            if net_income_map:
+                latest_date = sorted(net_income_map.keys(), reverse=True)[0]
+                ni = net_income_map.get(latest_date)
+                if ni is not None:
+                    if roa_raw is None:
+                        ta = balance.get("total_assets", {}).get(latest_date)
+                        if ta and ta != 0:
+                            roa_raw = ni / ta
+                    if roe_raw is None:
+                        te = balance.get("total_equity", {}).get(latest_date)
+                        if te and te != 0:
+                            roe_raw = ni / te
 
         # Build the lightweight data dict passed to LLM
         llm_stock_input = {
@@ -121,7 +140,7 @@ class ReportGenerator:
             "per": info.get("trailingPE") or info.get("forwardPE"),
             "pbr": info.get("priceToBook"),
             "dividend_yield_pct": ((info.get("dividendYield") or info.get("trailingAnnualDividendYield") or 0) * 100),
-            "roe_pct": (info.get("returnOnEquity") or 0) * 100,
+            "roe_pct": (roe_raw or 0) * 100,
             "revenue_growth_pct": (info.get("revenueGrowth") or 0) * 100,
             "value_score": value_score,
             "score_label": score_label,
@@ -160,9 +179,9 @@ class ReportGenerator:
                 "operating_income": dict(list(financials.get("operating_income", {}).items())[:3]),
                 "net_income": dict(list(financials.get("net_income", {}).items())[:3]),
             },
-            # Profitability
-            "roe": info.get("returnOnEquity"),
-            "roa": info.get("returnOnAssets"),
+            # Profitability (use computed fallback if yfinance did not return values)
+            "roe": roe_raw,
+            "roa": roa_raw,
             "operating_margin": info.get("operatingMargins"),
             "fcf_margin": info.get("freeCashflow") and info.get("totalRevenue") and (
                 info["freeCashflow"] / info["totalRevenue"]
