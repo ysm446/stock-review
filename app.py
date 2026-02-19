@@ -23,6 +23,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
+_APP_CSS = """
+    /* Report tab: flex-wrap card grid */
+    .rpt-cards { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+    .rpt-card  { flex: 1 1 180px; min-width: 180px; }
+    .rpt-card.rpt-wide { flex: 2 1 300px; min-width: 280px; }
+    .rpt-h3 { margin: 0 0 6px 0; font-size: 0.95em; font-weight: 700;
+              border-bottom: 1px solid #444; padding-bottom: 3px; }
+    .rpt-tbl { border-collapse: collapse; width: 100%; font-size: 0.85em; }
+    .rpt-tbl th, .rpt-tbl td { border: 1px solid #3d3d3d; padding: 3px 8px; white-space: nowrap; }
+    .rpt-tbl thead th { background: #252525; color: #aaa; font-weight: 600; }
+"""
 
 
 def _build_theme() -> gr.themes.Base:
@@ -114,19 +125,7 @@ def build_app() -> gr.Blocks:
     else:
         logger.info("No persisted model found — load a model from the モデル管理 tab.")
 
-    _css = """
-        /* Report tab: flex-wrap card grid */
-        .rpt-cards { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
-        .rpt-card  { flex: 1 1 180px; min-width: 180px; }
-        .rpt-card.rpt-wide { flex: 2 1 300px; min-width: 280px; }
-        .rpt-h3 { margin: 0 0 6px 0; font-size: 0.95em; font-weight: 700;
-                  border-bottom: 1px solid #444; padding-bottom: 3px; }
-        .rpt-tbl { border-collapse: collapse; width: 100%; font-size: 0.85em; }
-        .rpt-tbl th, .rpt-tbl td { border: 1px solid #3d3d3d; padding: 3px 8px; white-space: nowrap; }
-        .rpt-tbl thead th { background: #252525; color: #aaa; font-weight: 600; }
-    """
-
-    with gr.Blocks(title="Stock Advisor", css=_css) as app:
+    with gr.Blocks(title="Stock Advisor") as app:
         gr.Markdown("# Stock Advisor")
 
         with gr.Tabs():
@@ -158,6 +157,7 @@ def main() -> None:
         share=False,
         show_error=True,
         inbrowser=True,
+        css=_APP_CSS,
         theme=_build_theme(),
     )
 

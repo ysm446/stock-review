@@ -3,6 +3,7 @@ import re
 
 import gradio as gr
 
+from src.core.portfolio_manager import PortfolioManager
 from src.core.report_generator import ReportGenerator
 
 # Pattern that a valid ticker symbol matches (e.g. 7203.T, AAPL, 285A.T, BRK.B)
@@ -13,6 +14,7 @@ _BARE_JP_NUMBER_RE = re.compile(r"^\d{4,5}$")
 
 # Unicode ranges covering Hiragana, Katakana, and CJK Unified Ideographs
 _JAPANESE_RE = re.compile(r"[\u3040-\u9fff]")
+_PORTFOLIO_CSV = "data/portfolio.csv"
 
 
 def _looks_like_ticker(text: str) -> bool:
@@ -139,12 +141,55 @@ def build_report_tab(yahoo_client, llm_client) -> None:
     gr.Markdown("## 銘柄レポート")
     gr.Markdown("ティッカーまたは会社名を入力して個別銘柄の財務分析レポートを生成します。")
 
+    manager = PortfolioManager(_PORTFOLIO_CSV)
+
+    def portfolio_ticker_choices() -> list[tuple[str, str]]:
+        positions = manager.get_positions()
+        if not positions:
+            return []
+
+        choices: list[tuple[str, str]] = []
+        tickers = list(positions.keys())
+        jp_tickers = [t for t in tickers if t.endswith(".T")]
+        localized_names: dict[str, str] = {}
+        if jp_tickers:
+            try:
+                localized_names = yahoo_client.get_localized_names(
+                    jp_tickers, lang="ja-JP", region="JP"
+                )
+            except Exception:
+                localized_names = {}
+
+        for ticker in tickers:
+            name = ticker
+            try:
+                info = yahoo_client.get_ticker_info(ticker)
+                name = (
+                    localized_names.get(ticker)
+                    or info.get("longName")
+                    or info.get("shortName")
+                    or ticker
+                )
+            except Exception:
+                name = ticker
+            choices.append((f"{ticker} | {name}", ticker))
+        return choices
+
     with gr.Row():
         with gr.Column(scale=1, min_width=200):
-            ticker_input = gr.Textbox(
-                label="ティッカー / 会社名",
-                placeholder="例: 7203.T、AAPL、三菱重工、Toyota",
-            )
+            with gr.Tabs():
+                with gr.Tab("手入力"):
+                    ticker_input = gr.Textbox(
+                        label="ティッカー / 会社名",
+                        placeholder="例: 7203.T、AAPL、三菱重工、Toyota",
+                    )
+                with gr.Tab("保有銘柄"):
+                    portfolio_ticker_input = gr.Dropdown(
+                        choices=portfolio_ticker_choices(),
+                        value=None,
+                        label="保有銘柄から選択",
+                    )
+                    refresh_portfolio_btn = gr.Button("保有銘柄を更新", size="sm")
             run_btn = gr.Button("レポート生成", variant="primary")
         with gr.Column(scale=3):
             pass
@@ -161,10 +206,15 @@ def build_report_tab(yahoo_client, llm_client) -> None:
 
     generator = ReportGenerator(yahoo_client, llm_client)
 
-    def on_run(query: str):
+    def on_run(query_manual: str, query_portfolio: str):
+        query = (query_portfolio or "").strip() or (query_manual or "").strip()
         query = query.strip()
         if not query:
-            yield gr.update(visible=False), "ティッカーまたは会社名を入力してください。", ""
+            yield (
+                gr.update(visible=False),
+                "ティッカーまたは会社名を入力してください（または保有銘柄を選択してください）。",
+                "",
+            )
             return
 
         yield gr.update(visible=False), "データを取得中...", ""
@@ -256,13 +306,26 @@ def build_report_tab(yahoo_client, llm_client) -> None:
         if raw:
             yield gr.update(), gr.update(), _ai_to_cards(raw)
 
+    def refresh_portfolio_choices():
+        return gr.update(choices=portfolio_ticker_choices(), value=None)
+
+    refresh_portfolio_btn.click(
+        refresh_portfolio_choices,
+        outputs=[portfolio_ticker_input],
+    )
+
     run_btn.click(
         on_run,
-        inputs=[ticker_input],
+        inputs=[ticker_input, portfolio_ticker_input],
         outputs=[resolved_md, main_output, ai_output],
     )
     ticker_input.submit(
         on_run,
-        inputs=[ticker_input],
+        inputs=[ticker_input, portfolio_ticker_input],
+        outputs=[resolved_md, main_output, ai_output],
+    )
+    portfolio_ticker_input.change(
+        on_run,
+        inputs=[ticker_input, portfolio_ticker_input],
         outputs=[resolved_md, main_output, ai_output],
     )

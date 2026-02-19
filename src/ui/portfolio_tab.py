@@ -114,7 +114,7 @@ def build_portfolio_tab(yahoo_client) -> None:
             trades_df = gr.DataFrame(
                 label="売買記録一覧",
                 interactive=False,
-                col_count=(8, "fixed"),
+                column_count=(8, "fixed"),
                 headers=["ticker", "name", "action", "date", "quantity", "price", "currency", "notes"],
                 value=refresh_trades(),
             )
