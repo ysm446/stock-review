@@ -127,24 +127,31 @@ def build_app() -> gr.Blocks:
 
     with gr.Blocks(title="Stock Advisor") as app:
         gr.Markdown("# Stock Advisor")
+        report_ticker_state = gr.State("")
 
-        with gr.Tabs():
-            with gr.Tab("スクリーニング"):
-                build_screening_tab(yahoo, presets, exchanges)
+        with gr.Tabs(selected="screening") as main_tabs:
+            with gr.Tab("スクリーニング", id="screening"):
+                build_screening_tab(
+                    yahoo,
+                    presets,
+                    exchanges,
+                    report_ticker_state=report_ticker_state,
+                    main_tabs=main_tabs,
+                )
 
-            with gr.Tab("銘柄レポート"):
-                build_report_tab(yahoo, llm)
+            with gr.Tab("銘柄レポート", id="report"):
+                build_report_tab(yahoo, llm, report_ticker_state=report_ticker_state)
 
-            with gr.Tab("ポートフォリオ"):
+            with gr.Tab("ポートフォリオ", id="portfolio"):
                 build_portfolio_tab(yahoo)
 
-            with gr.Tab("ストレステスト"):
+            with gr.Tab("ストレステスト", id="stress"):
                 build_stress_test_tab(yahoo, scenarios)
 
-            with gr.Tab("AI アシスタント"):
+            with gr.Tab("AI アシスタント", id="chat"):
                 build_chat_tab(yahoo, llm)
 
-            with gr.Tab("モデル管理"):
+            with gr.Tab("モデル管理", id="models"):
                 build_model_tab(llm)
 
     return app

@@ -9,7 +9,13 @@ from src.core.screener import QueryScreener, ValueScreener, results_to_dataframe
 logger = logging.getLogger(__name__)
 
 
-def build_screening_tab(yahoo_client, presets: dict, exchanges: dict) -> None:
+def build_screening_tab(
+    yahoo_client,
+    presets: dict,
+    exchanges: dict,
+    report_ticker_state: gr.State | None = None,
+    main_tabs: gr.Tabs | None = None,
+) -> None:
     """Build the screening tab UI within an active gr.Blocks context.
 
     Args:
@@ -82,6 +88,10 @@ def build_screening_tab(yahoo_client, presets: dict, exchanges: dict) -> None:
                 wrap=False,
             )
             gr.Markdown(
+                "*表の行をクリックすると、該当銘柄のレポート画面へ移動します。*",
+                elem_classes=["caption"],
+            )
+            gr.Markdown(
                 "*スコアは 0–100 点満点。判定: 優秀(70+)・良好(50+)・普通(30+)・要注意*",
                 elem_classes=["caption"],
             )
@@ -128,3 +138,24 @@ def build_screening_tab(yahoo_client, presets: dict, exchanges: dict) -> None:
         inputs=[mode_radio, region_dd, preset_radio, ticker_box, preset_for_list, limit_slider],
         outputs=[result_df, status_md],
     )
+
+    if report_ticker_state is not None and main_tabs is not None:
+        def on_result_select(df: pd.DataFrame, evt: gr.SelectData):
+            if df is None or df.empty:
+                return "", gr.update(), "結果がありません。"
+
+            row_index = evt.index[0] if isinstance(evt.index, (list, tuple)) else evt.index
+            if row_index is None or row_index < 0 or row_index >= len(df):
+                return "", gr.update(), "選択行を取得できませんでした。"
+
+            ticker = str(df.iloc[row_index].get("ティッカー", "")).strip()
+            if not ticker:
+                return "", gr.update(), "選択行にティッカーがありません。"
+
+            return ticker, gr.update(selected="report"), f"`{ticker}` の銘柄レポートへ移動しました。"
+
+        result_df.select(
+            on_result_select,
+            inputs=[result_df],
+            outputs=[report_ticker_state, main_tabs, status_md],
+        )

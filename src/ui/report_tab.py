@@ -136,7 +136,7 @@ def _ai_to_cards(raw: str) -> str:
 # Tab builder
 # ---------------------------------------------------------------------------
 
-def build_report_tab(yahoo_client, llm_client) -> None:
+def build_report_tab(yahoo_client, llm_client, report_ticker_state: gr.State | None = None) -> None:
     """Build the stock report tab."""
     gr.Markdown("## 銘柄レポート")
     gr.Markdown("ティッカーまたは会社名を入力して個別銘柄の財務分析レポートを生成します。")
@@ -329,3 +329,20 @@ def build_report_tab(yahoo_client, llm_client) -> None:
         inputs=[ticker_input, portfolio_ticker_input],
         outputs=[resolved_md, main_output, ai_output],
     )
+
+    if report_ticker_state is not None:
+        def on_external_ticker(ticker: str):
+            t = (ticker or "").strip()
+            if not t:
+                return gr.update(), gr.update()
+            return gr.update(value=t), gr.update(value=None)
+
+        report_ticker_state.change(
+            on_external_ticker,
+            inputs=[report_ticker_state],
+            outputs=[ticker_input, portfolio_ticker_input],
+        ).then(
+            on_run,
+            inputs=[ticker_input, portfolio_ticker_input],
+            outputs=[resolved_md, main_output, ai_output],
+        )
