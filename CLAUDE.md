@@ -1,13 +1,13 @@
-# Stock Advisor — 設計ドキュメント
+# Stock Review — 設計ドキュメント
 
 ## プロジェクト概要
 
-Stock Advisor は、yfinance ベースの割安株スクリーニング・投資分析システムを **Gradio Web アプリ** として提供するプロジェクトです。
+Stock Review は、yfinance ベースの割安株スクリーニング・投資分析システムを **Gradio Web アプリ** として提供するプロジェクトです。
 [okikusan-public/stock_skills](https://github.com/okikusan-public/stock_skills) の設計思想とロジックを参考に、ローカル LLM を活用した対話的な銘柄分析アシスタント機能を追加しています。
 
 ### 元プロジェクトとの違い
 
-| 項目 | stock_skills (元) | Stock Advisor (本プロジェクト) |
+| 項目 | stock_skills (元) | Stock Review (本プロジェクト) |
 |------|-------------------|-------------------------------|
 | インターフェース | Claude Code Skills (CLI/自然言語) | Gradio Web UI |
 | LLM | Claude Code (API) | ローカル LLM (Ollama) |
@@ -387,8 +387,8 @@ class CacheManager:
 ```python
 import gradio as gr
 
-with gr.Blocks(title="Stock Advisor", theme=gr.themes.Soft()) as app:
-    gr.Markdown("# 📊 Stock Advisor")
+with gr.Blocks(title="Stock Review", theme=gr.themes.Soft()) as app:
+    gr.Markdown("# 📊 Stock Review")
 
     with gr.Tabs():
         with gr.Tab("🔍 スクリーニング"):

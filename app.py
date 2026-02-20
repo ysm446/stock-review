@@ -1,4 +1,4 @@
-"""Stock Advisor — Gradio web application entry point."""
+"""Stock Review — Gradio web application entry point."""
 import logging
 import threading
 from pathlib import Path
@@ -125,8 +125,8 @@ def build_app() -> gr.Blocks:
     else:
         logger.info("No persisted model found — load a model from the モデル管理 tab.")
 
-    with gr.Blocks(title="Stock Advisor") as app:
-        gr.Markdown("# Stock Advisor")
+    with gr.Blocks(title="Stock Review") as app:
+        gr.Markdown("# Stock Review")
         report_ticker_state = gr.State("")
 
         with gr.Tabs(selected="screening") as main_tabs:

@@ -1,8 +1,8 @@
 @echo off
-title Stock Advisor
+title Stock Review
 
 echo ========================================
-echo   Stock Advisor
+echo   Stock Review
 echo ========================================
 
 set PYTHONIOENCODING=utf-8
