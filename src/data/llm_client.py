@@ -31,6 +31,7 @@ class LLMClient:
     """Client for local LLM inference via Hugging Face Transformers."""
 
     SUPPORTED_MODELS: dict[str, str] = {
+        "Qwen3-4B":  "Qwen/Qwen3-4B",
         "Qwen3-8B":  "Qwen/Qwen3-8B",
         "Qwen3-14B": "Qwen/Qwen3-14B",
         "Qwen3-32B": "Qwen/Qwen3-32B",

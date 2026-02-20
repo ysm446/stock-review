@@ -45,7 +45,17 @@ def build_portfolio_tab(yahoo_client) -> None:
 
                 unique_tickers = sorted(set(tickers))
                 names: dict[str, str] = {}
+                localized_names: dict[str, str] = {}
+                try:
+                    localized_names = yahoo_client.get_localized_names(
+                        unique_tickers, lang="ja-JP", region="JP"
+                    )
+                except Exception:
+                    localized_names = {}
                 for ticker in unique_tickers:
+                    if ticker in localized_names and localized_names[ticker]:
+                        names[ticker] = localized_names[ticker]
+                        continue
                     try:
                         info = yahoo_client.get_ticker_info(ticker)
                         names[ticker] = (
@@ -115,7 +125,7 @@ def build_portfolio_tab(yahoo_client) -> None:
                 label="売買記録一覧",
                 interactive=False,
                 column_count=(8, "fixed"),
-                headers=["ticker", "name", "action", "date", "quantity", "price", "currency", "notes"],
+                headers=["ticker", "日本語名", "action", "date", "quantity", "price", "currency", "notes"],
                 value=refresh_trades(),
             )
 
