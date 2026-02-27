@@ -1,10 +1,10 @@
 # Data
-yfinance>=0.2.40
+yfinance>=1.0.0
 numpy>=1.24.0
 pandas>=2.0.0
 
 # UI
-gradio>=5.0.0
+gradio>=6.0.0
 
 # Config
 pyyaml>=6.0
