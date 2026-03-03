@@ -1,0 +1,12 @@
+{
+  "name": "stock-review-electron",
+  "version": "1.0.0",
+  "description": "Stock Review desktop app powered by Electron + Python backend",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}

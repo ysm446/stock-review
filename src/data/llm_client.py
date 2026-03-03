@@ -33,6 +33,7 @@ class LLMClient:
     SUPPORTED_MODELS: dict[str, str] = {
         "Qwen3-4B":  "Qwen/Qwen3-4B",
         "Qwen3-8B":  "Qwen/Qwen3-8B",
+        "Qwen3.5-9B": "Qwen/Qwen3.5-9B",
         "Qwen3-14B": "Qwen/Qwen3-14B",
         "Qwen3-32B": "Qwen/Qwen3-32B",
     }
@@ -330,11 +331,20 @@ class LLMClient:
             _report(f"読み込み完了: {model_id}")
 
         except Exception as e:
+            err = str(e)
+            if "model type `qwen3_5`" in err:
+                err = (
+                    f"{err}\n\n"
+                    "対処: conda activate main && "
+                    "python -m pip install --upgrade transformers\n"
+                    "改善しない場合: python -m pip install "
+                    "git+https://github.com/huggingface/transformers.git"
+                )
             with self._state_lock:
-                self._load_error = str(e)
+                self._load_error = err
                 self._available = False
-            logger.error("Model load failed: %s", e)
-            _report(f"エラー: {e}")
+            logger.error("Model load failed: %s", err)
+            _report(f"エラー: {err}")
         finally:
             self._loading.clear()
 

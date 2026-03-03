@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 _OFFICIAL_WEIGHT_BYTES = {
     "Qwen/Qwen3-4B": 8044936192,
     "Qwen/Qwen3-8B": 16381470720,
+    "Qwen/Qwen3.5-9B": None,
     "Qwen/Qwen3-14B": 29536614400,
     "Qwen/Qwen3-32B": 65524246528,
 }

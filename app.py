@@ -1,5 +1,7 @@
 """Stock Review — Gradio web application entry point."""
+import argparse
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -157,13 +159,38 @@ def build_app() -> gr.Blocks:
     return app
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse CLI options."""
+    parser = argparse.ArgumentParser(description="Stock Review app server")
+    parser.add_argument(
+        "--host",
+        default=os.getenv("STOCK_REVIEW_HOST", "127.0.0.1"),
+        help="Bind host for Gradio server.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("STOCK_REVIEW_PORT", "7860")),
+        help="Bind port for Gradio server.",
+    )
+    parser.add_argument(
+        "--inbrowser",
+        action="store_true",
+        default=os.getenv("STOCK_REVIEW_INBROWSER", "0") == "1",
+        help="Open the browser automatically.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     app = build_app()
     app.launch(
-        server_name="0.0.0.0",
+        server_name=args.host,
+        server_port=args.port,
         share=False,
         show_error=True,
-        inbrowser=True,
+        inbrowser=args.inbrowser,
         css=_APP_CSS,
         theme=_build_theme(),
     )

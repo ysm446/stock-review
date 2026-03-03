@@ -47,3 +47,7 @@ data/*.json
 
 # Claude Code ローカル設定
 .claude/settings.local.json
+
+# Node / Electron
+node_modules/
+npm-debug.log*
