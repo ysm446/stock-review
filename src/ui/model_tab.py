@@ -1,6 +1,7 @@
-"""Model management tab for loading/unloading Hugging Face Transformers models."""
+"""Model management tab for loading/unloading local GGUF models via llama-cpp-python."""
 import os
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import gradio as gr
@@ -9,66 +10,18 @@ if TYPE_CHECKING:
     from src.data.llm_client import LLMClient
 
 
-_OFFICIAL_WEIGHT_BYTES = {
-    "Qwen/Qwen3-4B": 8044936192,
-    "Qwen/Qwen3-8B": 16381470720,
-    "Qwen/Qwen3.5-9B": None,
-    "Qwen/Qwen3-14B": 29536614400,
-    "Qwen/Qwen3-32B": 65524246528,
-}
-
-
-def _model_cache_size_bytes(cache_dir: str, model_id: str) -> int:
-    """Return exact cached size in bytes for one Hugging Face model repo."""
-    repo_dir = os.path.join(cache_dir, f"models--{model_id.replace('/', '--')}")
-    if not os.path.isdir(repo_dir):
-        return 0
-
-    total = 0
-    for root, _, files in os.walk(repo_dir):
-        for name in files:
-            path = os.path.join(root, name)
-            try:
-                total += os.path.getsize(path)
-            except OSError:
-                continue
-    return total
-
-
-def _get_model_size_table(llm_client: "LLMClient", models: dict[str, str]) -> str:
-    """Return markdown table for local model cache sizes."""
-    cache_dir = getattr(llm_client, "_cache_dir", "models")
-    lines = [
-        "| Model | Local Size (Measured) | Official Weights Size |",
-        "|-------|------------------------|-----------------------|",
-    ]
-
-    for model_name, model_id in models.items():
-        local_bytes = _model_cache_size_bytes(cache_dir, model_id)
-        if local_bytes <= 0:
-            local_text = "Not downloaded"
-        else:
-            local_gib = local_bytes / (1024 ** 3)
-            local_text = f"{local_gib:.2f} GiB ({local_bytes:,} bytes)"
-
-        official_bytes = _OFFICIAL_WEIGHT_BYTES.get(model_id)
-        if official_bytes is None:
-            official_text = "-"
-        else:
-            official_gib = official_bytes / (1024 ** 3)
-            official_text = f"{official_gib:.2f} GiB ({official_bytes:,} bytes)"
-
-        lines.append(f"| {model_name} | {local_text} | {official_text} |")
-
-    return "\n".join(lines)
+def _get_gguf_files(models_dir: str) -> dict[str, str]:
+    """Return {stem: path} for all .gguf files in models_dir."""
+    base = Path(models_dir)
+    if not base.is_dir():
+        return {}
+    return {p.stem: str(p) for p in sorted(base.glob("*.gguf"))}
 
 
 def _get_status_text(llm_client: "LLMClient") -> str:
-    """Return a human-readable status string for the model."""
     status = llm_client.get_status()
     if status["loading"]:
-        model_id = status["current_model_id"] or "..."
-        return f"Loading: {model_id}"
+        return f"読み込み中: {status['current_model_id'] or '...'}"
     if status["available"]:
         vram_alloc = status["vram_allocated_gb"]
         vram_total = status["vram_total_gb"]
@@ -78,16 +31,14 @@ def _get_status_text(llm_client: "LLMClient") -> str:
         return "\n".join(lines)
     if status["load_error"]:
         return f"Error: {status['load_error']}"
-    return "No model loaded. Click 'Load'."
+    return "モデル未読み込み。「Load」を押してください。"
 
 
 def _get_vram_bar(llm_client: "LLMClient") -> str:
-    """Return a Markdown VRAM usage bar."""
     status = llm_client.get_status()
     total = status["vram_total_gb"]
     if total <= 0:
-        return "GPU: Not detected (running on CPU mode)"
-
+        return "GPU: Not detected (CPU mode)"
     alloc = status["vram_allocated_gb"]
     pct = min(alloc / total, 1.0)
     filled = int(round(pct * 20))
@@ -96,27 +47,27 @@ def _get_vram_bar(llm_client: "LLMClient") -> str:
 
 
 def build_model_tab(llm_client: "LLMClient") -> None:
-    """Build the model management tab UI.
+    """Build the model management tab UI."""
+    models_dir = getattr(llm_client, "_models_dir", "models")
 
-    Args:
-        llm_client: The shared LLMClient instance (mutable, owned by app.py).
-    """
-    from src.data.llm_client import LLMClient  # noqa: PLC0415
-
-    gr.Markdown("## Model Management")
+    gr.Markdown("## モデル管理")
     gr.Markdown(
-        "Load Hugging Face Transformers models locally.  \n"
-        "Model files are cached under `models/`.  \n"
-        "The table shows measured local size and official weights size."
+        "ローカル GGUF モデルを読み込みます。  \n"
+        f"モデルファイルは `{models_dir}/` に配置してください (`.gguf` 形式)。"
     )
 
-    last_model_id = llm_client.get_last_persisted_model()
-    initial_model_name = "Qwen3-8B"
-    if last_model_id:
-        for name, mid in LLMClient.SUPPORTED_MODELS.items():
-            if mid == last_model_id:
-                initial_model_name = name
-                break
+    gguf_files = _get_gguf_files(models_dir)
+    model_choices = list(gguf_files.keys())
+
+    # Pre-select: last persisted > first available
+    last_path = llm_client.get_last_persisted_model()
+    initial_choice = None
+    if last_path:
+        last_stem = Path(last_path).stem
+        if last_stem in gguf_files:
+            initial_choice = last_stem
+    if initial_choice is None and model_choices:
+        initial_choice = model_choices[0]
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -130,19 +81,17 @@ def build_model_tab(llm_client: "LLMClient") -> None:
             vram_md = gr.Markdown(_get_vram_bar(llm_client))
 
         with gr.Column(scale=2):
-            gr.Markdown("### Select Model")
-            model_size_md = gr.Markdown(
-                _get_model_size_table(llm_client, LLMClient.SUPPORTED_MODELS)
+            gr.Markdown("### モデル選択")
+            model_dd = gr.Dropdown(
+                choices=model_choices,
+                value=initial_choice,
+                label="GGUF モデル",
+                scale=3,
             )
             with gr.Row():
-                model_dd = gr.Dropdown(
-                    choices=list(LLMClient.SUPPORTED_MODELS.keys()),
-                    value=initial_model_name,
-                    label="Model",
-                    scale=3,
-                )
                 load_btn = gr.Button("Load", variant="primary", scale=1)
                 unload_btn = gr.Button("Unload", scale=1)
+                refresh_files_btn = gr.Button("ファイル一覧を更新", scale=1)
 
             log_box = gr.Textbox(
                 label="Log",
@@ -152,25 +101,27 @@ def build_model_tab(llm_client: "LLMClient") -> None:
                 max_lines=6,
             )
 
-    # Disabled by default to prevent periodic blinking while idle.
     timer = gr.Timer(value=2.0, active=False)
 
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
+
     def on_load(model_name: str):
-        model_id = LLMClient.SUPPORTED_MODELS.get(model_name)
-        if not model_id:
+        gguf = _get_gguf_files(models_dir)
+        model_path = gguf.get(model_name)
+        if not model_path:
             return (
-                f"Unknown model name: {model_name}",
+                f"モデルが見つかりません: {model_name}",
                 _get_status_text(llm_client),
                 _get_vram_bar(llm_client),
-                _get_model_size_table(llm_client, LLMClient.SUPPORTED_MODELS),
                 gr.update(active=False),
             )
         if llm_client.is_loading():
             return (
-                "Model loading is already in progress. Please wait.",
+                "読み込み中です。しばらくお待ちください。",
                 _get_status_text(llm_client),
                 _get_vram_bar(llm_client),
-                _get_model_size_table(llm_client, LLMClient.SUPPORTED_MODELS),
                 gr.update(active=True),
             )
 
@@ -179,26 +130,25 @@ def build_model_tab(llm_client: "LLMClient") -> None:
 
         thread = threading.Thread(
             target=llm_client.load_model,
-            args=(model_id,),
+            args=(model_path,),
             kwargs={"on_progress": progress_callback},
             daemon=True,
         )
         thread.start()
 
-        initial_log = f"Started loading: {model_id}"
+        initial_log = f"Started loading: {model_path}"
         llm_client._load_log = initial_log
         return (
             initial_log,
             _get_status_text(llm_client),
             _get_vram_bar(llm_client),
-            _get_model_size_table(llm_client, LLMClient.SUPPORTED_MODELS),
             gr.update(active=True),
         )
 
     load_btn.click(
         on_load,
         inputs=[model_dd],
-        outputs=[log_box, status_box, vram_md, model_size_md, timer],
+        outputs=[log_box, status_box, vram_md, timer],
     )
 
     def on_unload():
@@ -209,24 +159,28 @@ def build_model_tab(llm_client: "LLMClient") -> None:
             msg,
             _get_status_text(llm_client),
             _get_vram_bar(llm_client),
-            _get_model_size_table(llm_client, LLMClient.SUPPORTED_MODELS),
             gr.update(active=False),
         )
 
     unload_btn.click(
         on_unload,
-        outputs=[log_box, status_box, vram_md, model_size_md, timer],
+        outputs=[log_box, status_box, vram_md, timer],
     )
 
+    def on_refresh_files():
+        gguf = _get_gguf_files(models_dir)
+        choices = list(gguf.keys())
+        return gr.update(choices=choices, value=choices[0] if choices else None)
+
+    refresh_files_btn.click(on_refresh_files, outputs=[model_dd])
+
     def poll_status():
-        status = llm_client.get_status()
-        loading = status["loading"]
+        loading = llm_client.is_loading()
         return (
             llm_client._load_log or "",
             _get_status_text(llm_client),
             _get_vram_bar(llm_client),
-            _get_model_size_table(llm_client, LLMClient.SUPPORTED_MODELS),
             gr.update(active=loading),
         )
 
-    timer.tick(poll_status, outputs=[log_box, status_box, vram_md, model_size_md, timer])
+    timer.tick(poll_status, outputs=[log_box, status_box, vram_md, timer])

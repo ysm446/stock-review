@@ -9,15 +9,12 @@ gradio>=6.0.0
 # Config
 pyyaml>=6.0
 
-# LLM — Hugging Face Transformers (replaces Ollama)
-# Qwen3.5 requires a newer Transformers than early 4.x.
-transformers>=5.2.0
-torch>=2.3.0
-accelerate>=0.30.0
-huggingface_hub>=0.23.0
-
-# NOTE: CUDA 対応 torch は別途インストール:
-# pip install torch --index-url https://download.pytorch.org/whl/cu124
+# LLM — llama-cpp-python (GGUF, Windows + CUDA 対応)
+# CUDA 対応版インストール:
+#   pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+# CPU のみの場合:
+#   pip install llama-cpp-python
+llama-cpp-python>=0.3.0
 
 # Testing
 pytest>=7.0.0

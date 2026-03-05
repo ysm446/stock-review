@@ -2,7 +2,6 @@
 import argparse
 import logging
 import os
-import threading
 from pathlib import Path
 
 import gradio as gr
@@ -111,21 +110,10 @@ def build_app() -> gr.Blocks:
     cache = CacheManager(cache_dir=str(BASE_DIR / "data" / "cache"))
     yahoo = YahooClient(cache_manager=cache)
     llm = LLMClient(
-        model_id="Qwen/Qwen3-8B",
-        cache_dir=str(BASE_DIR / "models"),
-        load_on_init=False,
+        models_dir=str(BASE_DIR / "models"),
         persist_file=str(BASE_DIR / "data" / "last_model.json"),
     )
-
-    # Auto-load the last used model in the background
-    last_model_id = llm.get_last_persisted_model()
-    if last_model_id:
-        logger.info("Auto-loading last used model: %s", last_model_id)
-        threading.Thread(
-            target=llm.load_model, args=(last_model_id,), daemon=True
-        ).start()
-    else:
-        logger.info("No persisted model found — load a model from the モデル管理 tab.")
+    logger.info("LLM models dir: %s", BASE_DIR / "models")
 
     with gr.Blocks(title="Stock Review") as app:
         gr.Markdown("# Stock Review")

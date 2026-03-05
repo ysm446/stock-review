@@ -1,4 +1,4 @@
-"""Local LLM client via Hugging Face Transformers."""
+"""Local LLM client via llama-cpp-python (GGUF)."""
 import gc
 import json
 import logging
@@ -27,42 +27,51 @@ _PORTFOLIO_SYSTEM_PROMPT = """あなたは資産運用の専門家です。
 投資助言ではなく情報提供であることを明示してください。"""
 
 
-class LLMClient:
-    """Client for local LLM inference via Hugging Face Transformers."""
+def _scan_gguf_files(models_dir: str) -> dict[str, str]:
+    """Scan models_dir for .gguf files and return {display_name: path} dict."""
+    result: dict[str, str] = {}
+    base = Path(models_dir)
+    if base.is_dir():
+        for p in sorted(base.glob("*.gguf")):
+            result[p.stem] = str(p)
+    return result
 
+
+class LLMClient:
+    """Client for local LLM inference via llama-cpp-python (GGUF format)."""
+
+    # Default model registry — updated at runtime by scanning models_dir
     SUPPORTED_MODELS: dict[str, str] = {
-        "Qwen3-4B":  "Qwen/Qwen3-4B",
-        "Qwen3-8B":  "Qwen/Qwen3-8B",
-        "Qwen3.5-9B": "Qwen/Qwen3.5-9B",
-        "Qwen3-14B": "Qwen/Qwen3-14B",
-        "Qwen3-32B": "Qwen/Qwen3-32B",
+        "Qwen3-8B-Q4_K_M": "models/Qwen3-8B-Q4_K_M.gguf",
     }
 
     def __init__(
         self,
-        model_id: str = "Qwen/Qwen3-8B",
-        cache_dir: str = r"d:\GitHub\stock-advisor\models",
-        device: str = "auto",
+        model_path: Optional[str] = None,
+        models_dir: str = "models",
+        n_gpu_layers: int = -1,
+        n_ctx: int = 4096,
         load_on_init: bool = False,
         persist_file: Optional[str] = None,
+        # Legacy / vLLM kwargs — silently ignored
+        **_,
     ) -> None:
         """
         Args:
-            model_id: Hugging Face model ID (e.g. "Qwen/Qwen3-8B").
-            cache_dir: Local directory to cache downloaded model files.
-            device: "auto" lets accelerate choose GPU/CPU automatically.
-            load_on_init: If True, load the model synchronously at construction.
-            persist_file: Path to a JSON file for saving/restoring the last used
-                          model ID across restarts.
+            model_path: Path to .gguf model file to load.
+            models_dir: Directory to scan for .gguf files.
+            n_gpu_layers: Number of layers to offload to GPU (-1 = all).
+            n_ctx: Context size (tokens).
+            load_on_init: If True, load model_path immediately.
+            persist_file: JSON file for saving/restoring last used model path.
         """
-        self._model_id = model_id
-        self._cache_dir = cache_dir
-        self._device = device
+        self._models_dir = models_dir
+        self._n_gpu_layers = n_gpu_layers
+        self._n_ctx = n_ctx
         self._persist_file = Path(persist_file) if persist_file else None
 
-        self._model = None
-        self._tokenizer = None
-        self._current_model_id: Optional[str] = None
+        self._llm = None
+        self._current_model_path: Optional[str] = None
         self._available: bool = False
         self._load_error: str = ""
         self._load_log: str = ""
@@ -71,20 +80,26 @@ class LLMClient:
         self._generation_lock = threading.Lock()
         self._loading = threading.Event()
 
-        if load_on_init:
-            self.load_model(model_id)
+        # Refresh SUPPORTED_MODELS from disk
+        scanned = _scan_gguf_files(models_dir)
+        if scanned:
+            LLMClient.SUPPORTED_MODELS = scanned
+
+        # Resolve model path: argument > persist file > first available
+        resolved = model_path or self._load_persist() or self._first_model()
+        if load_on_init and resolved:
+            self.load_model(resolved)
 
     # ------------------------------------------------------------------
-    # Public interface (backward-compatible with Ollama version)
+    # Public interface
     # ------------------------------------------------------------------
 
     def is_available(self) -> bool:
-        """Return True iff a model is loaded and ready for inference."""
         with self._state_lock:
             return self._available
 
     def reset_availability_cache(self) -> None:
-        """No-op — kept for backward compatibility with chat_tab.py."""
+        """No-op — kept for API compatibility."""
         pass
 
     def generate(
@@ -93,10 +108,6 @@ class LLMClient:
         system: Optional[str] = None,
         temperature: float = 0.3,
     ) -> str:
-        """Single-turn text generation.
-
-        Returns empty string if no model is loaded.
-        """
         if not self.is_available():
             return ""
         messages = []
@@ -111,14 +122,6 @@ class LLMClient:
         system: Optional[str] = None,
         temperature: float = 0.3,
     ) -> str:
-        """Multi-turn chat generation.
-
-        Args:
-            messages: List of {"role": "user"|"assistant", "content": str}.
-            system: Optional system prompt prepended to messages.
-
-        Returns empty string if no model is loaded.
-        """
         if not self.is_available():
             return ""
         all_messages = []
@@ -128,7 +131,6 @@ class LLMClient:
         return self._run_chat(all_messages, temperature)
 
     def analyze_stock(self, stock_data: dict) -> str:
-        """Generate natural language analysis for a stock."""
         prompt = (
             "以下の銘柄データを分析し、投資家向けのサマリーを作成してください:\n\n"
             f"{json.dumps(stock_data, ensure_ascii=False, indent=2)}"
@@ -136,7 +138,6 @@ class LLMClient:
         return self.generate(prompt, system=_STOCK_SYSTEM_PROMPT)
 
     def summarize_portfolio(self, portfolio_data: dict) -> str:
-        """Generate a portfolio-level summary."""
         prompt = (
             "以下のポートフォリオデータを分析し、リスク評価と改善提案を作成してください:\n\n"
             f"{json.dumps(portfolio_data, ensure_ascii=False, indent=2)}"
@@ -144,7 +145,7 @@ class LLMClient:
         return self.generate(prompt, system=_PORTFOLIO_SYSTEM_PROMPT)
 
     # ------------------------------------------------------------------
-    # Streaming generation (yields accumulated text incrementally)
+    # Streaming generation
     # ------------------------------------------------------------------
 
     def stream_generate(
@@ -153,11 +154,6 @@ class LLMClient:
         system: Optional[str] = None,
         temperature: float = 0.3,
     ):
-        """Single-turn streaming text generation.
-
-        Yields accumulated text strings as tokens are generated.
-        Yields nothing if no model is loaded.
-        """
         if not self.is_available():
             return
         messages = []
@@ -172,11 +168,6 @@ class LLMClient:
         system: Optional[str] = None,
         temperature: float = 0.3,
     ):
-        """Multi-turn streaming chat generation.
-
-        Yields accumulated text strings as tokens are generated.
-        Yields nothing if no model is loaded.
-        """
         if not self.is_available():
             return
         all_messages = []
@@ -186,10 +177,6 @@ class LLMClient:
         yield from self._stream_run(all_messages, temperature)
 
     def stream_analyze_stock(self, stock_data: dict):
-        """Streaming version of analyze_stock.
-
-        Yields accumulated text strings as tokens are generated.
-        """
         prompt = (
             "以下の銘柄データを分析し、投資家向けのサマリーを作成してください:\n\n"
             f"{json.dumps(stock_data, ensure_ascii=False, indent=2)}"
@@ -197,46 +184,13 @@ class LLMClient:
         yield from self.stream_generate(prompt, system=_STOCK_SYSTEM_PROMPT)
 
     # ------------------------------------------------------------------
-    # Persist file helpers
-    # ------------------------------------------------------------------
-
-    def get_last_persisted_model(self) -> Optional[str]:
-        """Return the model ID saved in the persist file, or None."""
-        if not self._persist_file or not self._persist_file.exists():
-            return None
-        try:
-            data = json.loads(self._persist_file.read_text(encoding="utf-8"))
-            return data.get("model_id")
-        except Exception:
-            return None
-
-    def _save_persist(self, model_id: str) -> None:
-        """Write the current model ID to the persist file."""
-        if not self._persist_file:
-            return
-        try:
-            self._persist_file.parent.mkdir(parents=True, exist_ok=True)
-            self._persist_file.write_text(
-                json.dumps({"model_id": model_id}), encoding="utf-8"
-            )
-        except Exception as e:
-            logger.warning("Failed to save persist file: %s", e)
-
-    # ------------------------------------------------------------------
-    # Model management (used by model_tab.py)
+    # Model management
     # ------------------------------------------------------------------
 
     def is_loading(self) -> bool:
-        """Return True while a background load is in progress."""
         return self._loading.is_set()
 
     def get_status(self) -> dict:
-        """Return a status dict for the model management UI.
-
-        Returns:
-            dict with keys: available, loading, current_model_id,
-            load_error, vram_allocated_gb, vram_reserved_gb, vram_total_gb.
-        """
         vram_alloc = 0.0
         vram_reserved = 0.0
         vram_total = 0.0
@@ -253,24 +207,27 @@ class LLMClient:
             return {
                 "available": self._available,
                 "loading": self._loading.is_set(),
-                "current_model_id": self._current_model_id,
+                "current_model_id": (
+                    Path(self._current_model_path).stem
+                    if self._current_model_path else None
+                ),
+                "current_model_path": self._current_model_path,
                 "load_error": self._load_error,
                 "vram_allocated_gb": vram_alloc,
                 "vram_reserved_gb": vram_reserved,
                 "vram_total_gb": vram_total,
             }
 
+    def get_last_persisted_model(self) -> Optional[str]:
+        """Return the last used model path, or None."""
+        return self._load_persist()
+
     def load_model(
         self,
-        model_id: str,
+        model_path: str,
         on_progress: Optional[Callable[[str], None]] = None,
     ) -> None:
-        """Load a model (run this in a background thread for non-blocking UI).
-
-        Args:
-            model_id: HF model ID, e.g. "Qwen/Qwen3-8B".
-            on_progress: Optional callback called with status strings during load.
-        """
+        """Load a GGUF model (thread-safe). Call from a background thread."""
         if self._loading.is_set():
             return
 
@@ -283,63 +240,37 @@ class LLMClient:
                 on_progress(msg)
 
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            import torch
+            from llama_cpp import Llama
 
-            # 1. Unload old model first to free VRAM
+            # Unload existing model first
             with self._generation_lock:
-                if self._model is not None:
+                if self._llm is not None:
                     _report("旧モデルをアンロード中...")
                     with self._state_lock:
-                        self._model = None
-                        self._tokenizer = None
+                        self._llm = None
                         self._available = False
                     gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
 
-            # 2. Load tokenizer
-            _report(f"トークナイザーを読み込み中: {model_id}")
-            tokenizer = AutoTokenizer.from_pretrained(
-                model_id,
-                cache_dir=self._cache_dir,
-                trust_remote_code=True,
+            _report(f"モデルを読み込み中: {model_path}")
+            llm = Llama(
+                model_path=model_path,
+                n_gpu_layers=self._n_gpu_layers,
+                n_ctx=self._n_ctx,
+                verbose=False,
             )
 
-            # 3. Load model
-            _report(f"モデルを読み込み中: {model_id}  (初回はダウンロードに数分かかります)")
-            use_bf16 = torch.cuda.is_available()
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                cache_dir=self._cache_dir,
-                torch_dtype=torch.bfloat16 if use_bf16 else torch.float32,
-                device_map=self._device,
-                trust_remote_code=True,
-            )
-            model.eval()
-
-            # 4. Atomic swap
             with self._generation_lock:
                 with self._state_lock:
-                    self._model = model
-                    self._tokenizer = tokenizer
-                    self._current_model_id = model_id
+                    self._llm = llm
+                    self._current_model_path = model_path
                     self._available = True
                     self._load_error = ""
 
-            self._save_persist(model_id)
-            _report(f"読み込み完了: {model_id}")
+            self._save_persist(model_path)
+            _report(f"読み込み完了: {Path(model_path).name}")
 
         except Exception as e:
             err = str(e)
-            if "model type `qwen3_5`" in err:
-                err = (
-                    f"{err}\n\n"
-                    "対処: conda activate main && "
-                    "python -m pip install --upgrade transformers\n"
-                    "改善しない場合: python -m pip install "
-                    "git+https://github.com/huggingface/transformers.git"
-                )
             with self._state_lock:
                 self._load_error = err
                 self._available = False
@@ -352,134 +283,78 @@ class LLMClient:
         """Unload the current model, freeing VRAM."""
         with self._generation_lock:
             with self._state_lock:
-                self._model = None
-                self._tokenizer = None
-                self._current_model_id = None
+                self._llm = None
+                self._current_model_path = None
                 self._available = False
                 self._load_error = ""
         gc.collect()
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
         logger.info("Model unloaded.")
 
     # ------------------------------------------------------------------
-    # Internal generation
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    def _stream_run(self, messages: list[dict], temperature: float):
-        """Core streaming generation. Holds generation lock while streaming.
+    def _first_model(self) -> Optional[str]:
+        """Return the path of the first available GGUF file, or None."""
+        for path in LLMClient.SUPPORTED_MODELS.values():
+            if Path(path).exists():
+                return path
+        return None
 
-        Yields accumulated text strings one token at a time.
-        The generation lock is held for the entire streaming duration,
-        preventing model unload during active generation.
-        """
+    def _run_chat(self, messages: list[dict], temperature: float) -> str:
+        with self._generation_lock:
+            if not self._available:
+                return ""
+            try:
+                resp = self._llm.create_chat_completion(
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=1024,
+                )
+                return resp["choices"][0]["message"]["content"] or ""
+            except Exception as e:
+                logger.warning("Generation failed: %s", e)
+                return ""
+
+    def _stream_run(self, messages: list[dict], temperature: float):
         with self._generation_lock:
             if not self._available:
                 return
             try:
-                import threading
-                import torch
-                from transformers import TextIteratorStreamer
-
-                # Build prompt
-                try:
-                    text = self._tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                        enable_thinking=False,
-                    )
-                except TypeError:
-                    text = self._tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                    )
-
-                model_inputs = self._tokenizer(
-                    [text], return_tensors="pt"
-                ).to(self._model.device)
-
-                streamer = TextIteratorStreamer(
-                    self._tokenizer,
-                    skip_prompt=True,
-                    skip_special_tokens=True,
+                stream = self._llm.create_chat_completion(
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=1024,
+                    stream=True,
                 )
-
-                generation_kwargs = {
-                    **model_inputs,
-                    "max_new_tokens": 1024,
-                    "temperature": temperature,
-                    "do_sample": temperature > 0,
-                    "pad_token_id": self._tokenizer.eos_token_id,
-                    "streamer": streamer,
-                }
-
-                thread = threading.Thread(
-                    target=self._model.generate,
-                    kwargs=generation_kwargs,
-                    daemon=True,
-                )
-                thread.start()
-
                 accumulated = ""
-                for token in streamer:
-                    accumulated += token
+                for chunk in stream:
+                    delta = chunk["choices"][0]["delta"].get("content", "") or ""
+                    accumulated += delta
                     yield accumulated
-
-                thread.join(timeout=120)
-
             except Exception as e:
                 logger.warning("Stream generation failed: %s", e)
 
-    def _run_chat(self, messages: list[dict], temperature: float) -> str:
-        """Core generation. Holds generation lock to prevent unload races."""
-        with self._generation_lock:
-            if not self._available:
-                return ""
-            try:
-                import torch
+    def _load_persist(self) -> Optional[str]:
+        if not self._persist_file or not self._persist_file.exists():
+            return None
+        try:
+            data = json.loads(self._persist_file.read_text(encoding="utf-8"))
+            # Support both old format {"model_id": ...} and new {"model_path": ...}
+            path = data.get("model_path") or data.get("model_id")
+            if path and Path(path).exists():
+                return path
+        except Exception:
+            pass
+        return None
 
-                # Build prompt with chat template
-                # enable_thinking=False suppresses <think> blocks (transformers>=4.51)
-                try:
-                    text = self._tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                        enable_thinking=False,
-                    )
-                except TypeError:
-                    # Fallback for older transformers without enable_thinking
-                    text = self._tokenizer.apply_chat_template(
-                        messages,
-                        tokenize=False,
-                        add_generation_prompt=True,
-                    )
-
-                model_inputs = self._tokenizer(
-                    [text], return_tensors="pt"
-                ).to(self._model.device)
-
-                with torch.no_grad():
-                    generated_ids = self._model.generate(
-                        **model_inputs,
-                        max_new_tokens=1024,
-                        temperature=temperature,
-                        do_sample=temperature > 0,
-                        pad_token_id=self._tokenizer.eos_token_id,
-                    )
-
-                output_ids = generated_ids[0][len(model_inputs.input_ids[0]):]
-                result = self._tokenizer.decode(
-                    output_ids, skip_special_tokens=True
-                ).strip()
-                return result
-
-            except Exception as e:
-                logger.warning("Generation failed: %s", e)
-                return ""
+    def _save_persist(self, model_path: str) -> None:
+        if not self._persist_file:
+            return
+        try:
+            self._persist_file.parent.mkdir(parents=True, exist_ok=True)
+            self._persist_file.write_text(
+                json.dumps({"model_path": model_path}), encoding="utf-8"
+            )
+        except Exception as e:
+            logger.warning("Failed to save persist file: %s", e)

@@ -32,7 +32,7 @@ ENV/
 .venv
 
 # モデルファイル（大容量のため除外）
-models/*/
+models/*
 !models/.gitkeep
 
 # OS固有
