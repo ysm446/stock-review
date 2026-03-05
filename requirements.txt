@@ -16,6 +16,10 @@ pyyaml>=6.0
 #   pip install llama-cpp-python
 llama-cpp-python>=0.3.0
 
+# API backend (replaces Gradio)
+fastapi>=0.111.0
+uvicorn>=0.29.0
+
 # Testing
 pytest>=7.0.0
 pytest-mock>=3.10.0

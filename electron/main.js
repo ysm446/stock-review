@@ -3,8 +3,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 
 const HOST = process.env.STOCK_REVIEW_HOST || "127.0.0.1";
-const PORT = Number(process.env.STOCK_REVIEW_PORT || 7860);
-const URL = `http://${HOST}:${PORT}`;
+const PORT = Number(process.env.STOCK_REVIEW_PORT || 8000);
 const PYTHON = process.env.PYTHON_EXECUTABLE || "python";
 
 let mainWindow = null;
@@ -22,6 +21,7 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
@@ -29,36 +29,21 @@ function createWindow() {
     mainWindow = null;
   });
 
-  loadWithRetry(0);
-}
-
-function loadWithRetry(attempt) {
-  if (!mainWindow || shuttingDown) {
-    return;
-  }
-
-  mainWindow.loadURL(URL).catch(() => {
-    if (attempt >= 60 || shuttingDown) {
-      dialog.showErrorBox(
-        "Stock Review",
-        "バックエンドを起動できませんでした。コンソールログを確認してください。"
-      );
-      app.quit();
-      return;
-    }
-    setTimeout(() => loadWithRetry(attempt + 1), 500);
-  });
+  // Load the local HTML renderer (no HTTP server needed for the UI)
+  const indexPath = path.join(__dirname, "renderer", "index.html");
+  mainWindow.loadFile(indexPath);
 }
 
 function startBackend() {
-  const script = path.resolve(__dirname, "..", "app.py");
+  const script = path.resolve(__dirname, "..", "server.py");
   const args = [script, "--host", HOST, "--port", String(PORT)];
 
   backend = spawn(PYTHON, args, {
     cwd: path.resolve(__dirname, ".."),
     env: {
       ...process.env,
-      STOCK_REVIEW_INBROWSER: "0",
+      STOCK_REVIEW_HOST: HOST,
+      STOCK_REVIEW_PORT: String(PORT),
       PYTHONIOENCODING: "utf-8",
       PYTHONUTF8: "1",
     },
@@ -75,9 +60,7 @@ function startBackend() {
   });
 
   backend.on("exit", (code) => {
-    if (shuttingDown) {
-      return;
-    }
+    if (shuttingDown) return;
     dialog.showErrorBox(
       "Stock Review",
       `バックエンドが終了しました (exit code: ${code ?? "unknown"})。`
@@ -87,9 +70,7 @@ function startBackend() {
 }
 
 function stopBackend() {
-  if (!backend || backend.killed) {
-    return;
-  }
+  if (!backend || backend.killed) return;
   try {
     backend.kill();
   } catch (error) {

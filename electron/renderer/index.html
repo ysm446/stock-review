@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' http://127.0.0.1:*; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>Stock Review</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- Header -->
+    <header id="header">
+      <span id="app-title">Stock Review</span>
+      <nav id="tab-nav">
+        <button class="tab-btn active" data-tab="screening">スクリーニング</button>
+        <button class="tab-btn" data-tab="report">銘柄レポート</button>
+        <button class="tab-btn" data-tab="portfolio">ポートフォリオ</button>
+        <button class="tab-btn" data-tab="stress">ストレステスト</button>
+        <button class="tab-btn" data-tab="chat">AI アシスタント</button>
+        <button class="tab-btn" data-tab="models">モデル管理</button>
+      </nav>
+      <span id="header-status"></span>
+    </header>
+
+    <!-- Tab panels -->
+    <main id="main">
+
+      <!-- ── スクリーニング ── -->
+      <section id="tab-screening" class="tab-panel active">
+        <div class="panel-row">
+          <aside class="sidebar">
+            <h3>検索条件</h3>
+            <label>モード</label>
+            <div class="radio-group" id="screening-mode">
+              <label><input type="radio" name="s-mode" value="query" checked /> 銘柄スクリーニング</label>
+              <label><input type="radio" name="s-mode" value="list" /> 個別リスト指定</label>
+            </div>
+            <div id="s-query-controls">
+              <label>地域</label>
+              <select id="s-region"></select>
+              <label>プリセット</label>
+              <div class="radio-group" id="s-preset-radio"></div>
+              <label>表示件数</label>
+              <div class="range-row">
+                <input type="range" id="s-limit" min="5" max="50" step="5" value="20" />
+                <span id="s-limit-val">20</span>
+              </div>
+            </div>
+            <div id="s-list-controls" style="display:none">
+              <label>ティッカー (カンマ区切り)</label>
+              <input type="text" id="s-tickers" placeholder="例: 7203.T, 6758.T" />
+              <label>適用プリセット</label>
+              <select id="s-preset-list"></select>
+            </div>
+            <button class="btn-primary" id="s-run-btn">スクリーニング実行</button>
+            <p id="s-status" class="status-text"></p>
+          </aside>
+          <div class="content-main">
+            <h3>スクリーニング結果</h3>
+            <div id="s-result-wrap">
+              <p class="hint">条件を設定して「スクリーニング実行」を押してください。</p>
+            </div>
+            <p class="caption">スコアは 0–100 点満点。判定: 優秀(70+)・良好(50+)・普通(30+)・要注意</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 銘柄レポート ── -->
+      <section id="tab-report" class="tab-panel">
+        <div class="panel-row">
+          <aside class="sidebar">
+            <h3>銘柄入力</h3>
+            <label>ティッカー</label>
+            <input type="text" id="r-ticker" placeholder="例: 7203.T, AAPL" />
+            <button class="btn-primary" id="r-run-btn">レポート生成</button>
+            <button class="btn-secondary" id="r-ai-btn" style="margin-top:6px">AI 分析 (ストリーミング)</button>
+            <p id="r-status" class="status-text"></p>
+          </aside>
+          <div class="content-main">
+            <div id="r-report-wrap">
+              <p class="hint">ティッカーを入力して「レポート生成」を押してください。</p>
+            </div>
+            <div id="r-ai-wrap" style="display:none">
+              <h3>AI 分析</h3>
+              <div id="r-ai-content" class="ai-stream-box"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── ポートフォリオ ── -->
+      <section id="tab-portfolio" class="tab-panel">
+        <div class="sub-tab-nav">
+          <button class="sub-tab-btn active" data-subtab="p-trades">売買記録</button>
+          <button class="sub-tab-btn" data-subtab="p-positions">ポジション</button>
+        </div>
+        <div id="p-trades" class="sub-tab-panel active">
+          <div class="panel-row">
+            <aside class="sidebar">
+              <h3>売買記録追加</h3>
+              <label>日付</label>
+              <input type="date" id="p-date" />
+              <label>売買区分</label>
+              <select id="p-action">
+                <option value="buy">買い</option>
+                <option value="sell">売り</option>
+              </select>
+              <label>ティッカー</label>
+              <input type="text" id="p-ticker" placeholder="7203.T" />
+              <label>数量</label>
+              <input type="number" id="p-qty" min="1" value="100" />
+              <label>価格</label>
+              <input type="number" id="p-price" min="0" step="0.01" />
+              <label>通貨</label>
+              <input type="text" id="p-currency" value="JPY" maxlength="3" />
+              <label>メモ</label>
+              <input type="text" id="p-notes" placeholder="任意" />
+              <button class="btn-primary" id="p-add-btn">記録を追加</button>
+              <p id="p-status" class="status-text"></p>
+            </aside>
+            <div class="content-main">
+              <h3>売買履歴</h3>
+              <div id="p-trades-wrap"><p class="hint">読み込み中...</p></div>
+            </div>
+          </div>
+        </div>
+        <div id="p-positions" class="sub-tab-panel">
+          <div class="content-main" style="padding:16px">
+            <h3>現在のポジション</h3>
+            <div id="p-positions-wrap"><p class="hint">読み込み中...</p></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── ストレステスト ── -->
+      <section id="tab-stress" class="tab-panel">
+        <div class="panel-row">
+          <aside class="sidebar">
+            <h3>テスト設定</h3>
+            <label>ティッカー (カンマ区切り)</label>
+            <input type="text" id="st-tickers" placeholder="例: 7203.T, AAPL, 1306.T" />
+            <button class="btn-secondary" id="st-load-portfolio-btn" style="margin-bottom:8px">ポートフォリオから読込</button>
+            <label>シナリオ</label>
+            <select id="st-scenario"></select>
+            <button class="btn-primary" id="st-run-btn">テスト実行</button>
+            <p id="st-status" class="status-text"></p>
+          </aside>
+          <div class="content-main">
+            <div id="st-result-wrap">
+              <p class="hint">ティッカーとシナリオを選択して実行してください。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── AI アシスタント ── -->
+      <section id="tab-chat" class="tab-panel">
+        <div class="chat-layout">
+          <div id="chat-messages"></div>
+          <div id="chat-input-area">
+            <textarea id="chat-input" rows="2" placeholder="例: トヨタ (7203.T) の投資魅力を教えて"></textarea>
+            <div class="chat-btn-row">
+              <button class="btn-primary" id="chat-send-btn">送信</button>
+              <button class="btn-secondary" id="chat-clear-btn">クリア</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── モデル管理 ── -->
+      <section id="tab-models" class="tab-panel">
+        <div class="panel-row">
+          <aside class="sidebar">
+            <h3>ステータス</h3>
+            <div id="m-status-box" class="status-card">未接続</div>
+            <div id="m-vram-bar" class="vram-bar-wrap"></div>
+          </aside>
+          <div class="content-main">
+            <h3>GGUF モデル選択</h3>
+            <p class="hint">モデルファイルは <code>models/</code> フォルダに配置してください。</p>
+            <div id="m-model-list" class="model-list"></div>
+            <div class="btn-row" style="margin-top:12px">
+              <button class="btn-primary" id="m-load-btn">Load</button>
+              <button class="btn-secondary" id="m-unload-btn">Unload</button>
+              <button class="btn-secondary" id="m-refresh-btn">更新</button>
+            </div>
+            <pre id="m-log" class="log-box"></pre>
+          </div>
+        </div>
+      </section>
+
+    </main><!-- /main -->
+  </div><!-- /app -->
+
+  <script src="app.js"></script>
+  <script src="tabs/screening.js"></script>
+  <script src="tabs/report.js"></script>
+  <script src="tabs/portfolio.js"></script>
+  <script src="tabs/stress.js"></script>
+  <script src="tabs/chat.js"></script>
+  <script src="tabs/models.js"></script>
+</body>
+</html>

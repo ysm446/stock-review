@@ -2,6 +2,7 @@
 import gc
 import json
 import logging
+import re
 import threading
 from pathlib import Path
 from typing import Callable, Optional
@@ -311,7 +312,10 @@ class LLMClient:
                     temperature=temperature,
                     max_tokens=1024,
                 )
-                return resp["choices"][0]["message"]["content"] or ""
+                text = resp["choices"][0]["message"]["content"] or ""
+                # Strip <think>...</think> blocks (Qwen3 reasoning traces)
+                text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+                return text
             except Exception as e:
                 logger.warning("Generation failed: %s", e)
                 return ""
@@ -328,10 +332,19 @@ class LLMClient:
                     stream=True,
                 )
                 accumulated = ""
+                think_end = None  # index in accumulated after </think>, or 0 if no think block
                 for chunk in stream:
                     delta = chunk["choices"][0]["delta"].get("content", "") or ""
                     accumulated += delta
-                    yield accumulated
+                    if think_end is None:
+                        if "<think>" in accumulated:
+                            m = re.search(r"<think>.*?</think>", accumulated, re.DOTALL)
+                            if m:
+                                think_end = m.end()
+                        elif len(accumulated) >= 20 and not accumulated.lstrip().startswith("<"):
+                            think_end = 0
+                    if think_end is not None:
+                        yield accumulated[think_end:].lstrip("\n")
             except Exception as e:
                 logger.warning("Stream generation failed: %s", e)
 
