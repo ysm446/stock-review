@@ -516,11 +516,41 @@ function calculateStats() {
   ];
 }
 
+function buildTopStats() {
+  const holdings = appState.holdings.map(normalizeHolding);
+  const totalValue = holdings.reduce((sum, item) => sum + item.marketValue, 0);
+  const totalCost = holdings.reduce((sum, item) => sum + item.costBasis, 0);
+  const totalProfit = totalValue - totalCost;
+  const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
+  const totalPositions = holdings.filter((item) => item.ticker).length;
+
+  return [
+    { label: "総評価額", value: formatCurrency(totalValue), sub: "" },
+    { label: "総取得金額", value: formatCurrency(totalCost), sub: "" },
+    {
+      label: "総損益",
+      value: formatSignedCurrency(totalProfit),
+      sub: totalCost > 0 ? formatSignedPercent(totalProfitRate) : "-",
+      tone: totalProfit >= 0 ? "positive" : "negative"
+    },
+    {
+      label: "年間配当金",
+      value: "-",
+      sub: "",
+      tone: "accent"
+    },
+    { label: "保有銘柄数", value: `${totalPositions}`, sub: "" }
+  ];
+}
+
 function renderStats() {
   statsGrid.innerHTML = "";
-  for (const stat of calculateStats()) {
+  for (const stat of buildTopStats()) {
     const card = document.createElement("article");
     card.className = "stat-card";
+    if (stat.tone) {
+      card.classList.add(`stat-card-${stat.tone}`);
+    }
     card.innerHTML = `
       <div class="stat-label">${stat.label}</div>
       <div class="stat-value">${stat.value}</div>

@@ -242,7 +242,7 @@ button {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin: 0 0 16px;
 }
@@ -267,6 +267,20 @@ button {
   margin-top: 6px;
   font-size: 1.25rem;
   font-weight: 700;
+}
+
+.stat-card-positive .stat-value,
+.stat-card-positive .stat-sub {
+  color: #54e291;
+}
+
+.stat-card-negative .stat-value,
+.stat-card-negative .stat-sub {
+  color: #ff7b83;
+}
+
+.stat-card-accent .stat-value {
+  color: #6ea8ff;
 }
 
 .stat-sub {
