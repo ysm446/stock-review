@@ -35,6 +35,7 @@ const holdingModalBackdrop = document.getElementById("holding-modal-backdrop");
 const holdingForm = document.getElementById("holding-form");
 const holdingModalTitle = document.getElementById("holding-modal-title");
 const holdingTickerInput = document.getElementById("holding-ticker-input");
+const holdingTickerSuggestions = document.getElementById("holding-ticker-suggestions");
 const holdingSharesInput = document.getElementById("holding-shares-input");
 const holdingBuyPriceInput = document.getElementById("holding-buy-price-input");
 const closeHoldingModalButton = document.getElementById("close-holding-modal");
@@ -45,6 +46,7 @@ let statusTimer = null;
 let trendRange = "1m";
 let editingHoldingIndex = null;
 let autosaveTimer = null;
+let stockMasterEntries = [];
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -84,6 +86,17 @@ document.addEventListener("keydown", (event) => {
 holdingForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveHoldingFromModal();
+});
+holdingTickerInput.addEventListener("input", () => {
+  renderTickerSuggestions(holdingTickerInput.value);
+});
+holdingTickerInput.addEventListener("focus", () => {
+  renderTickerSuggestions(holdingTickerInput.value);
+});
+holdingTickerInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    hideTickerSuggestions();
+  }, 120);
 });
 
 function normalizeHolding(raw) {
@@ -153,6 +166,54 @@ function formatPlainNumber(value) {
 function getDisplayName(ticker) {
   const normalized = String(ticker || "").trim();
   return stockMaster[normalized] || normalized || "-";
+}
+
+function hideTickerSuggestions() {
+  holdingTickerSuggestions.innerHTML = "";
+  holdingTickerSuggestions.classList.add("is-hidden");
+}
+
+function applyTickerSuggestion(ticker) {
+  holdingTickerInput.value = ticker;
+  hideTickerSuggestions();
+}
+
+function renderTickerSuggestions(keyword) {
+  const normalizedKeyword = String(keyword || "").trim().toLowerCase();
+  if (!normalizedKeyword) {
+    hideTickerSuggestions();
+    return;
+  }
+
+  const matches = stockMasterEntries
+    .filter(({ ticker, name }) => {
+      const tickerText = ticker.toLowerCase();
+      const nameText = String(name || "").toLowerCase();
+      return tickerText.includes(normalizedKeyword) || nameText.includes(normalizedKeyword);
+    })
+    .slice(0, 8);
+
+  if (!matches.length) {
+    hideTickerSuggestions();
+    return;
+  }
+
+  holdingTickerSuggestions.innerHTML = "";
+  matches.forEach(({ ticker, name }) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "search-option";
+    item.innerHTML = `
+      <span class="search-option-name">${name}</span>
+      <span class="search-option-code">${ticker}</span>
+    `;
+    item.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      applyTickerSuggestion(ticker);
+    });
+    holdingTickerSuggestions.appendChild(item);
+  });
+  holdingTickerSuggestions.classList.remove("is-hidden");
 }
 
 function setStatus(message, tone = "neutral") {
@@ -256,12 +317,14 @@ function openHoldingModal(index = null) {
   holdingSharesInput.value = holding.shares || "";
   holdingBuyPriceInput.value = holding.buyPrice || "";
   holdingModalBackdrop.classList.remove("is-hidden");
+  hideTickerSuggestions();
   holdingTickerInput.focus();
 }
 
 function closeHoldingModal() {
   editingHoldingIndex = null;
   holdingForm.reset();
+  hideTickerSuggestions();
   holdingModalBackdrop.classList.add("is-hidden");
 }
 
@@ -686,6 +749,9 @@ async function refreshPrices() {
 async function init() {
   const master = await window.stockReviewApi.loadStockMaster();
   Object.assign(stockMaster, master || {});
+  stockMasterEntries = Object.entries(stockMaster)
+    .map(([ticker, name]) => ({ ticker, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "ja"));
   const data = await window.stockReviewApi.loadPortfolio();
   appState.holdings = Array.isArray(data.holdings) ? data.holdings : [];
   appState.watchlist = Array.isArray(data.watchlist) ? data.watchlist : [];

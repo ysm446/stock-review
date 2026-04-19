@@ -215,7 +215,10 @@
         <form class="modal-form" id="holding-form">
           <label>
             <span>銘柄コード</span>
-            <input id="holding-ticker-input" name="ticker" type="text" placeholder="AAPL / 7203.T" required />
+            <div class="search-select">
+              <input id="holding-ticker-input" name="ticker" type="text" placeholder="AAPL / 7203.T / 三菱" autocomplete="off" required />
+              <div class="search-dropdown is-hidden" id="holding-ticker-suggestions"></div>
+            </div>
           </label>
           <label>
             <span>株数</span>

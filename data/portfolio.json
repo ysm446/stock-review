@@ -39,10 +39,19 @@
     {
       "ticker": "8058.T",
       "shares": "400",
-      "buyPrice": "3100",
+      "buyPrice": "3020",
       "price": "4952",
       "note": "",
       "sourcePrice": 4952,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "7011.T",
+      "shares": "400",
+      "buyPrice": "3100",
+      "price": "4371",
+      "note": "",
+      "sourcePrice": 4371,
       "currency": "JPY"
     }
   ],

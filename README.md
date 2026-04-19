@@ -45,3 +45,12 @@ npm run python:backend
 conda activate main
 pip install yfinance
 ```
+
+## 銘柄マスター更新
+
+日本株の銘柄一覧は JPX の上場銘柄一覧から `data/stock_master.json` を再生成できます。
+
+```powershell
+conda activate main
+python backend/update_stock_master.py
+```
