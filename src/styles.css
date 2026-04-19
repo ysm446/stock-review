@@ -463,6 +463,17 @@ select:focus {
   font-weight: 600;
 }
 
+.ticker-name {
+  color: var(--text);
+}
+
+.ticker-code {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
 .cell-number {
   font-variant-numeric: tabular-nums;
 }

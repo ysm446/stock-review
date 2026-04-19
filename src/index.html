@@ -160,7 +160,10 @@
 
     <template id="holding-row-template">
       <tr>
-        <td class="cell-ticker" data-field="ticker">-</td>
+        <td class="cell-ticker">
+          <div class="ticker-name" data-field="displayName">-</div>
+          <div class="ticker-code" data-field="ticker">-</div>
+        </td>
         <td class="cell-number" data-field="shares">0</td>
         <td class="cell-number" data-field="buyPrice">-</td>
         <td class="computed-cell" data-field="price">-</td>

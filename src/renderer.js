@@ -3,6 +3,8 @@ const appState = {
   watchlist: []
 };
 
+const stockMaster = {};
+
 const CHART_COLORS = [
   "#3b82f6",
   "#06b6d4",
@@ -146,6 +148,11 @@ function formatPlainNumber(value) {
   return new Intl.NumberFormat("ja-JP", {
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function getDisplayName(ticker) {
+  const normalized = String(ticker || "").trim();
+  return stockMaster[normalized] || normalized || "-";
 }
 
 function setStatus(message, tone = "neutral") {
@@ -470,6 +477,7 @@ function renderHoldingsTable() {
     const weightCell = row.querySelector('[data-field="weight"]');
     const weight = totalValue > 0 ? (normalized.marketValue / totalValue) * 100 : 0;
 
+    row.querySelector('[data-field="displayName"]').textContent = getDisplayName(holding.ticker);
     row.querySelector('[data-field="ticker"]').textContent = holding.ticker || "-";
     row.querySelector('[data-field="shares"]').textContent = formatPlainNumber(normalized.shares);
     row.querySelector('[data-field="buyPrice"]').textContent = normalized.buyPrice > 0 ? formatCurrency(normalized.buyPrice) : "-";
@@ -589,14 +597,15 @@ function drawAllocationChart() {
     ctx.fillStyle = "#f3f4f6";
     ctx.font = "600 11px Segoe UI";
     ctx.textAlign = lineDirection > 0 ? "left" : "right";
-    const labelText = ratio < 0.045 ? formatPercent(ratio * 100) : `${holding.ticker} ${formatPercent(ratio * 100)}`;
+    const labelName = getDisplayName(holding.ticker);
+    const labelText = ratio < 0.045 ? formatPercent(ratio * 100) : `${labelName} ${formatPercent(ratio * 100)}`;
     ctx.fillText(labelText, endX + 6 * lineDirection, bendY - 2);
 
     const item = document.createElement("div");
     item.className = "legend-item";
     item.innerHTML = `
       <span class="legend-swatch" style="background:${color}"></span>
-      <span class="legend-name">${holding.ticker}</span>
+      <span class="legend-name">${getDisplayName(holding.ticker)}</span>
     `;
     allocationLegend.appendChild(item);
 
@@ -675,6 +684,8 @@ async function refreshPrices() {
 }
 
 async function init() {
+  const master = await window.stockReviewApi.loadStockMaster();
+  Object.assign(stockMaster, master || {});
   const data = await window.stockReviewApi.loadPortfolio();
   appState.holdings = Array.isArray(data.holdings) ? data.holdings : [];
   appState.watchlist = Array.isArray(data.watchlist) ? data.watchlist : [];

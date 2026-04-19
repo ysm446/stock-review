@@ -5,6 +5,7 @@ const { spawn } = require("child_process");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const PORTFOLIO_FILE = path.join(DATA_DIR, "portfolio.json");
+const STOCK_MASTER_FILE = path.join(DATA_DIR, "stock_master.json");
 const PRICE_FETCHER = path.join(__dirname, "..", "backend", "fetch_prices.py");
 
 function ensureDataFile() {
@@ -29,6 +30,24 @@ function ensureDataFile() {
   }
 }
 
+function ensureStockMasterFile() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!fs.existsSync(STOCK_MASTER_FILE)) {
+    const seed = {
+      "285A.T": "キオクシアホールディングス",
+      "4062.T": "イビデン",
+      "5803.T": "フジクラ",
+      "6857.T": "アドバンテスト",
+      "7203.T": "トヨタ自動車",
+      "8058.T": "三菱商事",
+      "AAPL": "Apple",
+      "MSFT": "Microsoft",
+      "NVDA": "NVIDIA"
+    };
+    fs.writeFileSync(STOCK_MASTER_FILE, JSON.stringify(seed, null, 2), "utf8");
+  }
+}
+
 function readPortfolio() {
   ensureDataFile();
   return JSON.parse(fs.readFileSync(PORTFOLIO_FILE, "utf8"));
@@ -37,6 +56,11 @@ function readPortfolio() {
 function writePortfolio(payload) {
   ensureDataFile();
   fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(payload, null, 2), "utf8");
+}
+
+function readStockMaster() {
+  ensureStockMasterFile();
+  return JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, "utf8"));
 }
 
 function runPriceFetcher(tickers) {
@@ -106,6 +130,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ensureDataFile();
+  ensureStockMasterFile();
   createWindow();
 
   app.on("activate", () => {
@@ -127,3 +152,4 @@ ipcMain.handle("portfolio:save", async (_event, payload) => {
   return { ok: true };
 });
 ipcMain.handle("portfolio:refresh-prices", async (_event, tickers) => runPriceFetcher(tickers));
+ipcMain.handle("stock-master:load", async () => readStockMaster());
