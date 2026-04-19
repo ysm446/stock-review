@@ -8,31 +8,15 @@ const appState = {
 const stockMaster = {};
 
 const CHART_COLORS = [
+  "#0ea5e9",
   "#3b82f6",
-  "#06b6d4",
+  "#2563eb",
+  "#4f86c6",
+  "#6366f1",
+  "#7c3aed",
   "#8b5cf6",
-  "#ec4899",
-  "#22c55e",
-  "#f59e0b",
-  "#ef4444",
-  "#14b8a6"
+  "#6d28d9"
 ];
-
-const SECTOR_HUES = {
-  Technology: 214,
-  "Financial Services": 144,
-  Financial: 144,
-  Industrials: 28,
-  Healthcare: 344,
-  Energy: 10,
-  "Consumer Defensive": 72,
-  "Consumer Cyclical": 48,
-  "Communication Services": 188,
-  Materials: 116,
-  Utilities: 278,
-  "Real Estate": 156,
-  Basic: 116
-};
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -539,33 +523,16 @@ function hashString(value) {
   let hash = 0;
   const text = String(value || "");
   for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) % 360;
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
   }
   return hash;
 }
 
-function getSectorHue(sector, ticker) {
-  const normalizedSector = String(sector || "").trim();
-  if (normalizedSector && typeof SECTOR_HUES[normalizedSector] === "number") {
-    return SECTOR_HUES[normalizedSector];
-  }
-  if (normalizedSector) {
-    return hashString(normalizedSector);
-  }
-  return 210 + (hashString(ticker) % 18);
-}
-
 function getAllocationColor(sector, ticker, sectorIndex) {
   const normalizedSector = String(sector || "").trim();
-  if (!normalizedSector) {
-    const fallbackLightness = Math.max(42, 58 - Math.min(sectorIndex, 4) * 5);
-    return `hsl(${getSectorHue("", ticker)} 10% ${fallbackLightness}%)`;
-  }
-
-  const hue = getSectorHue(normalizedSector, ticker);
-  const saturation = 64;
-  const lightness = Math.max(40, 58 - Math.min(sectorIndex, 5) * 5);
-  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+  const normalizedTicker = String(ticker || "").trim();
+  const seed = normalizedSector || normalizedTicker || String(sectorIndex);
+  return CHART_COLORS[(hashString(seed) + sectorIndex) % CHART_COLORS.length];
 }
 
 function prepareHiDPICanvas(canvas) {
