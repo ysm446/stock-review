@@ -37,21 +37,57 @@
       "currency": "JPY"
     },
     {
-      "ticker": "8058.T",
-      "shares": "400",
-      "buyPrice": "3020",
-      "price": "4952",
-      "note": "",
-      "sourcePrice": 4952,
-      "currency": "JPY"
-    },
-    {
       "ticker": "7011.T",
       "shares": "400",
       "buyPrice": "3100",
       "price": "4371",
       "note": "",
       "sourcePrice": 4371,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "8058.T",
+      "shares": "600",
+      "buyPrice": "2960",
+      "price": "4952",
+      "note": "",
+      "sourcePrice": 4952,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "8031.T",
+      "shares": "200",
+      "buyPrice": "2968",
+      "price": "5800",
+      "note": "",
+      "sourcePrice": 5800,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "8053.T",
+      "shares": "200",
+      "buyPrice": "2540",
+      "price": "6015",
+      "note": "",
+      "sourcePrice": 6015,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "7974.T",
+      "shares": "100",
+      "buyPrice": "9862",
+      "price": "8615",
+      "note": "",
+      "sourcePrice": 8615,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "2914.T",
+      "shares": "800",
+      "buyPrice": "4000",
+      "price": "5800",
+      "note": "",
+      "sourcePrice": 5800,
       "currency": "JPY"
     }
   ],

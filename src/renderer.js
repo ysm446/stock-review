@@ -29,8 +29,13 @@ const priceStatus = document.getElementById("price-status");
 const refreshPricesButton = document.getElementById("refresh-prices");
 const trendRangeSelect = document.getElementById("trend-range");
 const trendChart = document.getElementById("trend-chart");
+const trendChartWrap = document.getElementById("trend-chart-wrap");
 const trendDailyChange = document.getElementById("trend-daily-change");
 const trendPeriodChange = document.getElementById("trend-period-change");
+const trendTooltip = document.getElementById("trend-tooltip");
+const trendTooltipDate = document.getElementById("trend-tooltip-date");
+const trendTooltipValue = document.getElementById("trend-tooltip-value");
+const trendTooltipChange = document.getElementById("trend-tooltip-change");
 const holdingModalBackdrop = document.getElementById("holding-modal-backdrop");
 const holdingForm = document.getElementById("holding-form");
 const holdingModalTitle = document.getElementById("holding-modal-title");
@@ -47,6 +52,10 @@ let trendRange = "1m";
 let editingHoldingIndex = null;
 let autosaveTimer = null;
 let stockMasterEntries = [];
+let draggingHoldingIndex = null;
+let trendChartModel = null;
+let hoveredTrendIndex = null;
+let resizeTimer = null;
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -69,7 +78,34 @@ document.getElementById("add-review").addEventListener("click", () => {
 refreshPricesButton.addEventListener("click", refreshPrices);
 trendRangeSelect.addEventListener("change", (event) => {
   trendRange = event.target.value;
+  hoveredTrendIndex = null;
+  hideTrendTooltip();
   drawTrendChart();
+});
+trendChart.addEventListener("mousemove", handleTrendChartPointerMove);
+trendChart.addEventListener("mouseleave", () => {
+  hoveredTrendIndex = null;
+  hideTrendTooltip();
+  drawTrendChart();
+});
+trendChart.addEventListener("touchstart", handleTrendChartPointerMove, { passive: true });
+trendChart.addEventListener("touchmove", handleTrendChartPointerMove, { passive: true });
+trendChart.addEventListener("touchend", () => {
+  hoveredTrendIndex = null;
+  hideTrendTooltip();
+  drawTrendChart();
+});
+window.addEventListener("resize", () => {
+  if (resizeTimer) {
+    clearTimeout(resizeTimer);
+  }
+  resizeTimer = setTimeout(() => {
+    resizeTimer = null;
+    hoveredTrendIndex = null;
+    hideTrendTooltip();
+    drawTrendChart();
+    drawAllocationChart();
+  }, 80);
 });
 closeHoldingModalButton.addEventListener("click", closeHoldingModal);
 cancelHoldingModalButton.addEventListener("click", closeHoldingModal);
@@ -269,6 +305,191 @@ function queueAutosave() {
   }, 250);
 }
 
+function prepareHiDPICanvas(canvas) {
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const logicalWidth = Math.max(1, Math.round(rect.width || canvas.clientWidth || canvas.width));
+  const logicalHeight = Math.max(1, Math.round(rect.height || canvas.clientHeight || canvas.height));
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const pixelWidth = Math.round(logicalWidth * dpr);
+  const pixelHeight = Math.round(logicalHeight * dpr);
+
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+  return { ctx, width: logicalWidth, height: logicalHeight };
+}
+
+function hideTrendTooltip() {
+  trendTooltip.classList.add("is-hidden");
+  trendTooltipChange.classList.remove("is-positive", "is-negative");
+}
+
+function updateTrendTooltip(index) {
+  if (!trendChartModel || index < 0 || index >= trendChartModel.points.length) {
+    hideTrendTooltip();
+    return;
+  }
+
+  const { labels, values, points, padding, width, height } = trendChartModel;
+  const point = points[index];
+  const previousValue = index > 0 ? values[index - 1] : values[index];
+  const delta = values[index] - previousValue;
+  const rate = previousValue > 0 ? (delta / previousValue) * 100 : 0;
+  const wrapWidth = trendChartWrap.clientWidth;
+  const wrapHeight = trendChartWrap.clientHeight;
+  const chartLeft = (point.x / width) * wrapWidth;
+  const chartTop = (point.y / height) * wrapHeight;
+  const tooltipWidth = 236;
+  const tooltipLeft = Math.min(
+    wrapWidth - tooltipWidth - 14,
+    Math.max(padding.left + 8, chartLeft + 18)
+  );
+  const tooltipTop = Math.max(14, chartTop - 62);
+
+  trendTooltipDate.textContent = labels[index];
+  trendTooltipValue.textContent = formatCurrency(values[index]);
+  trendTooltipChange.textContent =
+    index === 0 ? "前日比 -"
+    : `前日比 ${formatSignedCurrency(delta)} (${formatSignedPercent(rate)})`;
+  trendTooltipChange.classList.toggle("is-positive", delta >= 0 || index === 0);
+  trendTooltipChange.classList.toggle("is-negative", delta < 0 && index !== 0);
+  trendTooltip.style.left = `${tooltipLeft}px`;
+  trendTooltip.style.top = `${tooltipTop}px`;
+  trendTooltip.classList.remove("is-hidden");
+}
+
+function handleTrendChartPointerMove(event) {
+  if (!trendChartModel || !trendChartModel.points.length) {
+    return;
+  }
+
+  const rect = trendChart.getBoundingClientRect();
+  const clientX = "touches" in event ? event.touches[0]?.clientX : event.clientX;
+  const clientY = "touches" in event ? event.touches[0]?.clientY : event.clientY;
+  if (typeof clientX !== "number" || typeof clientY !== "number") {
+    return;
+  }
+
+  const scaleX = trendChartModel.width / rect.width;
+  const scaleY = trendChartModel.height / rect.height;
+  const pointerX = (clientX - rect.left) * scaleX;
+  const pointerY = (clientY - rect.top) * scaleY;
+  const { padding, points } = trendChartModel;
+
+  if (
+    pointerX < padding.left - 12 ||
+    pointerX > trendChartModel.width - padding.right + 12 ||
+    pointerY < padding.top - 12 ||
+    pointerY > trendChartModel.height - padding.bottom + 12
+  ) {
+    hoveredTrendIndex = null;
+    hideTrendTooltip();
+    drawTrendChart();
+    return;
+  }
+
+  let nearestIndex = 0;
+  let minDistance = Number.POSITIVE_INFINITY;
+  points.forEach((point, index) => {
+    const distance = Math.abs(point.x - pointerX);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  if (hoveredTrendIndex !== nearestIndex) {
+    hoveredTrendIndex = nearestIndex;
+    updateTrendTooltip(nearestIndex);
+    drawTrendChart();
+    return;
+  }
+
+  updateTrendTooltip(nearestIndex);
+}
+
+function moveHolding(fromIndex, toIndex) {
+  if (
+    fromIndex === toIndex ||
+    fromIndex === null ||
+    toIndex === null ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= appState.holdings.length ||
+    toIndex >= appState.holdings.length
+  ) {
+    return false;
+  }
+
+  const [movedHolding] = appState.holdings.splice(fromIndex, 1);
+  appState.holdings.splice(toIndex, 0, movedHolding);
+  return true;
+}
+
+function clearHoldingDragState() {
+  holdingsBody.querySelectorAll("tr").forEach((row) => {
+    row.classList.remove("is-dragging", "is-drag-target");
+  });
+}
+
+function attachHoldingDragEvents(row, index) {
+  const handle = row.querySelector('[data-action="drag-handle"]');
+  handle.draggable = true;
+
+  handle.addEventListener("dragstart", (event) => {
+    draggingHoldingIndex = index;
+    row.classList.add("is-dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(index));
+    }
+  });
+
+  row.addEventListener("dragover", (event) => {
+    if (draggingHoldingIndex === null || draggingHoldingIndex === index) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    holdingsBody.querySelectorAll("tr.is-drag-target").forEach((item) => {
+      if (item !== row) {
+        item.classList.remove("is-drag-target");
+      }
+    });
+    row.classList.add("is-drag-target");
+  });
+
+  row.addEventListener("dragleave", (event) => {
+    if (!row.contains(event.relatedTarget)) {
+      row.classList.remove("is-drag-target");
+    }
+  });
+
+  row.addEventListener("drop", (event) => {
+    event.preventDefault();
+    row.classList.remove("is-drag-target");
+
+    if (moveHolding(draggingHoldingIndex, index)) {
+      render();
+      queueAutosave();
+    }
+  });
+
+  handle.addEventListener("dragend", () => {
+    draggingHoldingIndex = null;
+    clearHoldingDragState();
+  });
+}
+
 function calculateStats() {
   const holdings = appState.holdings.map(normalizeHolding);
   const totalValue = holdings.reduce((sum, item) => sum + item.marketValue, 0);
@@ -359,20 +580,21 @@ function saveHoldingFromModal() {
 function getRangeConfig(range) {
   switch (range) {
     case "3m":
-      return { points: 14, stepDays: 7, volatility: 0.028, drift: 0.1 };
+      return { days: 92, labelEvery: 14, volatility: 0.028, drift: 0.1 };
     case "6m":
-      return { points: 18, stepDays: 14, volatility: 0.036, drift: 0.16 };
+      return { days: 184, labelEvery: 28, volatility: 0.036, drift: 0.16 };
     case "1y":
-      return { points: 16, stepDays: 28, volatility: 0.05, drift: 0.24 };
+      return { days: 366, labelEvery: 56, volatility: 0.05, drift: 0.24 };
     case "1m":
     default:
-      return { points: 20, stepDays: 2, volatility: 0.022, drift: 0.06 };
+      return { days: 32, labelEvery: 4, volatility: 0.022, drift: 0.06 };
   }
 }
 
 function buildTrendSeries(totalValue, holdingsCount, range) {
   const safeTotal = totalValue > 0 ? totalValue : 12000000;
-  const { points, stepDays, volatility, drift } = getRangeConfig(range);
+  const { days, labelEvery, volatility, drift } = getRangeConfig(range);
+  const points = days;
   const anchorDate = new Date("2026-04-17T00:00:00");
   const labels = [];
   const values = [];
@@ -388,7 +610,7 @@ function buildTrendSeries(totalValue, holdingsCount, range) {
     values.push(Math.max(value, safeTotal * 0.55));
 
     const date = new Date(anchorDate);
-    date.setDate(anchorDate.getDate() - stepDays * (points - 1 - index));
+    date.setDate(anchorDate.getDate() - (points - 1 - index));
     labels.push(`${date.getMonth() + 1}/${date.getDate()}`);
   }
 
@@ -396,7 +618,7 @@ function buildTrendSeries(totalValue, holdingsCount, range) {
     values[values.length - 2] = values[values.length - 1] * (0.965 + ((strength % 5) * 0.007));
   }
 
-  return { labels, values };
+  return { labels, values, labelEvery };
 }
 
 function drawSmoothPath(ctx, points) {
@@ -427,15 +649,13 @@ function drawSmoothPath(ctx, points) {
 }
 
 function drawTrendChart() {
-  const ctx = trendChart.getContext("2d");
-  const width = trendChart.width;
-  const height = trendChart.height;
-  const padding = { top: 34, right: 18, bottom: 42, left: 74 };
+  const { ctx, width, height } = prepareHiDPICanvas(trendChart);
+  const padding = { top: 24, right: 18, bottom: 34, left: 66 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const totalValue = appState.holdings.map(normalizeHolding).reduce((sum, item) => sum + item.marketValue, 0);
   const holdingsCount = appState.holdings.filter((item) => String(item.ticker || "").trim()).length;
-  const { labels, values } = buildTrendSeries(totalValue, holdingsCount, trendRange);
+  const { labels, values, labelEvery } = buildTrendSeries(totalValue, holdingsCount, trendRange);
 
   ctx.clearRect(0, 0, width, height);
 
@@ -458,8 +678,16 @@ function drawTrendChart() {
     ctx.stroke();
   }
 
-  for (let i = 0; i < labels.length; i += 1) {
-    const x = padding.left + xStep * i;
+  const xTickIndexes = [];
+  for (let i = 0; i < labels.length; i += Math.max(1, labelEvery)) {
+    xTickIndexes.push(i);
+  }
+  if (xTickIndexes[xTickIndexes.length - 1] !== labels.length - 1) {
+    xTickIndexes.push(labels.length - 1);
+  }
+
+  for (const index of xTickIndexes) {
+    const x = padding.left + xStep * index;
     ctx.beginPath();
     ctx.moveTo(x, padding.top);
     ctx.lineTo(x, height - padding.bottom);
@@ -475,9 +703,20 @@ function drawTrendChart() {
     };
   });
 
+  trendChartModel = {
+    labels,
+    values,
+    points,
+    padding,
+    chartWidth,
+    width,
+    height
+  };
+
   const areaGradient = ctx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
-  areaGradient.addColorStop(0, "rgba(74, 222, 128, 0.30)");
-  areaGradient.addColorStop(1, "rgba(74, 222, 128, 0.04)");
+  areaGradient.addColorStop(0, "rgba(74, 222, 128, 0.22)");
+  areaGradient.addColorStop(0.82, "rgba(74, 222, 128, 0.06)");
+  areaGradient.addColorStop(1, "rgba(74, 222, 128, 0.01)");
 
   drawSmoothPath(ctx, points);
   ctx.lineTo(points[points.length - 1].x, height - padding.bottom);
@@ -488,17 +727,17 @@ function drawTrendChart() {
 
   drawSmoothPath(ctx, points);
   ctx.strokeStyle = "#4ade80";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2.5;
   ctx.stroke();
 
   ctx.fillStyle = "#4ade80";
   points.forEach((point) => {
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
     ctx.fill();
   });
 
-  ctx.font = "500 12px Segoe UI";
+  ctx.font = "500 13px Segoe UI";
   ctx.fillStyle = "#9ca3af";
   ctx.textAlign = "right";
   for (let i = 0; i < yTicks; i += 1) {
@@ -508,9 +747,25 @@ function drawTrendChart() {
   }
 
   ctx.textAlign = "center";
-  labels.forEach((label, index) => {
+  xTickIndexes.forEach((index) => {
+    const label = labels[index];
     ctx.fillText(label, padding.left + xStep * index, height - 16);
   });
+
+  if (hoveredTrendIndex !== null && points[hoveredTrendIndex]) {
+    const activePoint = points[hoveredTrendIndex];
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.34)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(activePoint.x, padding.top);
+    ctx.lineTo(activePoint.x, height - padding.bottom);
+    ctx.stroke();
+
+    ctx.fillStyle = "#4ade80";
+    ctx.beginPath();
+    ctx.arc(activePoint.x, activePoint.y, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   const dailyDelta = values[values.length - 1] - values[values.length - 2];
   const dailyRate = (dailyDelta / values[values.length - 2]) * 100;
@@ -553,6 +808,7 @@ function renderHoldingsTable() {
     profitCell.classList.toggle("is-negative", normalized.profitLoss < 0);
     profitRateCell.classList.toggle("is-positive", normalized.profitRate >= 0);
     profitRateCell.classList.toggle("is-negative", normalized.profitRate < 0);
+    attachHoldingDragEvents(row, index);
     row.querySelector('[data-action="edit-holding"]').addEventListener("click", () => openHoldingModal(index));
     row.querySelector('[data-action="remove-holding"]').addEventListener("click", () => {
       appState.holdings.splice(index, 1);
@@ -596,9 +852,7 @@ function renderReviews() {
 }
 
 function drawAllocationChart() {
-  const ctx = allocationChart.getContext("2d");
-  const width = allocationChart.width;
-  const height = allocationChart.height;
+  const { ctx, width, height } = prepareHiDPICanvas(allocationChart);
   const centerX = width / 2;
   const centerY = Math.max(180, height / 2 - 34);
   const radius = 138;

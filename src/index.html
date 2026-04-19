@@ -66,7 +66,14 @@
                 </div>
               </div>
             </div>
-            <canvas id="trend-chart" width="1440" height="420"></canvas>
+            <div class="trend-chart-wrap" id="trend-chart-wrap">
+              <canvas id="trend-chart" width="1440" height="320"></canvas>
+              <div class="trend-tooltip is-hidden" id="trend-tooltip">
+                <div class="trend-tooltip-date" id="trend-tooltip-date">-</div>
+                <div class="trend-tooltip-value" id="trend-tooltip-value">-</div>
+                <div class="trend-tooltip-change" id="trend-tooltip-change">-</div>
+              </div>
+            </div>
           </section>
 
           <section class="content-grid">
@@ -86,6 +93,7 @@
                 <table>
                   <thead>
                     <tr>
+                      <th class="drag-column"></th>
                       <th>銘柄</th>
                       <th>株数</th>
                       <th>平均単価</th>
@@ -160,6 +168,12 @@
 
     <template id="holding-row-template">
       <tr>
+        <td class="drag-cell">
+          <button class="drag-handle" data-action="drag-handle" type="button" aria-label="Reorder holding">
+            <span></span>
+            <span></span>
+          </button>
+        </td>
         <td class="cell-ticker">
           <div class="ticker-name" data-field="displayName">-</div>
           <div class="ticker-code" data-field="ticker">-</div>
