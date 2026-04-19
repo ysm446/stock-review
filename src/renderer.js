@@ -1,6 +1,7 @@
 const appState = {
   holdings: [],
-  watchlist: []
+  watchlist: [],
+  trendHistory: []
 };
 
 const stockMaster = {};
@@ -287,7 +288,13 @@ function setStatus(message, tone = "neutral") {
 }
 
 async function persistPortfolio({ silent = false } = {}) {
-  await window.stockReviewApi.savePortfolio(appState);
+  await window.stockReviewApi.savePortfolio({
+    holdings: appState.holdings,
+    watchlist: appState.watchlist
+  });
+  const trendResult = await window.stockReviewApi.loadTrendHistory(appState.holdings);
+  appState.trendHistory = Array.isArray(trendResult?.trendHistory) ? trendResult.trendHistory : [];
+  renderPortfolioSummary();
   if (!silent) {
     setStatus("保存しました。", "success");
   }
@@ -591,7 +598,50 @@ function getRangeConfig(range) {
   }
 }
 
+function buildTrendSeriesFromHistory(range) {
+  const source = Array.isArray(appState.trendHistory) ? appState.trendHistory : [];
+  if (!source.length) {
+    return null;
+  }
+
+  const sorted = source
+    .map((item) => ({
+      date: String(item.date || "").trim(),
+      value: parseNumericInput(item.value)
+    }))
+    .filter((item) => item.date && item.value > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (sorted.length < 2) {
+    return null;
+  }
+
+  const { days, labelEvery } = getRangeConfig(range);
+  const lastDate = new Date(`${sorted[sorted.length - 1].date}T00:00:00`);
+  const startDate = new Date(lastDate);
+  startDate.setDate(lastDate.getDate() - (days - 1));
+  const filtered = sorted.filter((item) => new Date(`${item.date}T00:00:00`) >= startDate);
+  const target = filtered.length >= 2 ? filtered : sorted.slice(-days);
+  if (target.length < 2) {
+    return null;
+  }
+
+  return {
+    labels: target.map((item) => {
+      const date = new Date(`${item.date}T00:00:00`);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    }),
+    values: target.map((item) => item.value),
+    labelEvery
+  };
+}
+
 function buildTrendSeries(totalValue, holdingsCount, range) {
+  const historicalSeries = buildTrendSeriesFromHistory(range);
+  if (historicalSeries) {
+    return historicalSeries;
+  }
+
   const safeTotal = totalValue > 0 ? totalValue : 12000000;
   const { days, labelEvery, volatility, drift } = getRangeConfig(range);
   const points = days;
@@ -1009,6 +1059,7 @@ async function init() {
   const data = await window.stockReviewApi.loadPortfolio();
   appState.holdings = Array.isArray(data.holdings) ? data.holdings : [];
   appState.watchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
+  appState.trendHistory = Array.isArray(data.trendHistory) ? data.trendHistory : [];
   render();
 }
 

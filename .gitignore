@@ -36,6 +36,7 @@ desktop.ini
 tmp/
 temp/
 *.log
+data/*.db
 
 # Large local runtime assets
 bin/

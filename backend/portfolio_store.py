@@ -310,22 +310,82 @@ def store_price_history(conn: sqlite3.Connection, ticker: str, period: str = "1y
     inserted = 0
 
     for index, row in history.iterrows():
-      close_price = row.get("Close")
-      if close_price is None:
-          continue
-      trade_date = index.date().isoformat()
-      price_jpy, _ = convert_price_to_jpy(float(close_price), currency, fx_map, trade_date)
-      conn.execute(
-          """
-          INSERT OR REPLACE INTO price_history (ticker, trade_date, close_price_jpy, source_close, currency)
-          VALUES (?, ?, ?, ?, ?)
-          """,
-          (normalized, trade_date, int(round(price_jpy)), float(close_price), currency),
-      )
-      inserted += 1
+        close_price = row.get("Close")
+        if close_price is None:
+            continue
+        trade_date = index.date().isoformat()
+        price_jpy, _ = convert_price_to_jpy(float(close_price), currency, fx_map, trade_date)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO price_history (ticker, trade_date, close_price_jpy, source_close, currency)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (normalized, trade_date, int(round(price_jpy)), float(close_price), currency),
+        )
+        inserted += 1
 
     conn.commit()
     return inserted
+
+
+def build_portfolio_history_for_holdings(conn: sqlite3.Connection, holdings: list[dict[str, object]]) -> list[dict[str, object]]:
+    normalized_holdings = []
+    tickers = []
+    for holding in holdings:
+        ticker = str(holding.get("ticker") or "").strip()
+        shares = parse_number(holding.get("shares"))
+        if not ticker or shares <= 0:
+            continue
+        normalized_holdings.append({"ticker": ticker, "shares": shares})
+        tickers.append(ticker)
+
+    if not normalized_holdings:
+        return []
+
+    placeholders = ",".join("?" for _ in tickers)
+    rows = conn.execute(
+        f"""
+        SELECT trade_date, ticker, close_price_jpy
+        FROM price_history
+        WHERE ticker IN ({placeholders})
+        ORDER BY trade_date ASC, ticker ASC
+        """,
+        tickers,
+    ).fetchall()
+
+    if not rows:
+        return []
+
+    history_by_ticker = {}
+    all_dates = set()
+    for row in rows:
+        trade_date = row["trade_date"]
+        ticker = row["ticker"]
+        history_by_ticker.setdefault(ticker, {})[trade_date] = int(row["close_price_jpy"])
+        all_dates.add(trade_date)
+
+    running_prices = {}
+    result = []
+    for trade_date in sorted(all_dates):
+        for holding in normalized_holdings:
+            price = history_by_ticker.get(holding["ticker"], {}).get(trade_date)
+            if price is not None:
+                running_prices[holding["ticker"]] = price
+
+        total_value = 0
+        complete = True
+        for holding in normalized_holdings:
+            ticker = holding["ticker"]
+            price = running_prices.get(ticker)
+            if price is None:
+                complete = False
+                break
+            total_value += holding["shares"] * price
+
+        if complete:
+            result.append({"date": trade_date, "value": total_value})
+
+    return result
 
 
 def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, object]:
@@ -618,6 +678,8 @@ def main() -> int:
             result = save_state(conn, payload)
         elif command == "refresh":
             result = refresh_prices(conn, payload.get("tickers", []))
+        elif command == "history":
+            result = {"trendHistory": build_portfolio_history_for_holdings(conn, payload.get("holdings", []))}
         else:
             raise ValueError(f"Unsupported command: {command}")
         print(json.dumps(result, ensure_ascii=False))
