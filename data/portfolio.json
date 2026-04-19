@@ -55,6 +55,15 @@
       "currency": "JPY"
     },
     {
+      "ticker": "7751.T",
+      "shares": "200",
+      "buyPrice": "2900",
+      "price": "4485",
+      "note": "",
+      "sourcePrice": 4485,
+      "currency": "JPY"
+    },
+    {
       "ticker": "7011.T",
       "shares": "400",
       "buyPrice": "3100",
