@@ -1,0 +1,14 @@
+{
+  "name": "stock-review",
+  "version": "0.1.0",
+  "description": "Desktop stock portfolio and review app built with Electron.",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "python:backend": "conda run -n main python backend/mock_api.py"
+  },
+  "devDependencies": {
+    "electron": "^35.1.5"
+  }
+}

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stock Review</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-mark">SR</div>
+        <nav class="sidebar-nav">
+          <button class="nav-button is-active" data-view="portfolio" title="Portfolio" aria-label="Portfolio">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5.5h16v2H4zm0 5.5h10v2H4zm0 5.5h16v2H4z"></path>
+            </svg>
+          </button>
+          <button class="nav-button" data-view="review" title="Review" aria-label="Review">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 4h8l4 4v12H6zm8 1.5V9h3.5"></path>
+              <path d="M9 13h6m-6 3h6"></path>
+            </svg>
+          </button>
+        </nav>
+        <div class="sidebar-foot">2026</div>
+      </aside>
+
+      <main class="main-panel">
+        <section class="view is-visible" id="view-portfolio">
+          <header class="hero">
+            <div>
+              <p class="eyebrow">Portfolio Overview</p>
+              <h1>保有銘柄をひと目で整理する</h1>
+              <p class="hero-copy">
+                銘柄別の数量と価格を入力すると、評価額と保有比率を自動で集計します。
+              </p>
+            </div>
+            <button class="ghost-button" id="save-portfolio">保存</button>
+          </header>
+
+          <section class="stats-grid" id="stats-grid"></section>
+
+          <section class="content-grid">
+            <article class="panel panel-table">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Holdings</p>
+                  <h2>銘柄テーブル</h2>
+                </div>
+                <button class="accent-button" id="add-holding">銘柄を追加</button>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>銘柄</th>
+                      <th>株数</th>
+                      <th>現在値</th>
+                      <th>評価額</th>
+                      <th>メモ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="holdings-body"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel panel-chart">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Allocation</p>
+                  <h2>保有割合チャート</h2>
+                </div>
+              </div>
+
+              <div class="chart-stack">
+                <canvas id="allocation-chart" width="360" height="360"></canvas>
+                <div class="legend" id="allocation-legend"></div>
+              </div>
+            </article>
+          </section>
+        </section>
+
+        <section class="view" id="view-review">
+          <header class="hero hero-review">
+            <div>
+              <p class="eyebrow">Stock Review</p>
+              <h1>個別銘柄レビューを残す</h1>
+              <p class="hero-copy">
+                気になる銘柄の投資仮説とリスクを並べて、次回の判断材料を蓄積できます。
+              </p>
+            </div>
+          </header>
+
+          <section class="review-layout">
+            <article class="panel review-form-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Review Input</p>
+                  <h2>ウォッチ銘柄</h2>
+                </div>
+                <button class="accent-button" id="add-review">レビューを追加</button>
+              </div>
+              <div class="review-list" id="review-list"></div>
+            </article>
+
+            <article class="panel notes-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Workflow</p>
+                  <h2>今後の拡張</h2>
+                </div>
+              </div>
+              <div class="notes-card">
+                <p>`conda activate main` のPython環境で、株価取得や分析ロジックを後から接続できます。</p>
+                <ul>
+                  <li>四半期決算の要点整理</li>
+                  <li>テクニカル指標の自動計算</li>
+                  <li>売買ルールのスコアリング</li>
+                </ul>
+              </div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <template id="holding-row-template">
+      <tr>
+        <td><input data-field="ticker" type="text" placeholder="AAPL" /></td>
+        <td><input data-field="shares" type="number" min="0" step="1" placeholder="10" /></td>
+        <td><input data-field="price" type="number" min="0" step="0.01" placeholder="123.45" /></td>
+        <td class="computed-cell" data-field="marketValue">0</td>
+        <td><input data-field="note" type="text" placeholder="投資メモ" /></td>
+        <td><button class="icon-remove" data-action="remove-holding" aria-label="remove">×</button></td>
+      </tr>
+    </template>
+
+    <template id="review-card-template">
+      <article class="review-card">
+        <div class="review-grid">
+          <label>
+            <span>銘柄</span>
+            <input data-field="ticker" type="text" placeholder="MSFT" />
+          </label>
+          <label>
+            <span>評価</span>
+            <select data-field="rating">
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+            </select>
+          </label>
+          <label class="full">
+            <span>投資仮説</span>
+            <textarea data-field="thesis" rows="4" placeholder="成長ドライバー"></textarea>
+          </label>
+          <label class="full">
+            <span>リスク</span>
+            <textarea data-field="risk" rows="3" placeholder="懸念点"></textarea>
+          </label>
+        </div>
+        <button class="icon-remove review-remove" data-action="remove-review" aria-label="remove">×</button>
+      </article>
+    </template>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

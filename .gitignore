@@ -1,0 +1,42 @@
+# Node / Electron
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+out/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Conda
+.conda/
+
+# Environment files
+.env
+.env.*
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local app data / temp
+tmp/
+temp/
+*.log
+
+# Large local runtime assets
+bin/
+models/
