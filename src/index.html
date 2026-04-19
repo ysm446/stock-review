@@ -134,35 +134,91 @@
             <div>
               <h1>個別銘柄レビュー</h1>
             </div>
+            <div class="hero-actions review-actions">
+              <div class="search-select review-search">
+                <input id="review-ticker-input" type="text" placeholder="285A.T / KIOXIA / 三菱" autocomplete="off" />
+                <div class="search-dropdown is-hidden" id="review-ticker-suggestions"></div>
+              </div>
+              <button class="accent-button" id="load-review">表示</button>
+            </div>
           </header>
 
-          <section class="review-layout">
-            <article class="panel review-form-panel">
+          <section class="review-dashboard">
+            <div class="review-chip-row" id="review-chip-row"></div>
+
+            <div class="review-grid-layout">
+              <article class="panel review-panel review-overview-panel">
+                <div class="review-symbol" id="review-symbol">-</div>
+                <div class="review-divider"></div>
+                <div class="review-kv-grid" id="review-overview-grid"></div>
+              </article>
+
+              <article class="panel review-panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>バリュエーション</h2>
+                  </div>
+                </div>
+                <div class="review-kv-grid" id="review-valuation-grid"></div>
+              </article>
+
+              <article class="panel review-panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>収益性</h2>
+                  </div>
+                </div>
+                <div class="review-kv-grid" id="review-profitability-grid"></div>
+              </article>
+
+              <article class="panel review-panel review-financial-panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>財務サマリー</h2>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table class="review-table">
+                    <thead>
+                      <tr>
+                        <th>期</th>
+                        <th>売上高</th>
+                        <th>営業利益</th>
+                        <th>純利益</th>
+                      </tr>
+                    </thead>
+                    <tbody id="review-financial-body"></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article class="panel review-panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>アナリスト情報</h2>
+                  </div>
+                </div>
+                <div class="review-kv-grid" id="review-analyst-grid"></div>
+              </article>
+
+              <article class="panel review-panel review-news-panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>最新ニュース</h2>
+                  </div>
+                </div>
+                <ul class="review-news-list" id="review-news-list"></ul>
+              </article>
+            </div>
+
+            <article class="panel review-notes-panel">
               <div class="panel-head">
                 <div>
-                  <p class="panel-kicker">Review Input</p>
-                  <h2>ウォッチ銘柄</h2>
+                  <h2>レビュー入力</h2>
                 </div>
                 <button class="accent-button" id="add-review">レビューを追加</button>
               </div>
               <div class="review-list" id="review-list"></div>
-            </article>
-
-            <article class="panel notes-panel">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-kicker">Workflow</p>
-                  <h2>今後の拡張</h2>
-                </div>
-              </div>
-              <div class="notes-card">
-                <p>`conda activate main` のPython環境で、株価取得や分析ロジックを後から接続できます。</p>
-                <ul>
-                  <li>四半期決算の要点整理</li>
-                  <li>テクニカル指標の自動計算</li>
-                  <li>売買ルールのスコアリング</li>
-                </ul>
-              </div>
             </article>
           </section>
         </section>

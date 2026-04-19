@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld("stockReviewApi", {
   savePortfolio: (payload) => ipcRenderer.invoke("portfolio:save", payload),
   refreshPrices: (tickers) => ipcRenderer.invoke("portfolio:refresh-prices", tickers),
   loadTrendHistory: (holdings) => ipcRenderer.invoke("portfolio:trend-history", holdings),
-  loadStockMaster: () => ipcRenderer.invoke("stock-master:load")
+  loadStockMaster: () => ipcRenderer.invoke("stock-master:load"),
+  fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker)
 });

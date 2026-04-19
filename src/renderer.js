@@ -22,6 +22,17 @@ const navButtons = document.querySelectorAll(".nav-button");
 const statsGrid = document.getElementById("stats-grid");
 const holdingsBody = document.getElementById("holdings-body");
 const reviewList = document.getElementById("review-list");
+const reviewTickerInput = document.getElementById("review-ticker-input");
+const reviewTickerSuggestions = document.getElementById("review-ticker-suggestions");
+const loadReviewButton = document.getElementById("load-review");
+const reviewChipRow = document.getElementById("review-chip-row");
+const reviewSymbol = document.getElementById("review-symbol");
+const reviewOverviewGrid = document.getElementById("review-overview-grid");
+const reviewValuationGrid = document.getElementById("review-valuation-grid");
+const reviewProfitabilityGrid = document.getElementById("review-profitability-grid");
+const reviewFinancialBody = document.getElementById("review-financial-body");
+const reviewAnalystGrid = document.getElementById("review-analyst-grid");
+const reviewNewsList = document.getElementById("review-news-list");
 const allocationLegend = document.getElementById("allocation-legend");
 const allocationChart = document.getElementById("allocation-chart");
 const holdingRowTemplate = document.getElementById("holding-row-template");
@@ -57,6 +68,8 @@ let draggingHoldingIndex = null;
 let trendChartModel = null;
 let hoveredTrendIndex = null;
 let resizeTimer = null;
+let activeReviewTicker = "";
+let reviewSnapshot = null;
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -74,6 +87,27 @@ document.getElementById("add-review").addEventListener("click", () => {
   appState.watchlist.push({ ticker: "", rating: "B", thesis: "", risk: "" });
   render();
   queueAutosave();
+});
+
+loadReviewButton.addEventListener("click", () => {
+  loadReviewSnapshot(reviewTickerInput.value);
+});
+reviewTickerInput.addEventListener("input", () => {
+  renderReviewTickerSuggestions(reviewTickerInput.value);
+});
+reviewTickerInput.addEventListener("focus", () => {
+  renderReviewTickerSuggestions(reviewTickerInput.value);
+});
+reviewTickerInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    hideReviewTickerSuggestions();
+  }, 120);
+});
+reviewTickerInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadReviewSnapshot(reviewTickerInput.value);
+  }
 });
 
 refreshPricesButton.addEventListener("click", refreshPrices);
@@ -251,6 +285,113 @@ function renderTickerSuggestions(keyword) {
     holdingTickerSuggestions.appendChild(item);
   });
   holdingTickerSuggestions.classList.remove("is-hidden");
+}
+
+function hideReviewTickerSuggestions() {
+  reviewTickerSuggestions.innerHTML = "";
+  reviewTickerSuggestions.classList.add("is-hidden");
+}
+
+function applyReviewTickerSuggestion(ticker) {
+  reviewTickerInput.value = ticker;
+  hideReviewTickerSuggestions();
+  loadReviewSnapshot(ticker);
+}
+
+function renderReviewTickerSuggestions(keyword) {
+  const normalizedKeyword = String(keyword || "").trim().toLowerCase();
+  if (!normalizedKeyword) {
+    hideReviewTickerSuggestions();
+    return;
+  }
+
+  const matches = stockMasterEntries
+    .filter(({ ticker, name }) => {
+      const tickerText = ticker.toLowerCase();
+      const nameText = String(name || "").toLowerCase();
+      return tickerText.includes(normalizedKeyword) || nameText.includes(normalizedKeyword);
+    })
+    .slice(0, 8);
+
+  if (!matches.length) {
+    hideReviewTickerSuggestions();
+    return;
+  }
+
+  reviewTickerSuggestions.innerHTML = "";
+  matches.forEach(({ ticker, name }) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "search-option";
+    item.innerHTML = `
+      <span class="search-option-name">${name}</span>
+      <span class="search-option-code">${ticker}</span>
+    `;
+    item.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      applyReviewTickerSuggestion(ticker);
+    });
+    reviewTickerSuggestions.appendChild(item);
+  });
+  reviewTickerSuggestions.classList.remove("is-hidden");
+}
+
+function formatMaybeCurrency(value, currency = "JPY", compact = false) {
+  const numeric = parseNumericInput(value);
+  if (!numeric) {
+    return "-";
+  }
+  const options = {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0
+  };
+  if (compact) {
+    options.notation = "compact";
+    options.compactDisplay = "short";
+  }
+  return new Intl.NumberFormat("ja-JP", options).format(numeric);
+}
+
+function formatMaybeNumber(value, digits = 1, suffix = "") {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "-";
+  }
+  return `${numeric.toFixed(digits)}${suffix}`;
+}
+
+function formatMaybeMultiple(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "-";
+  }
+  return `${numeric.toFixed(2)} 倍`;
+}
+
+function formatMaybePercent(value, digits = 1) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "-";
+  }
+  return `${(numeric * 100).toFixed(digits)}%`;
+}
+
+function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatStatementNumber(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "-";
+  }
+  return new Intl.NumberFormat("ja-JP", {
+    notation: "compact",
+    compactDisplay: "short",
+    maximumFractionDigits: 1
+  }).format(numeric);
 }
 
 function setStatus(message, tone = "neutral") {
@@ -931,6 +1072,167 @@ function renderReviews() {
   });
 }
 
+function getReviewQuickTickers() {
+  const tickers = new Set();
+  appState.holdings.forEach((item) => {
+    const ticker = String(item.ticker || "").trim();
+    if (ticker) {
+      tickers.add(ticker);
+    }
+  });
+  appState.watchlist.forEach((item) => {
+    const ticker = String(item.ticker || "").trim();
+    if (ticker) {
+      tickers.add(ticker);
+    }
+  });
+  return Array.from(tickers).slice(0, 12);
+}
+
+function renderReviewChips() {
+  reviewChipRow.innerHTML = "";
+  getReviewQuickTickers().forEach((ticker) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "review-chip";
+    if (ticker === activeReviewTicker) {
+      button.classList.add("is-active");
+    }
+    button.textContent = getDisplayName(ticker);
+    button.addEventListener("click", () => {
+      reviewTickerInput.value = ticker;
+      loadReviewSnapshot(ticker);
+    });
+    reviewChipRow.appendChild(button);
+  });
+}
+
+function renderReviewKeyValueGrid(container, rows) {
+  container.innerHTML = "";
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "review-kv-row";
+    item.innerHTML = `
+      <span class="review-kv-label">${row.label}</span>
+      <strong class="review-kv-value${row.tone ? ` is-${row.tone}` : ""}">${row.value}</strong>
+    `;
+    container.appendChild(item);
+  });
+}
+
+function renderReviewFinancials(rows) {
+  reviewFinancialBody.innerHTML = "";
+  if (!rows.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td colspan="4">-</td>';
+    reviewFinancialBody.appendChild(tr);
+    return;
+  }
+
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.period || "-"}</td>
+      <td>${formatStatementNumber(row.revenue)}</td>
+      <td>${formatStatementNumber(row.operatingIncome)}</td>
+      <td>${formatStatementNumber(row.netIncome)}</td>
+    `;
+    reviewFinancialBody.appendChild(tr);
+  });
+}
+
+function renderReviewNews(newsItems) {
+  reviewNewsList.innerHTML = "";
+  if (!newsItems.length) {
+    const item = document.createElement("li");
+    item.className = "review-news-empty";
+    item.textContent = "ニュースは取得できませんでした。";
+    reviewNewsList.appendChild(item);
+    return;
+  }
+
+  newsItems.forEach((item) => {
+    const li = document.createElement("li");
+    const publisher = item.publisher ? `<span class="review-news-meta">${item.publisher}</span>` : "";
+    li.innerHTML = `<a href="${item.link}" target="_blank" rel="noreferrer">${item.title}</a>${publisher}`;
+    reviewNewsList.appendChild(li);
+  });
+}
+
+function renderReviewSnapshot() {
+  renderReviewChips();
+
+  if (!reviewSnapshot) {
+    reviewSymbol.textContent = "銘柄を選択してください";
+    renderReviewKeyValueGrid(reviewOverviewGrid, []);
+    renderReviewKeyValueGrid(reviewValuationGrid, []);
+    renderReviewKeyValueGrid(reviewProfitabilityGrid, []);
+    renderReviewKeyValueGrid(reviewAnalystGrid, []);
+    renderReviewFinancials([]);
+    renderReviewNews([]);
+    return;
+  }
+
+  const { ticker, name, currency, overview, valuation, profitability, analyst, financialSummary, news } = reviewSnapshot;
+  reviewSymbol.textContent = `${name || getDisplayName(ticker)} (${ticker})`;
+
+  renderReviewKeyValueGrid(reviewOverviewGrid, [
+    { label: "セクター", value: overview.sector || "-" },
+    { label: "業種", value: overview.industry || "-" },
+    { label: "現在値", value: formatMaybeCurrency(overview.currentPrice, currency) },
+    { label: "時価総額", value: formatMaybeCurrency(overview.marketCap, currency, true) },
+    { label: "52週高値", value: formatMaybeCurrency(overview.fiftyTwoWeekHigh, currency) },
+    { label: "52週安値", value: formatMaybeCurrency(overview.fiftyTwoWeekLow, currency) }
+  ]);
+
+  renderReviewKeyValueGrid(reviewValuationGrid, [
+    { label: "PER", value: formatMaybeMultiple(valuation.trailingPE) },
+    { label: "PBR", value: formatMaybeMultiple(valuation.priceToBook) },
+    { label: "EV/EBITDA", value: formatMaybeMultiple(valuation.enterpriseToEbitda) },
+    { label: "配当利回り", value: formatMaybePercent(valuation.dividendYield, 1) }
+  ]);
+
+  renderReviewKeyValueGrid(reviewProfitabilityGrid, [
+    { label: "ROE", value: formatMaybePercent(profitability.returnOnEquity, 1) },
+    { label: "ROA", value: formatMaybePercent(profitability.returnOnAssets, 1) },
+    { label: "営業利益率", value: formatMaybePercent(profitability.operatingMargins, 1) },
+    { label: "FCFマージン", value: formatMaybePercent(profitability.fcfMargin, 1) }
+  ]);
+
+  renderReviewKeyValueGrid(reviewAnalystGrid, [
+    { label: "アナリスト数", value: formatMaybeNumber(analyst.numberOfAnalystOpinions, 0) },
+    { label: "目標株価(平均)", value: formatMaybeCurrency(analyst.targetMeanPrice, currency) },
+    { label: "目標株価(高値)", value: formatMaybeCurrency(analyst.targetHighPrice, currency) },
+    { label: "目標株価(安値)", value: formatMaybeCurrency(analyst.targetLowPrice, currency) },
+    { label: "推奨", value: analyst.recommendationKey || "-" }
+  ]);
+
+  renderReviewFinancials(financialSummary || []);
+  renderReviewNews(news || []);
+}
+
+async function loadReviewSnapshot(rawTicker) {
+  const ticker = String(rawTicker || "").trim().toUpperCase();
+  if (!ticker) {
+    return;
+  }
+
+  activeReviewTicker = ticker;
+  reviewTickerInput.value = ticker;
+  hideReviewTickerSuggestions();
+  renderReviewChips();
+
+  try {
+    const snapshot = await window.stockReviewApi.fetchReview(ticker);
+    reviewSnapshot = snapshot;
+    renderReviewSnapshot();
+  } catch (error) {
+    reviewSnapshot = null;
+    renderReviewSnapshot();
+    setStatus(`レビュー取得エラー: ${error.message}`, "error");
+  }
+}
+
 function drawAllocationChart() {
   const { ctx, width, height } = prepareHiDPICanvas(allocationChart);
   const centerX = width / 2;
@@ -1019,6 +1321,7 @@ function render() {
   renderPortfolioSummary();
   renderHoldingsTable();
   renderReviews();
+  renderReviewSnapshot();
 }
 
 async function refreshPrices() {
@@ -1091,6 +1394,11 @@ async function init() {
   appState.watchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
   appState.trendHistory = Array.isArray(data.trendHistory) ? data.trendHistory : [];
   render();
+  const initialTicker = getReviewQuickTickers()[0];
+  if (initialTicker) {
+    reviewTickerInput.value = initialTicker;
+    loadReviewSnapshot(initialTicker);
+  }
 }
 
 init();

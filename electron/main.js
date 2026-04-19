@@ -8,6 +8,7 @@ const PORTFOLIO_FILE = path.join(DATA_DIR, "portfolio.json");
 const STOCK_MASTER_FILE = path.join(DATA_DIR, "stock_master.json");
 const PRICE_FETCHER = path.join(__dirname, "..", "backend", "fetch_prices.py");
 const PORTFOLIO_STORE = path.join(__dirname, "..", "backend", "portfolio_store.py");
+const REVIEW_FETCHER = path.join(__dirname, "..", "backend", "fetch_review.py");
 
 function ensureDataFile() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -150,6 +151,49 @@ function runPriceFetcher(tickers) {
   });
 }
 
+function runReviewFetcher(ticker) {
+  return new Promise((resolve, reject) => {
+    const normalizedTicker = String(ticker || "").trim();
+    if (!normalizedTicker) {
+      reject(new Error("Ticker is required"));
+      return;
+    }
+
+    const child = spawn("python", [REVIEW_FETCHER, normalizedTicker], {
+      cwd: path.join(__dirname, ".."),
+      windowsHide: true
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(new Error(`Python process failed to start: ${error.message}`));
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `Review fetcher exited with code ${code}`));
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(stdout || "{}"));
+      } catch (error) {
+        reject(new Error(`Invalid JSON from review fetcher: ${error.message}`));
+      }
+    });
+  });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -202,3 +246,4 @@ ipcMain.handle("portfolio:save", async (_event, payload) => {
 ipcMain.handle("portfolio:refresh-prices", async (_event, tickers) => runPortfolioStore("refresh", { tickers }));
 ipcMain.handle("portfolio:trend-history", async (_event, holdings) => runPortfolioStore("history", { holdings }));
 ipcMain.handle("stock-master:load", async () => readStockMaster());
+ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
