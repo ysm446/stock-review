@@ -625,8 +625,15 @@ select:focus {
 .chart-stack {
   display: grid;
   place-items: center;
-  gap: 12px;
+  gap: 6px;
   min-height: 100%;
+}
+
+.allocation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  align-items: start;
 }
 
 #allocation-chart {
@@ -634,13 +641,14 @@ select:focus {
   max-width: 100%;
   height: auto;
   max-height: 430px;
+  margin-bottom: -2px;
 }
 
 .legend {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px 14px;
+  gap: 8px 14px;
   width: 100%;
 }
 
@@ -664,6 +672,97 @@ select:focus {
 
 .legend-name {
   white-space: nowrap;
+}
+
+.performance-panel {
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  padding-left: 18px;
+  padding-top: 10px;
+}
+
+.performance-head h3 {
+  margin: 0 0 12px;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.performance-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.performance-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 8px 0;
+}
+
+.performance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr) 64px;
+  gap: 10px;
+  align-items: center;
+}
+
+.performance-name {
+  color: #e5e7eb;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.performance-bar-track {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.performance-bar-fill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 999px 0 0 999px;
+  left: 0;
+  background: rgba(120, 127, 138, 0.34);
+}
+
+.performance-bar-gain {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+}
+
+.performance-bar-gain {
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(90deg, rgba(111, 199, 141, 0.58), rgba(111, 199, 141, 0.94));
+}
+
+.performance-bar-loss-gap {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 0 999px 999px 0;
+  background: rgba(214, 128, 128, 0.18);
+  border: 1px dashed rgba(214, 128, 128, 0.42);
+}
+
+.performance-value {
+  color: #d6dae1;
+  font-size: 0.78rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  padding-right: 6px;
+}
+
+.performance-value.is-positive {
+  color: #90c091;
+}
+
+.performance-value.is-negative {
+  color: #d18989;
 }
 
 .modal-backdrop {
@@ -1037,6 +1136,17 @@ select:focus {
   .review-layout,
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .allocation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .performance-panel {
+    border-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-left: 0;
+    padding-top: 14px;
   }
 
   .review-grid-layout {

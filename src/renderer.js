@@ -71,6 +71,7 @@ const reviewAnalystGrid = document.getElementById("review-analyst-grid");
 const reviewNewsList = document.getElementById("review-news-list");
 const allocationLegend = document.getElementById("allocation-legend");
 const allocationChart = document.getElementById("allocation-chart");
+const performanceChart = document.getElementById("performance-chart");
 const holdingRowTemplate = document.getElementById("holding-row-template");
 const priceStatus = document.getElementById("price-status");
 const refreshPricesButton = document.getElementById("refresh-prices");
@@ -1419,10 +1420,85 @@ function drawAllocationChart() {
   ctx.fillText("保有割合", centerX, centerY + 6);
 }
 
+function drawPerformanceChart() {
+  const holdings = appState.holdings
+    .map(normalizeHolding)
+    .filter((item) => item.ticker && item.marketValue > 0)
+    .sort((a, b) => b.marketValue - a.marketValue);
+
+  performanceChart.innerHTML = "";
+
+  if (!holdings.length) {
+    const empty = document.createElement("div");
+    empty.className = "performance-empty";
+    empty.textContent = "データを入力すると表示";
+    performanceChart.appendChild(empty);
+    return;
+  }
+
+  const maxReferenceValue = Math.max(
+    ...holdings.map((holding) => Math.max(holding.marketValue, holding.costBasis)),
+    1
+  );
+
+  holdings.forEach((holding) => {
+    const row = document.createElement("div");
+    row.className = "performance-row";
+
+    const label = document.createElement("div");
+    label.className = "performance-name";
+    label.textContent = getDisplayName(holding.ticker);
+
+    const track = document.createElement("div");
+    track.className = "performance-bar-track";
+
+    const marketWidth = Math.max(2, (holding.marketValue / maxReferenceValue) * 100);
+    const costWidth = Math.max(2, (holding.costBasis / maxReferenceValue) * 100);
+    const fill = document.createElement("div");
+    fill.className = "performance-bar-fill";
+
+    if (holding.profitLoss >= 0) {
+      fill.style.width = `${costWidth}%`;
+      track.appendChild(fill);
+
+      const gainWidth = marketWidth - costWidth;
+      if (gainWidth > 0.4) {
+        const gain = document.createElement("div");
+        gain.className = "performance-bar-gain";
+        gain.style.left = `${costWidth}%`;
+        gain.style.width = `${Math.max(2, gainWidth)}%`;
+        track.appendChild(gain);
+      }
+    } else {
+      fill.style.width = `${marketWidth}%`;
+      track.appendChild(fill);
+
+      const gapWidth = costWidth - marketWidth;
+      if (gapWidth > 0.4) {
+        const gap = document.createElement("div");
+        gap.className = "performance-bar-loss-gap";
+        gap.style.left = `${marketWidth}%`;
+        gap.style.width = `${Math.max(2, gapWidth)}%`;
+        track.appendChild(gap);
+      }
+    }
+
+    const value = document.createElement("div");
+    value.className = "performance-value";
+    value.textContent = formatSignedPercent(holding.profitRate);
+    value.classList.toggle("is-positive", holding.profitRate >= 0);
+    value.classList.toggle("is-negative", holding.profitRate < 0);
+
+    row.append(label, track, value);
+    performanceChart.appendChild(row);
+  });
+}
+
 function render() {
   renderPortfolioSummary();
   renderHoldingsTable();
   renderReviewSnapshot();
+  drawPerformanceChart();
 }
 
 async function refreshPrices() {
