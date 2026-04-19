@@ -8,6 +8,7 @@ Electronで作る株レビュー用デスクトップアプリです。左サイ
 - 評価額をテーブルで自動計算
 - 保有割合をドーナツチャートで表示
 - 個別銘柄レビューをウォッチリスト形式で保存
+- `yfinance` で現在値を一括更新
 
 ## 起動
 
@@ -29,4 +30,18 @@ python backend/mock_api.py
 
 ```powershell
 npm run python:backend
+```
+
+## 株価自動取得
+
+ポートフォリオ画面の `価格を更新` ボタンで、`yfinance` から現在値を取得できます。米国株など外貨建て銘柄は自動で円換算して `現在値` に反映します。
+
+- 米国株は `AAPL`
+- 日本株は `7203.T`
+
+`main` 環境に `yfinance` が無い場合は先にインストールしてください。
+
+```powershell
+conda activate main
+pip install yfinance
 ```

@@ -1,0 +1,57 @@
+{
+  "holdings": [
+    {
+      "ticker": "285A.T",
+      "shares": "200",
+      "price": "30530",
+      "note": "長期保有",
+      "sourcePrice": 30530,
+      "currency": "JPY",
+      "buyPrice": "17110"
+    },
+    {
+      "ticker": "5803.T",
+      "shares": "600",
+      "price": "5762",
+      "note": "AI関連の主力",
+      "sourcePrice": 5762,
+      "currency": "JPY",
+      "buyPrice": "3800"
+    },
+    {
+      "ticker": "6857.T",
+      "shares": "100",
+      "price": "27870",
+      "note": "配当狙い",
+      "sourcePrice": 27870,
+      "currency": "JPY",
+      "buyPrice": "26000"
+    },
+    {
+      "ticker": "4062.T",
+      "shares": "200",
+      "buyPrice": "7120",
+      "price": "9235",
+      "note": "",
+      "sourcePrice": 9235,
+      "currency": "JPY"
+    },
+    {
+      "ticker": "8058.T",
+      "shares": "400",
+      "buyPrice": "3100",
+      "price": "4952",
+      "note": "",
+      "sourcePrice": 4952,
+      "currency": "JPY"
+    }
+  ],
+  "watchlist": [
+    {
+      "ticker": "MSFT",
+      "rating": "A",
+      "thesis": "クラウドとAIの両軸で安定成長",
+      "risk": "高バリュエーション"
+    }
+  ]
+}

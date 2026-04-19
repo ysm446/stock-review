@@ -13,7 +13,6 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand-mark">SR</div>
         <nav class="sidebar-nav">
           <button class="nav-button is-active" data-view="portfolio" title="Portfolio" aria-label="Portfolio">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -34,25 +33,53 @@
         <section class="view is-visible" id="view-portfolio">
           <header class="hero">
             <div>
-              <p class="eyebrow">Portfolio Overview</p>
-              <h1>保有銘柄をひと目で整理する</h1>
-              <p class="hero-copy">
-                銘柄別の数量と価格を入力すると、評価額と保有比率を自動で集計します。
-              </p>
+              <h1>ポートフォリオ</h1>
             </div>
-            <button class="ghost-button" id="save-portfolio">保存</button>
+            <div class="hero-actions">
+              <button class="ghost-button" id="refresh-prices">価格を更新</button>
+            </div>
           </header>
 
+          <p class="status-banner is-hidden" id="price-status"></p>
+
           <section class="stats-grid" id="stats-grid"></section>
+
+          <section class="panel trend-panel">
+            <div class="trend-head">
+              <div class="trend-title-group">
+                <h2>評価額推移</h2>
+                <select id="trend-range" class="trend-select">
+                  <option value="1m">1ヶ月</option>
+                  <option value="3m">3ヶ月</option>
+                  <option value="6m">6ヶ月</option>
+                  <option value="1y">1年</option>
+                </select>
+              </div>
+              <div class="trend-metrics">
+                <div class="trend-metric">
+                  <span class="trend-metric-label">前日比</span>
+                  <strong class="trend-metric-value" id="trend-daily-change">-</strong>
+                </div>
+                <div class="trend-metric">
+                  <span class="trend-metric-label">期間変動</span>
+                  <strong class="trend-metric-value" id="trend-period-change">-</strong>
+                </div>
+              </div>
+            </div>
+            <canvas id="trend-chart" width="1440" height="420"></canvas>
+          </section>
 
           <section class="content-grid">
             <article class="panel panel-table">
               <div class="panel-head">
                 <div>
                   <p class="panel-kicker">Holdings</p>
-                  <h2>銘柄テーブル</h2>
+                  <h2>保有銘柄</h2>
                 </div>
-                <button class="accent-button" id="add-holding">銘柄を追加</button>
+                <div class="panel-actions">
+                  <span class="panel-hint">米国株と `7203.T` のような日本株コードに対応。外貨は円換算で集計</span>
+                  <button class="accent-button" id="add-holding">銘柄を追加</button>
+                </div>
               </div>
 
               <div class="table-wrap">
@@ -61,9 +88,12 @@
                     <tr>
                       <th>銘柄</th>
                       <th>株数</th>
+                      <th>平均単価</th>
                       <th>現在値</th>
+                      <th>損益</th>
+                      <th>損益率</th>
                       <th>評価額</th>
-                      <th>メモ</th>
+                      <th>割合</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -71,31 +101,27 @@
                 </table>
               </div>
             </article>
+          </section>
 
-            <article class="panel panel-chart">
-              <div class="panel-head">
-                <div>
-                  <p class="panel-kicker">Allocation</p>
-                  <h2>保有割合チャート</h2>
-                </div>
+          <section class="panel panel-chart panel-chart-wide">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">Allocation</p>
+                <h2>保有割合チャート</h2>
               </div>
+            </div>
 
-              <div class="chart-stack">
-                <canvas id="allocation-chart" width="360" height="360"></canvas>
-                <div class="legend" id="allocation-legend"></div>
-              </div>
-            </article>
+            <div class="chart-stack">
+              <canvas id="allocation-chart" width="620" height="520"></canvas>
+              <div class="legend" id="allocation-legend"></div>
+            </div>
           </section>
         </section>
 
         <section class="view" id="view-review">
           <header class="hero hero-review">
             <div>
-              <p class="eyebrow">Stock Review</p>
-              <h1>個別銘柄レビューを残す</h1>
-              <p class="hero-copy">
-                気になる銘柄の投資仮説とリスクを並べて、次回の判断材料を蓄積できます。
-              </p>
+              <h1>個別銘柄レビュー</h1>
             </div>
           </header>
 
@@ -134,12 +160,18 @@
 
     <template id="holding-row-template">
       <tr>
-        <td><input data-field="ticker" type="text" placeholder="AAPL" /></td>
-        <td><input data-field="shares" type="number" min="0" step="1" placeholder="10" /></td>
-        <td><input data-field="price" type="number" min="0" step="0.01" placeholder="123.45" /></td>
+        <td class="cell-ticker" data-field="ticker">-</td>
+        <td class="cell-number" data-field="shares">0</td>
+        <td class="cell-number" data-field="buyPrice">-</td>
+        <td class="computed-cell" data-field="price">-</td>
+        <td class="computed-cell profit-cell" data-field="profitLoss">0</td>
+        <td class="computed-cell profit-rate-cell" data-field="profitRate">0%</td>
         <td class="computed-cell" data-field="marketValue">0</td>
-        <td><input data-field="note" type="text" placeholder="投資メモ" /></td>
-        <td><button class="icon-remove" data-action="remove-holding" aria-label="remove">×</button></td>
+        <td class="computed-cell" data-field="weight">0%</td>
+        <td class="row-actions">
+          <button class="table-action" data-action="edit-holding">編集</button>
+          <button class="icon-remove" data-action="remove-holding" aria-label="remove">×</button>
+        </td>
       </tr>
     </template>
 
@@ -170,6 +202,33 @@
         <button class="icon-remove review-remove" data-action="remove-review" aria-label="remove">×</button>
       </article>
     </template>
+
+    <div class="modal-backdrop is-hidden" id="holding-modal-backdrop">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="holding-modal-title">
+        <div class="modal-head">
+          <h2 id="holding-modal-title">銘柄を追加</h2>
+          <button class="icon-remove" id="close-holding-modal" aria-label="close">×</button>
+        </div>
+        <form class="modal-form" id="holding-form">
+          <label>
+            <span>銘柄コード</span>
+            <input id="holding-ticker-input" name="ticker" type="text" placeholder="AAPL / 7203.T" required />
+          </label>
+          <label>
+            <span>株数</span>
+            <input id="holding-shares-input" name="shares" type="text" inputmode="numeric" placeholder="100" required />
+          </label>
+          <label>
+            <span>買値</span>
+            <input id="holding-buy-price-input" name="buyPrice" type="text" inputmode="numeric" placeholder="2841" required />
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="ghost-button" id="cancel-holding-modal">キャンセル</button>
+            <button type="submit" class="accent-button" id="submit-holding-modal">保存</button>
+          </div>
+        </form>
+      </section>
+    </div>
 
     <script src="renderer.js"></script>
   </body>

@@ -1,9 +1,11 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { spawn } = require("child_process");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const PORTFOLIO_FILE = path.join(DATA_DIR, "portfolio.json");
+const PRICE_FETCHER = path.join(__dirname, "..", "backend", "fetch_prices.py");
 
 function ensureDataFile() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -37,6 +39,52 @@ function writePortfolio(payload) {
   fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(payload, null, 2), "utf8");
 }
 
+function runPriceFetcher(tickers) {
+  return new Promise((resolve, reject) => {
+    const normalizedTickers = tickers
+      .map((ticker) => String(ticker || "").trim())
+      .filter(Boolean);
+
+    if (!normalizedTickers.length) {
+      resolve({ quotes: {}, errors: {} });
+      return;
+    }
+
+    const child = spawn("python", [PRICE_FETCHER, ...normalizedTickers], {
+      cwd: path.join(__dirname, ".."),
+      windowsHide: true
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(new Error(`Python process failed to start: ${error.message}`));
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `Price fetcher exited with code ${code}`));
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (error) {
+        reject(new Error(`Invalid JSON from price fetcher: ${error.message}`));
+      }
+    });
+  });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -52,6 +100,7 @@ function createWindow() {
     }
   });
 
+  win.setMenuBarVisibility(false);
   win.loadFile(path.join(__dirname, "..", "src", "index.html"));
 }
 
@@ -77,3 +126,4 @@ ipcMain.handle("portfolio:save", async (_event, payload) => {
   writePortfolio(payload);
   return { ok: true };
 });
+ipcMain.handle("portfolio:refresh-prices", async (_event, tickers) => runPriceFetcher(tickers));
