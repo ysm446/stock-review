@@ -1066,13 +1066,13 @@ function drawTrendChart() {
 
   drawSmoothPath(ctx, points);
   ctx.strokeStyle = "#4ade80";
-  ctx.lineWidth = 2.5;
+  ctx.lineWidth = 1.75;
   ctx.stroke();
 
   ctx.fillStyle = "#4ade80";
   points.forEach((point) => {
     ctx.beginPath();
-    ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
+    ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2);
     ctx.fill();
   });
 
@@ -1102,7 +1102,7 @@ function drawTrendChart() {
 
     ctx.fillStyle = "#4ade80";
     ctx.beginPath();
-    ctx.arc(activePoint.x, activePoint.y, 6.5, 0, Math.PI * 2);
+    ctx.arc(activePoint.x, activePoint.y, 5, 0, Math.PI * 2);
     ctx.fill();
   }
 
