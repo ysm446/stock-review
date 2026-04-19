@@ -9,6 +9,8 @@ const STOCK_MASTER_FILE = path.join(DATA_DIR, "stock_master.json");
 const PRICE_FETCHER = path.join(__dirname, "..", "backend", "fetch_prices.py");
 const PORTFOLIO_STORE = path.join(__dirname, "..", "backend", "portfolio_store.py");
 const REVIEW_FETCHER = path.join(__dirname, "..", "backend", "fetch_review.py");
+const DIVIDEND_FETCHER = path.join(__dirname, "..", "backend", "fetch_dividends.py");
+const SECTOR_FETCHER = path.join(__dirname, "..", "backend", "fetch_sectors.py");
 
 function ensureDataFile() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -194,6 +196,86 @@ function runReviewFetcher(ticker) {
   });
 }
 
+function runDividendFetcher(holdings) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("python", [DIVIDEND_FETCHER], {
+      cwd: path.join(__dirname, ".."),
+      windowsHide: true
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(new Error(`Python process failed to start: ${error.message}`));
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `Dividend fetcher exited with code ${code}`));
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(stdout || "{}"));
+      } catch (error) {
+        reject(new Error(`Invalid JSON from dividend fetcher: ${error.message}`));
+      }
+    });
+
+    child.stdin.write(JSON.stringify({ holdings }));
+    child.stdin.end();
+  });
+}
+
+function runSectorFetcher(tickers) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("python", [SECTOR_FETCHER], {
+      cwd: path.join(__dirname, ".."),
+      windowsHide: true
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(new Error(`Python process failed to start: ${error.message}`));
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `Sector fetcher exited with code ${code}`));
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(stdout || "{}"));
+      } catch (error) {
+        reject(new Error(`Invalid JSON from sector fetcher: ${error.message}`));
+      }
+    });
+
+    child.stdin.write(JSON.stringify({ tickers }));
+    child.stdin.end();
+  });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1480,
@@ -245,5 +327,7 @@ ipcMain.handle("portfolio:save", async (_event, payload) => {
 });
 ipcMain.handle("portfolio:refresh-prices", async (_event, tickers) => runPortfolioStore("refresh", { tickers }));
 ipcMain.handle("portfolio:trend-history", async (_event, holdings) => runPortfolioStore("history", { holdings }));
+ipcMain.handle("portfolio:dividend-summary", async (_event, holdings) => runDividendFetcher(holdings));
+ipcMain.handle("portfolio:sectors", async (_event, tickers) => runSectorFetcher(tickers));
 ipcMain.handle("stock-master:load", async () => readStockMaster());
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));

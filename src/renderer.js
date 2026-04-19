@@ -1,7 +1,8 @@
 const appState = {
   holdings: [],
   watchlist: [],
-  trendHistory: []
+  trendHistory: [],
+  dividendSummary: null
 };
 
 const stockMaster = {};
@@ -17,11 +18,46 @@ const CHART_COLORS = [
   "#14b8a6"
 ];
 
+const SECTOR_HUES = {
+  Technology: 214,
+  "Financial Services": 144,
+  Financial: 144,
+  Industrials: 28,
+  Healthcare: 344,
+  Energy: 10,
+  "Consumer Defensive": 72,
+  "Consumer Cyclical": 48,
+  "Communication Services": 188,
+  Materials: 116,
+  Utilities: 278,
+  "Real Estate": 156,
+  Basic: 116
+};
+
+const REVIEW_LABEL_HELP = {
+  "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
+  "PBR": "株価が1株純資産の何倍かを示す指標です。",
+  "EV/EBITDA": "企業価値を営業キャッシュ創出力に近い利益で割った指標です。",
+  "配当利回り": "現在の株価に対して、年間配当がどれくらいあるかを示します。",
+  "ROE": "自己資本を使ってどれだけ効率よく利益を出したかを示します。",
+  "ROA": "総資産全体を使ってどれだけ利益を出したかを示します。",
+  "営業利益率": "売上高に対して本業の利益がどれだけ残るかを示します。",
+  "FCFマージン": "売上高に対するフリーキャッシュフローの割合です。",
+  "現在値": "直近で取得できた株価です。",
+  "時価総額": "現在の株価に発行済株式数を掛けた企業価値の目安です。",
+  "52週高値": "過去52週間で付けた最も高い株価です。",
+  "52週安値": "過去52週間で付けた最も低い株価です。",
+  "目標株価(平均)": "アナリスト予想の平均的な目標株価です。",
+  "目標株価(高値)": "アナリスト予想の中で最も強気な目標株価です。",
+  "目標株価(安値)": "アナリスト予想の中で最も弱気な目標株価です。",
+  "アナリスト数": "目標株価や推奨を出しているアナリスト人数です。",
+  "推奨": "アナリストの総合評価です。buy なら買い寄りです。"
+};
+
 const views = document.querySelectorAll(".view");
 const navButtons = document.querySelectorAll(".nav-button");
 const statsGrid = document.getElementById("stats-grid");
 const holdingsBody = document.getElementById("holdings-body");
-const reviewList = document.getElementById("review-list");
 const reviewTickerInput = document.getElementById("review-ticker-input");
 const reviewTickerSuggestions = document.getElementById("review-ticker-suggestions");
 const loadReviewButton = document.getElementById("load-review");
@@ -36,7 +72,6 @@ const reviewNewsList = document.getElementById("review-news-list");
 const allocationLegend = document.getElementById("allocation-legend");
 const allocationChart = document.getElementById("allocation-chart");
 const holdingRowTemplate = document.getElementById("holding-row-template");
-const reviewCardTemplate = document.getElementById("review-card-template");
 const priceStatus = document.getElementById("price-status");
 const refreshPricesButton = document.getElementById("refresh-prices");
 const trendRangeSelect = document.getElementById("trend-range");
@@ -60,7 +95,7 @@ const cancelHoldingModalButton = document.getElementById("cancel-holding-modal")
 const submitHoldingModalButton = document.getElementById("submit-holding-modal");
 
 let statusTimer = null;
-let trendRange = "1m";
+let trendRange = "3m";
 let editingHoldingIndex = null;
 let autosaveTimer = null;
 let stockMasterEntries = [];
@@ -70,23 +105,21 @@ let hoveredTrendIndex = null;
 let resizeTimer = null;
 let activeReviewTicker = "";
 let reviewSnapshot = null;
+let holdingSectorMap = {};
+
+function activateView(view) {
+  navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
+  views.forEach((panel) => panel.classList.toggle("is-visible", panel.id === `view-${view}`));
+}
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    const { view } = button.dataset;
-    navButtons.forEach((item) => item.classList.toggle("is-active", item === button));
-    views.forEach((panel) => panel.classList.toggle("is-visible", panel.id === `view-${view}`));
+    activateView(button.dataset.view);
   });
 });
 
 document.getElementById("add-holding").addEventListener("click", () => {
   openHoldingModal();
-});
-
-document.getElementById("add-review").addEventListener("click", () => {
-  appState.watchlist.push({ ticker: "", rating: "B", thesis: "", risk: "" });
-  render();
-  queueAutosave();
 });
 
 loadReviewButton.addEventListener("click", () => {
@@ -377,6 +410,16 @@ function formatMaybePercent(value, digits = 1) {
   return `${(numeric * 100).toFixed(digits)}%`;
 }
 
+function formatMaybeYieldPercent(value, digits = 1) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "-";
+  }
+
+  const normalized = Math.abs(numeric) > 1 ? numeric : numeric * 100;
+  return `${normalized.toFixed(digits)}%`;
+}
+
 function toFiniteNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
@@ -451,6 +494,77 @@ function queueAutosave() {
       setStatus(`保存エラー: ${error.message}`, "error");
     });
   }, 250);
+}
+
+async function refreshDividendSummary() {
+  const hasHoldings = appState.holdings.some((holding) => String(holding.ticker || "").trim());
+  if (!hasHoldings) {
+    appState.dividendSummary = null;
+    renderStats();
+    return;
+  }
+
+  try {
+    const summary = await window.stockReviewApi.loadDividendSummary(appState.holdings);
+    appState.dividendSummary = summary || null;
+  } catch (_error) {
+    appState.dividendSummary = null;
+  }
+  renderStats();
+}
+
+async function refreshHoldingSectors() {
+  const tickers = appState.holdings
+    .map((holding) => String(holding.ticker || "").trim())
+    .filter(Boolean);
+
+  if (!tickers.length) {
+    holdingSectorMap = {};
+    drawAllocationChart();
+    return;
+  }
+
+  try {
+    const result = await window.stockReviewApi.loadHoldingSectors(tickers);
+    holdingSectorMap = result?.sectors || {};
+  } catch (_error) {
+    holdingSectorMap = {};
+  }
+
+  drawAllocationChart();
+}
+
+function hashString(value) {
+  let hash = 0;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) % 360;
+  }
+  return hash;
+}
+
+function getSectorHue(sector, ticker) {
+  const normalizedSector = String(sector || "").trim();
+  if (normalizedSector && typeof SECTOR_HUES[normalizedSector] === "number") {
+    return SECTOR_HUES[normalizedSector];
+  }
+  if (normalizedSector) {
+    return hashString(normalizedSector);
+  }
+  return 210 + (hashString(ticker) % 18);
+}
+
+function getAllocationColor(sector, ticker, sectorIndex) {
+  const normalizedSector = String(sector || "").trim();
+  if (!normalizedSector) {
+    const fallbackLightness = Math.max(42, 58 - Math.min(sectorIndex, 4) * 5);
+    return `hsl(${getSectorHue("", ticker)} 10% ${fallbackLightness}%)`;
+  }
+
+  const hue = getSectorHue(normalizedSector, ticker);
+  const saturation = 64;
+  const lightness = Math.max(40, 58 - Math.min(sectorIndex, 5) * 5);
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
 }
 
 function prepareHiDPICanvas(canvas) {
@@ -664,6 +778,7 @@ function buildTopStats() {
   const totalProfit = totalValue - totalCost;
   const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
   const totalPositions = holdings.filter((item) => item.ticker).length;
+  const totalAnnualDividend = parseNumericInput(appState.dividendSummary?.totalAnnualDividendJpy);
 
   return [
     { label: "総評価額", value: formatCurrency(totalValue), sub: "" },
@@ -676,7 +791,7 @@ function buildTopStats() {
     },
     {
       label: "年間配当金",
-      value: "-",
+      value: totalAnnualDividend > 0 ? formatCurrency(totalAnnualDividend) : "-",
       sub: "",
       tone: "accent"
     },
@@ -752,6 +867,8 @@ function saveHoldingFromModal() {
 
   closeHoldingModal();
   render();
+  refreshDividendSummary();
+  refreshHoldingSectors();
   queueAutosave();
 }
 
@@ -885,7 +1002,7 @@ function drawTrendChart() {
   const valuePadding = Math.max((maxValue - minValue) * 0.18, maxValue * 0.03, 100000);
   const topValue = maxValue + valuePadding;
   const bottomValue = Math.max(0, minValue - valuePadding * 0.8);
-  const yTicks = 4;
+  const yTicks = 5;
   const xStep = labels.length > 1 ? chartWidth / (labels.length - 1) : 0;
 
   ctx.strokeStyle = "rgba(55, 65, 81, 0.7)";
@@ -1014,7 +1131,9 @@ function renderHoldingsTable() {
     const profitCell = row.querySelector('[data-field="profitLoss"]');
     const profitRateCell = row.querySelector('[data-field="profitRate"]');
     const weightCell = row.querySelector('[data-field="weight"]');
+    const openReviewButton = row.querySelector('[data-action="open-review"]');
     const weight = totalValue > 0 ? (normalized.marketValue / totalValue) * 100 : 0;
+    const ticker = String(holding.ticker || "").trim();
 
     row.querySelector('[data-field="displayName"]').textContent = getDisplayName(holding.ticker);
     row.querySelector('[data-field="ticker"]').textContent = holding.ticker || "-";
@@ -1029,46 +1148,24 @@ function renderHoldingsTable() {
     profitCell.classList.toggle("is-negative", normalized.profitLoss < 0);
     profitRateCell.classList.toggle("is-positive", normalized.profitRate >= 0);
     profitRateCell.classList.toggle("is-negative", normalized.profitRate < 0);
+    openReviewButton.addEventListener("click", () => {
+      if (!ticker) {
+        return;
+      }
+      activateView("review");
+      reviewTickerInput.value = ticker;
+      loadReviewSnapshot(ticker);
+    });
     attachHoldingDragEvents(row, index);
     row.querySelector('[data-action="edit-holding"]').addEventListener("click", () => openHoldingModal(index));
     row.querySelector('[data-action="remove-holding"]').addEventListener("click", () => {
       appState.holdings.splice(index, 1);
       render();
+      refreshDividendSummary();
+      refreshHoldingSectors();
       queueAutosave();
     });
     holdingsBody.appendChild(fragment);
-  });
-}
-
-function attachReviewEvents(card, index) {
-  card.querySelectorAll("input, textarea, select").forEach((field) => {
-    field.addEventListener("input", (event) => {
-      appState.watchlist[index][event.target.dataset.field] = event.target.value;
-      queueAutosave();
-    });
-  });
-
-  card.querySelector('[data-action="remove-review"]').addEventListener("click", () => {
-    appState.watchlist.splice(index, 1);
-    render();
-    queueAutosave();
-  });
-}
-
-function renderReviews() {
-  reviewList.innerHTML = "";
-
-  appState.watchlist.forEach((item, index) => {
-    const fragment = reviewCardTemplate.content.cloneNode(true);
-    const card = fragment.querySelector(".review-card");
-
-    card.querySelector('[data-field="ticker"]').value = item.ticker || "";
-    card.querySelector('[data-field="rating"]').value = item.rating || "B";
-    card.querySelector('[data-field="thesis"]').value = item.thesis || "";
-    card.querySelector('[data-field="risk"]').value = item.risk || "";
-
-    attachReviewEvents(card, index);
-    reviewList.appendChild(fragment);
   });
 }
 
@@ -1110,10 +1207,11 @@ function renderReviewChips() {
 function renderReviewKeyValueGrid(container, rows) {
   container.innerHTML = "";
   rows.forEach((row) => {
+    const helpText = row.help || REVIEW_LABEL_HELP[row.label] || "";
     const item = document.createElement("div");
     item.className = "review-kv-row";
     item.innerHTML = `
-      <span class="review-kv-label">${row.label}</span>
+      <span class="review-kv-label${helpText ? " review-kv-label-help" : ""}"${helpText ? ` data-tooltip="${helpText}" tabindex="0"` : ""}>${row.label}</span>
       <strong class="review-kv-value${row.tone ? ` is-${row.tone}` : ""}">${row.value}</strong>
     `;
     container.appendChild(item);
@@ -1189,7 +1287,7 @@ function renderReviewSnapshot() {
     { label: "PER", value: formatMaybeMultiple(valuation.trailingPE) },
     { label: "PBR", value: formatMaybeMultiple(valuation.priceToBook) },
     { label: "EV/EBITDA", value: formatMaybeMultiple(valuation.enterpriseToEbitda) },
-    { label: "配当利回り", value: formatMaybePercent(valuation.dividendYield, 1) }
+    { label: "配当利回り", value: formatMaybeYieldPercent(valuation.dividendYield, 1) }
   ]);
 
   renderReviewKeyValueGrid(reviewProfitabilityGrid, [
@@ -1236,9 +1334,9 @@ async function loadReviewSnapshot(rawTicker) {
 function drawAllocationChart() {
   const { ctx, width, height } = prepareHiDPICanvas(allocationChart);
   const centerX = width / 2;
-  const centerY = Math.max(180, height / 2 - 34);
-  const radius = 138;
-  const innerRadius = 98;
+  const centerY = Math.max(154, height / 2 - 24);
+  const radius = 122;
+  const innerRadius = 86;
   const holdings = appState.holdings
     .map(normalizeHolding)
     .filter((item) => item.ticker && item.marketValue > 0)
@@ -1262,10 +1360,14 @@ function drawAllocationChart() {
   }
 
   let angle = -Math.PI / 2;
+  const sectorCounts = new Map();
   holdings.forEach((holding, index) => {
     const ratio = holding.marketValue / totalValue;
     const slice = ratio * Math.PI * 2;
-    const color = CHART_COLORS[index % CHART_COLORS.length];
+    const sector = holdingSectorMap[holding.ticker]?.sector || "";
+    const sectorIndex = sectorCounts.get(sector) || 0;
+    sectorCounts.set(sector, sectorIndex + 1);
+    const color = getAllocationColor(sector, holding.ticker, sectorIndex) || CHART_COLORS[index % CHART_COLORS.length];
     const endAngle = angle + slice;
 
     ctx.beginPath();
@@ -1320,7 +1422,6 @@ function drawAllocationChart() {
 function render() {
   renderPortfolioSummary();
   renderHoldingsTable();
-  renderReviews();
   renderReviewSnapshot();
 }
 
@@ -1362,6 +1463,8 @@ async function refreshPrices() {
     });
 
     render();
+    await refreshDividendSummary();
+    await refreshHoldingSectors();
     await persistPortfolio({ silent: true });
 
     const errorTickers = Object.keys(errors);
@@ -1394,6 +1497,8 @@ async function init() {
   appState.watchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
   appState.trendHistory = Array.isArray(data.trendHistory) ? data.trendHistory : [];
   render();
+  await refreshDividendSummary();
+  await refreshHoldingSectors();
   const initialTicker = getReviewQuickTickers()[0];
   if (initialTicker) {
     reviewTickerInput.value = initialTicker;
