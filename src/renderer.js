@@ -7,16 +7,19 @@ const appState = {
 
 const stockMaster = {};
 
-const CHART_COLORS = [
-  "#0ea5e9",
-  "#3b82f6",
-  "#2563eb",
-  "#4f86c6",
-  "#6366f1",
-  "#7c3aed",
-  "#8b5cf6",
-  "#6d28d9"
+const CHART_COLOR_HUES = [210, 330, 180, 270];
+const CHART_LIGHTNESS_LEVELS = [
+  { lightness: 35, saturation: 80 },
+  { lightness: 45, saturation: 75 },
+  { lightness: 55, saturation: 65 },
+  { lightness: 65, saturation: 55 }
 ];
+
+const CHART_COLORS = CHART_COLOR_HUES.flatMap((hue) =>
+  CHART_LIGHTNESS_LEVELS.map(
+    ({ lightness, saturation }) => `hsl(${hue}, ${saturation}%, ${lightness}%)`
+  )
+);
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -519,20 +522,8 @@ async function refreshHoldingSectors() {
   drawAllocationChart();
 }
 
-function hashString(value) {
-  let hash = 0;
-  const text = String(value || "");
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function getAllocationColor(sector, ticker, sectorIndex) {
-  const normalizedSector = String(sector || "").trim();
-  const normalizedTicker = String(ticker || "").trim();
-  const seed = normalizedSector || normalizedTicker || String(sectorIndex);
-  return CHART_COLORS[(hashString(seed) + sectorIndex) % CHART_COLORS.length];
+function getAllocationColor(index) {
+  return CHART_COLORS[index % CHART_COLORS.length];
 }
 
 function prepareHiDPICanvas(canvas) {
@@ -1328,14 +1319,10 @@ function drawAllocationChart() {
   }
 
   let angle = 0;
-  const sectorCounts = new Map();
   holdings.forEach((holding, index) => {
     const ratio = holding.marketValue / totalValue;
     const slice = ratio * Math.PI * 2;
-    const sector = holdingSectorMap[holding.ticker]?.sector || "";
-    const sectorIndex = sectorCounts.get(sector) || 0;
-    sectorCounts.set(sector, sectorIndex + 1);
-    const color = getAllocationColor(sector, holding.ticker, sectorIndex) || CHART_COLORS[index % CHART_COLORS.length];
+    const color = getAllocationColor(index);
     const endAngle = angle - slice;
 
     ctx.beginPath();
