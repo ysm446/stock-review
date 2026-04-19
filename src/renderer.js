@@ -1359,7 +1359,7 @@ function drawAllocationChart() {
     return;
   }
 
-  let angle = -Math.PI / 2;
+  let angle = 0;
   const sectorCounts = new Map();
   holdings.forEach((holding, index) => {
     const ratio = holding.marketValue / totalValue;
@@ -1368,17 +1368,17 @@ function drawAllocationChart() {
     const sectorIndex = sectorCounts.get(sector) || 0;
     sectorCounts.set(sector, sectorIndex + 1);
     const color = getAllocationColor(sector, holding.ticker, sectorIndex) || CHART_COLORS[index % CHART_COLORS.length];
-    const endAngle = angle + slice;
+    const endAngle = angle - slice;
 
     ctx.beginPath();
     ctx.moveTo(centerX, centerY);
     ctx.fillStyle = color;
-    ctx.arc(centerX, centerY, radius, angle, endAngle);
-    ctx.arc(centerX, centerY, innerRadius, endAngle, angle, true);
+    ctx.arc(centerX, centerY, radius, angle, endAngle, true);
+    ctx.arc(centerX, centerY, innerRadius, endAngle, angle);
     ctx.closePath();
     ctx.fill();
 
-    const labelAngle = angle + slice / 2;
+    const labelAngle = angle - slice / 2;
     const lineStartRadius = radius + 2;
     const startX = centerX + Math.cos(labelAngle) * lineStartRadius;
     const startY = centerY + Math.sin(labelAngle) * lineStartRadius;
