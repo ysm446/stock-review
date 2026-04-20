@@ -527,6 +527,23 @@ th {
   font-size: 0.82rem;
 }
 
+.table-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.table-toggle:hover,
+.table-toggle:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: rgba(243, 244, 246, 0.4);
+  text-underline-offset: 3px;
+}
+
 input,
 textarea,
 select {

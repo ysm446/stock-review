@@ -81,6 +81,7 @@ const holdingBuyPriceInput = document.getElementById("holding-buy-price-input");
 const closeHoldingModalButton = document.getElementById("close-holding-modal");
 const cancelHoldingModalButton = document.getElementById("cancel-holding-modal");
 const submitHoldingModalButton = document.getElementById("submit-holding-modal");
+const dayChangeToggleButton = document.getElementById("day-change-toggle");
 
 let statusTimer = null;
 let trendRange = "3m";
@@ -94,6 +95,7 @@ let resizeTimer = null;
 let activeReviewTicker = "";
 let reviewSnapshot = null;
 let holdingSectorMap = {};
+let holdingsDayChangeMode = "perShare";
 
 function activateView(view) {
   navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
@@ -132,6 +134,11 @@ reviewTickerInput.addEventListener("keydown", (event) => {
 });
 
 refreshPricesButton.addEventListener("click", refreshPrices);
+dayChangeToggleButton?.addEventListener("click", () => {
+  holdingsDayChangeMode = holdingsDayChangeMode === "perShare" ? "marketValue" : "perShare";
+  renderDayChangeToggle();
+  renderHoldingsTable();
+});
 trendRangeSelect.addEventListener("change", (event) => {
   trendRange = event.target.value;
   hoveredTrendIndex = null;
@@ -202,6 +209,7 @@ function normalizeHolding(raw) {
   const profitRate = costBasis > 0 ? (profitLoss / costBasis) * 100 : 0;
   const dayChangePerShare = price > 0 && previousClose > 0 ? price - previousClose : 0;
   const dayChangeRate = previousClose > 0 ? (dayChangePerShare / previousClose) * 100 : 0;
+  const dayChangeMarketValue = shares * dayChangePerShare;
   return {
     ticker: raw.ticker || "",
     shares,
@@ -212,10 +220,23 @@ function normalizeHolding(raw) {
     costBasis,
     marketValue,
     dayChange: dayChangePerShare,
+    dayChangeMarketValue,
     dayChangeRate,
     profitLoss,
     profitRate
   };
+}
+
+function renderDayChangeToggle() {
+  if (!dayChangeToggleButton) {
+    return;
+  }
+  const isMarketValue = holdingsDayChangeMode === "marketValue";
+  dayChangeToggleButton.textContent = isMarketValue ? "前日比（評価額）" : "前日比";
+  dayChangeToggleButton.setAttribute("aria-pressed", isMarketValue ? "true" : "false");
+  dayChangeToggleButton.title = isMarketValue
+    ? "クリックで1株あたりの前日比に切り替え"
+    : "クリックで評価額ベースの前日比に切り替え";
 }
 
 function parseNumericInput(value) {
@@ -1136,7 +1157,10 @@ function renderHoldingsTable() {
     row.querySelector('[data-field="shares"]').textContent = formatPlainNumber(normalized.shares);
     row.querySelector('[data-field="buyPrice"]').textContent = normalized.buyPrice > 0 ? formatCurrency(normalized.buyPrice) : "-";
     row.querySelector('[data-field="price"]').textContent = normalized.price > 0 ? formatCurrency(normalized.price) : "-";
-    dayChangeCell.textContent = normalized.previousClose > 0 ? formatSignedCurrency(normalized.dayChange) : "-";
+    const dayChangeValue = holdingsDayChangeMode === "marketValue"
+      ? normalized.dayChangeMarketValue
+      : normalized.dayChange;
+    dayChangeCell.textContent = normalized.previousClose > 0 ? formatSignedCurrency(dayChangeValue) : "-";
     dayChangeRateCell.textContent = normalized.previousClose > 0 ? formatSignedPercent(normalized.dayChangeRate) : "-";
     profitCell.textContent = formatSignedCurrency(normalized.profitLoss);
     profitRateCell.textContent = formatSignedPercent(normalized.profitRate);
@@ -1493,6 +1517,7 @@ function drawPerformanceChart() {
 
 function render() {
   renderPortfolioSummary();
+  renderDayChangeToggle();
   renderHoldingsTable();
   renderReviewSnapshot();
   drawPerformanceChart();
