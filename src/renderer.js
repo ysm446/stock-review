@@ -44,7 +44,11 @@ const REVIEW_LABEL_HELP = {
 const views = document.querySelectorAll(".view");
 const navButtons = document.querySelectorAll(".nav-button");
 const statsGrid = document.getElementById("stats-grid");
+const holdingsTable = document.querySelector(".holdings-table");
+const holdingsHead = document.getElementById("holdings-head");
 const holdingsBody = document.getElementById("holdings-body");
+const watchlistTable = document.querySelector(".watchlist-table");
+const watchlistHead = document.getElementById("watchlist-head");
 const watchlistBody = document.getElementById("watchlist-body");
 const reviewTickerInput = document.getElementById("review-ticker-input");
 const reviewTickerSuggestions = document.getElementById("review-ticker-suggestions");
@@ -85,7 +89,8 @@ const holdingBuyPriceInput = document.getElementById("holding-buy-price-input");
 const closeHoldingModalButton = document.getElementById("close-holding-modal");
 const cancelHoldingModalButton = document.getElementById("cancel-holding-modal");
 const submitHoldingModalButton = document.getElementById("submit-holding-modal");
-const dayChangeToggleButton = document.getElementById("day-change-toggle");
+const holdingsModeButtons = document.querySelectorAll('#holdings-mode-positions, #holdings-mode-metrics');
+const watchlistModeButtons = document.querySelectorAll('#watchlist-mode-positions, #watchlist-mode-metrics');
 const watchlistModalBackdrop = document.getElementById("watchlist-modal-backdrop");
 const watchlistForm = document.getElementById("watchlist-form");
 const watchlistModalTitle = document.getElementById("watchlist-modal-title");
@@ -97,6 +102,9 @@ const watchlistRiskInput = document.getElementById("watchlist-risk-input");
 const closeWatchlistModalButton = document.getElementById("close-watchlist-modal");
 const cancelWatchlistModalButton = document.getElementById("cancel-watchlist-modal");
 const submitWatchlistModalButton = document.getElementById("submit-watchlist-modal");
+const metricHelpPopup = document.getElementById("metric-help-popup");
+const metricHelpPopupTitle = document.getElementById("metric-help-popup-title");
+const metricHelpPopupText = document.getElementById("metric-help-popup-text");
 
 let statusTimer = null;
 let trendRange = "3m";
@@ -112,11 +120,59 @@ let activeReviewTicker = "";
 let reviewSnapshot = null;
 let holdingSectorMap = {};
 let holdingsDayChangeMode = "perShare";
+let holdingsTableMode = "positions";
+let watchlistTableMode = "positions";
 let editingWatchlistIndex = null;
+let activeMetricHelpTrigger = null;
+const holdingMetricsByTicker = {};
+const holdingMetricsLoading = new Set();
 
 function activateView(view) {
   navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
   views.forEach((panel) => panel.classList.toggle("is-visible", panel.id === `view-${view}`));
+}
+
+function getDayChangeToggleButton() {
+  return document.getElementById("day-change-toggle");
+}
+
+function isJapaneseTicker(ticker) {
+  return /\.T$/i.test(String(ticker || "").trim());
+}
+
+function positionMetricHelpPopup(trigger) {
+  if (!metricHelpPopup || !trigger) {
+    return;
+  }
+  const rect = trigger.getBoundingClientRect();
+  const popupWidth = Math.min(320, window.innerWidth - 24);
+  const left = Math.min(
+    window.innerWidth - popupWidth - 12,
+    Math.max(12, rect.left + rect.width / 2 - popupWidth / 2)
+  );
+  const top = Math.min(window.innerHeight - 12, rect.bottom + 12);
+  metricHelpPopup.style.left = `${left}px`;
+  metricHelpPopup.style.top = `${top}px`;
+}
+
+function openMetricHelp(label, metricKey, trigger = null) {
+  const helpText = getMetricToneHelpText(metricKey);
+  if (!metricHelpPopup || !metricHelpPopupTitle || !metricHelpPopupText || !helpText) {
+    return;
+  }
+  activeMetricHelpTrigger = trigger;
+  metricHelpPopupTitle.textContent = `${label} の説明`;
+  metricHelpPopupText.textContent = helpText;
+  positionMetricHelpPopup(trigger);
+  metricHelpPopup.classList.remove("is-hidden");
+}
+
+function closeMetricHelp() {
+  if (!metricHelpPopup) {
+    return;
+  }
+  metricHelpPopup.classList.add("is-hidden");
+  activeMetricHelpTrigger = null;
 }
 
 navButtons.forEach((button) => {
@@ -130,6 +186,16 @@ document.getElementById("add-holding").addEventListener("click", () => {
 });
 document.getElementById("add-watchlist").addEventListener("click", () => {
   openWatchlistModal();
+});
+holdingsModeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setHoldingsTableMode(button.dataset.mode || "positions");
+  });
+});
+watchlistModeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setWatchlistTableMode(button.dataset.mode || "positions");
+  });
 });
 
 loadReviewButton.addEventListener("click", () => {
@@ -156,11 +222,6 @@ reviewTickerInput.addEventListener("keydown", (event) => {
 });
 
 refreshPricesButton.addEventListener("click", refreshPrices);
-dayChangeToggleButton?.addEventListener("click", () => {
-  holdingsDayChangeMode = holdingsDayChangeMode === "perShare" ? "marketValue" : "perShare";
-  renderDayChangeToggle();
-  renderHoldingsTable();
-});
 trendRangeSelect.addEventListener("change", (event) => {
   trendRange = event.target.value;
   hoveredTrendIndex = null;
@@ -209,6 +270,9 @@ document.addEventListener("keydown", (event) => {
   if (!watchlistModalBackdrop.classList.contains("is-hidden")) {
     closeWatchlistModal();
   }
+  if (metricHelpPopup && !metricHelpPopup.classList.contains("is-hidden")) {
+    closeMetricHelp();
+  }
 });
 holdingForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -247,6 +311,42 @@ watchlistTickerInput.addEventListener("blur", () => {
     hideWatchlistTickerSuggestions();
   }, 120);
 });
+function handleMetricHelpMouseEnter(event) {
+  const trigger = event.target.closest(".metric-help-label");
+  if (!trigger) {
+    return;
+  }
+  openMetricHelp(trigger.textContent.trim(), trigger.dataset.metricKey || "", trigger);
+}
+
+function handleMetricHelpMouseLeave(event, container) {
+  if (!event.relatedTarget || !container.contains(event.relatedTarget)) {
+    closeMetricHelp();
+  }
+}
+
+function handleMetricHelpFocusIn(event) {
+  const trigger = event.target.closest(".metric-help-label");
+  if (!trigger) {
+    return;
+  }
+  openMetricHelp(trigger.textContent.trim(), trigger.dataset.metricKey || "", trigger);
+}
+
+function handleMetricHelpFocusOut(event, container) {
+  if (!event.relatedTarget || !container.contains(event.relatedTarget)) {
+    closeMetricHelp();
+  }
+}
+
+holdingsHead?.addEventListener("mouseenter", handleMetricHelpMouseEnter, true);
+holdingsHead?.addEventListener("mouseleave", (event) => handleMetricHelpMouseLeave(event, holdingsHead), true);
+holdingsHead?.addEventListener("focusin", handleMetricHelpFocusIn);
+holdingsHead?.addEventListener("focusout", (event) => handleMetricHelpFocusOut(event, holdingsHead));
+watchlistHead?.addEventListener("mouseenter", handleMetricHelpMouseEnter, true);
+watchlistHead?.addEventListener("mouseleave", (event) => handleMetricHelpMouseLeave(event, watchlistHead), true);
+watchlistHead?.addEventListener("focusin", handleMetricHelpFocusIn);
+watchlistHead?.addEventListener("focusout", (event) => handleMetricHelpFocusOut(event, watchlistHead));
 
 function normalizeHolding(raw) {
   const shares = parseWholeNumber(raw.shares);
@@ -278,6 +378,7 @@ function normalizeHolding(raw) {
 }
 
 function renderDayChangeToggle() {
+  const dayChangeToggleButton = getDayChangeToggleButton();
   if (!dayChangeToggleButton) {
     return;
   }
@@ -287,6 +388,142 @@ function renderDayChangeToggle() {
   dayChangeToggleButton.title = isMarketValue
     ? "クリックで1株あたりの前日比に切り替え"
     : "クリックで評価額ベースの前日比に切り替え";
+}
+
+function renderHoldingsTableModeToggle() {
+  holdingsModeButtons.forEach((button) => {
+    const active = button.dataset.mode === holdingsTableMode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function renderHoldingsTableHead() {
+  if (!holdingsHead) {
+    return;
+  }
+
+  if (holdingsTableMode === "metrics") {
+    holdingsHead.innerHTML = `
+      <tr>
+        <th>銘柄</th>
+        <th>時価総額</th>
+        <th>現在値</th>
+        <th>52週高値</th>
+        <th>52週安値</th>
+        ${buildMetricHeaderCell("PER", "PER")}
+        ${buildMetricHeaderCell("PBR", "PBR")}
+        ${buildMetricHeaderCell("ROE", "ROE")}
+        ${buildMetricHeaderCell("ROA", "ROA")}
+        ${buildMetricHeaderCell("配当利回り", "dividendYield")}
+      </tr>
+    `;
+    holdingsTable?.classList.add("metrics-mode");
+    holdingsTable?.classList.remove("positions-mode");
+    return;
+  }
+
+  holdingsHead.innerHTML = `
+    <tr>
+      <th class="drag-column"></th>
+      <th>銘柄</th>
+      <th>株数</th>
+      <th>平均取得</th>
+      <th>現在値</th>
+      <th>
+        <button type="button" class="table-toggle" id="day-change-toggle" aria-pressed="false">前日比</button>
+      </th>
+      <th>前日比%</th>
+      <th>損益</th>
+      <th>損益%</th>
+      <th>評価額</th>
+      <th>比率</th>
+      <th></th>
+    </tr>
+  `;
+  holdingsTable?.classList.add("positions-mode");
+  holdingsTable?.classList.remove("metrics-mode");
+  getDayChangeToggleButton()?.addEventListener("click", () => {
+    holdingsDayChangeMode = holdingsDayChangeMode === "perShare" ? "marketValue" : "perShare";
+    renderDayChangeToggle();
+    renderHoldingsTable();
+  });
+  renderDayChangeToggle();
+}
+
+function setHoldingsTableMode(mode) {
+  const nextMode = mode === "metrics" ? "metrics" : "positions";
+  if (holdingsTableMode === nextMode) {
+    return;
+  }
+  holdingsTableMode = nextMode;
+  renderHoldingsTableModeToggle();
+  renderHoldingsTableHead();
+  renderHoldingsTable();
+  if (holdingsTableMode === "metrics") {
+    void ensureHoldingMetricsLoaded();
+  }
+}
+
+function renderWatchlistTableModeToggle() {
+  watchlistModeButtons.forEach((button) => {
+    const active = button.dataset.mode === watchlistTableMode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function renderWatchlistTableHead() {
+  if (!watchlistHead) {
+    return;
+  }
+
+  if (watchlistTableMode === "metrics") {
+    watchlistHead.innerHTML = `
+      <tr>
+        <th>銘柄</th>
+        <th>時価総額</th>
+        <th>現在値</th>
+        <th>52週高値</th>
+        <th>52週安値</th>
+        ${buildMetricHeaderCell("PER", "PER")}
+        ${buildMetricHeaderCell("PBR", "PBR")}
+        ${buildMetricHeaderCell("ROE", "ROE")}
+        ${buildMetricHeaderCell("ROA", "ROA")}
+        ${buildMetricHeaderCell("配当利回り", "dividendYield")}
+      </tr>
+    `;
+    watchlistTable?.classList.add("metrics-mode");
+    watchlistTable?.classList.remove("positions-mode");
+    return;
+  }
+
+  watchlistHead.innerHTML = `
+    <tr>
+      <th class="drag-column"></th>
+      <th>銘柄</th>
+      <th>現在値</th>
+      <th>前日比</th>
+      <th>前日比%</th>
+      <th></th>
+    </tr>
+  `;
+  watchlistTable?.classList.add("positions-mode");
+  watchlistTable?.classList.remove("metrics-mode");
+}
+
+function setWatchlistTableMode(mode) {
+  const nextMode = mode === "metrics" ? "metrics" : "positions";
+  if (watchlistTableMode === nextMode) {
+    return;
+  }
+  watchlistTableMode = nextMode;
+  renderWatchlistTableModeToggle();
+  renderWatchlistTableHead();
+  renderWatchlistTable();
+  if (watchlistTableMode === "metrics") {
+    void ensureHoldingMetricsLoaded();
+  }
 }
 
 function parseNumericInput(value) {
@@ -536,13 +773,241 @@ function formatMaybeYieldPercent(value, digits = 1) {
     return "-";
   }
 
-  const normalized = Math.abs(numeric) > 1 ? numeric : numeric * 100;
+  let normalized = numeric;
+  if (Math.abs(normalized) <= 1) {
+    normalized *= 100;
+  } else if (Math.abs(normalized) >= 100) {
+    normalized /= 100;
+  }
   return `${normalized.toFixed(digits)}%`;
+}
+
+function normalizeYieldPercentValue(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return null;
+  }
+
+  let normalized = numeric;
+  if (Math.abs(normalized) <= 1) {
+    normalized *= 100;
+  } else if (Math.abs(normalized) >= 100) {
+    normalized /= 100;
+  }
+  return normalized;
+}
+
+function formatNormalizedPercent(value, digits = 1) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "-";
+  }
+  return `${numeric.toFixed(digits)}%`;
+}
+
+function getDisplayDividendYieldPercent(snapshot) {
+  const overview = snapshot?.overview || {};
+  const valuation = snapshot?.valuation || {};
+  const currentPrice = toFiniteNumber(overview.currentPrice);
+  const dividendRate = toFiniteNumber(valuation.dividendRate);
+  const trailingDividendRate = toFiniteNumber(valuation.trailingAnnualDividendRate);
+  const rawYield = normalizeYieldPercentValue(valuation.dividendYield);
+
+  if (currentPrice && currentPrice > 0) {
+    if (dividendRate && dividendRate > 0) {
+      return dividendRate / currentPrice;
+    }
+    if (trailingDividendRate && trailingDividendRate > 0) {
+      return trailingDividendRate / currentPrice;
+    }
+  }
+
+  return rawYield === null ? null : rawYield / 100;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function interpolateColor(start, end, ratio) {
+  const safeRatio = clamp(ratio, 0, 1);
+  return start.map((value, index) => Math.round(value + (end[index] - value) * safeRatio));
+}
+
+function buildMetricToneStyle(value, stops) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "";
+  }
+
+  const [min, mid, max] = stops;
+  const lowColor = [46, 125, 110];
+  const neutralColor = [112, 117, 125];
+  const highColor = [176, 88, 52];
+  let rgb;
+
+  if (numeric <= mid) {
+    const ratio = mid === min ? 1 : clamp((numeric - min) / (mid - min), 0, 1);
+    rgb = interpolateColor(lowColor, neutralColor, ratio);
+  } else {
+    const ratio = max === mid ? 1 : clamp((numeric - mid) / (max - mid), 0, 1);
+    rgb = interpolateColor(neutralColor, highColor, ratio);
+  }
+
+  return `color: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});`;
+}
+
+function buildYieldToneStyle(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return "";
+  }
+
+  const lowColor = [112, 117, 125];
+  const goodColor = [46, 125, 110];
+  const highColor = [176, 88, 52];
+  let rgb;
+
+  if (numeric <= 3) {
+    const ratio = clamp((numeric - 0.5) / (3 - 0.5), 0, 1);
+    rgb = interpolateColor(lowColor, goodColor, ratio);
+  } else {
+    const ratio = clamp((numeric - 3) / (6 - 3), 0, 1);
+    rgb = interpolateColor(goodColor, highColor, ratio);
+  }
+
+  return `color: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});`;
+}
+
+function normalizePercentLikeValue(value) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) {
+    return null;
+  }
+  return Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
+}
+
+function buildPositiveMetricToneStyle(value, stops) {
+  const numeric = normalizePercentLikeValue(value);
+  if (numeric === null) {
+    return "";
+  }
+
+  const [min, mid, max] = stops;
+  const lowColor = [112, 117, 125];
+  const midColor = [87, 121, 150];
+  const goodColor = [46, 125, 110];
+  let rgb;
+
+  if (numeric <= mid) {
+    const ratio = mid === min ? 1 : clamp((numeric - min) / (mid - min), 0, 1);
+    rgb = interpolateColor(lowColor, midColor, ratio);
+  } else {
+    const ratio = max === mid ? 1 : clamp((numeric - mid) / (max - mid), 0, 1);
+    rgb = interpolateColor(midColor, goodColor, ratio);
+  }
+
+  return `color: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});`;
+}
+
+function getMetricToneHelpText(metric) {
+  switch (metric) {
+    case "PER":
+      return "PERは株価が1株利益の何倍まで買われているかを見る指標です。色は低めで青緑、中間でグレー、高めで赤寄りです。";
+    case "PBR":
+      return "PBRは株価が1株純資産の何倍かを見る指標です。色は低めで青緑、中間でグレー、高めで赤寄りです。";
+    case "dividendYield":
+      return "配当利回りは現在株価に対する年間配当の割合です。色は2〜4%前後が見やすい帯で青緑、低すぎるとグレー、高すぎると赤寄りです。";
+    case "ROE":
+      return "ROEは自己資本を使ってどれだけ効率よく利益を出したかを見る指標です。色は低いとグレー、10%前後から良化し、15%以上で青緑寄りです。";
+    case "ROA":
+      return "ROAは総資産全体を使ってどれだけ利益を出したかを見る指標です。色は低いとグレー、5%前後から良化し、8%以上で青緑寄りです。";
+    default:
+      return "";
+  }
+}
+
+function buildMetricHeaderCell(label, metricKey = "") {
+  const helpText = metricKey ? getMetricToneHelpText(metricKey) : "";
+  if (!helpText) {
+    return `<th>${label}</th>`;
+  }
+  return `<th><button type="button" class="metric-help-label" data-metric-key="${metricKey}">${label}</button></th>`;
 }
 
 function toFiniteNumber(value) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getHoldingMetricSnapshot(ticker) {
+  return holdingMetricsByTicker[String(ticker || "").trim().toUpperCase()] || null;
+}
+
+function getJapaneseHoldings() {
+  return appState.holdings.filter((holding) => isJapaneseTicker(holding.ticker));
+}
+
+function getUniqueJapaneseHoldings() {
+  const seen = new Set();
+  return getJapaneseHoldings().filter((holding) => {
+    const ticker = String(holding.ticker || "").trim().toUpperCase();
+    if (!ticker || seen.has(ticker)) {
+      return false;
+    }
+    seen.add(ticker);
+    return true;
+  });
+}
+
+function getUniqueJapaneseWatchlist() {
+  const seen = new Set();
+  return appState.watchlist.filter((item) => {
+    const ticker = String(item.ticker || "").trim().toUpperCase();
+    if (!ticker || !isJapaneseTicker(ticker) || seen.has(ticker)) {
+      return false;
+    }
+    seen.add(ticker);
+    return true;
+  });
+}
+
+async function ensureHoldingMetricsLoaded() {
+  const tickers = [...getUniqueJapaneseHoldings(), ...getUniqueJapaneseWatchlist()]
+    .map((item) => String(item.ticker || "").trim().toUpperCase())
+    .filter(Boolean);
+
+  const missingTickers = tickers.filter((ticker) => !getHoldingMetricSnapshot(ticker) && !holdingMetricsLoading.has(ticker));
+  if (!missingTickers.length) {
+    return;
+  }
+
+  missingTickers.forEach((ticker) => holdingMetricsLoading.add(ticker));
+
+  try {
+    const snapshots = await Promise.all(
+      missingTickers.map(async (ticker) => {
+        try {
+          const snapshot = await window.stockReviewApi.fetchReview(ticker);
+          return [ticker, snapshot];
+        } catch (_error) {
+          return [ticker, null];
+        }
+      })
+    );
+
+    snapshots.forEach(([ticker, snapshot]) => {
+      holdingMetricsByTicker[ticker] = snapshot;
+    });
+  } finally {
+    missingTickers.forEach((ticker) => holdingMetricsLoading.delete(ticker));
+    if (holdingsTableMode === "metrics") {
+      renderHoldingsTable();
+    }
+    if (watchlistTableMode === "metrics") {
+      renderWatchlistTable();
+    }
+  }
 }
 
 function formatStatementNumber(value) {
@@ -608,6 +1073,9 @@ async function applyPortfolioState(data) {
   appState.watchlist = Array.isArray(data?.watchlist) ? data.watchlist : [];
   appState.trendHistory = Array.isArray(data?.trendHistory) ? data.trendHistory : [];
   render();
+  if (holdingsTableMode === "metrics") {
+    await ensureHoldingMetricsLoaded();
+  }
   await refreshDividendSummary();
   await refreshHoldingSectors();
 }
@@ -1421,6 +1889,10 @@ function drawTrendChart() {
 
 function renderHoldingsTable() {
   holdingsBody.innerHTML = "";
+  if (holdingsTableMode === "metrics") {
+    renderHoldingsMetricsTable();
+    return;
+  }
   const totalValue = appState.holdings
     .map(normalizeHolding)
     .reduce((sum, item) => sum + item.marketValue, 0);
@@ -1481,8 +1953,72 @@ function renderHoldingsTable() {
   });
 }
 
+function renderHoldingsMetricsTable() {
+  const holdings = getUniqueJapaneseHoldings();
+  const hasMissingSnapshot = holdings.some((holding) => {
+    const ticker = String(holding.ticker || "").trim().toUpperCase();
+    return ticker && !getHoldingMetricSnapshot(ticker) && !holdingMetricsLoading.has(ticker);
+  });
+
+  if (hasMissingSnapshot) {
+    void ensureHoldingMetricsLoaded();
+  }
+
+  if (!holdings.length) {
+    const empty = document.createElement("tr");
+    empty.className = "table-empty-row";
+    empty.innerHTML = '<td colspan="10">企業指標は日本株の保有銘柄があると表示されます</td>';
+    holdingsBody.appendChild(empty);
+    return;
+  }
+
+  holdings.forEach((holding) => {
+    const ticker = String(holding.ticker || "").trim().toUpperCase();
+    const snapshot = getHoldingMetricSnapshot(ticker);
+    const loading = holdingMetricsLoading.has(ticker);
+    const overview = snapshot?.overview || {};
+    const valuation = snapshot?.valuation || {};
+    const profitability = snapshot?.profitability || {};
+    const perStyle = loading ? "" : buildMetricToneStyle(valuation.trailingPE, [8, 15, 40]);
+    const pbrStyle = loading ? "" : buildMetricToneStyle(valuation.priceToBook, [0.8, 1.5, 5]);
+    const roeStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnEquity, [5, 10, 15]);
+    const roaStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnAssets, [2, 5, 8]);
+    const dividendYieldStyle = loading ? "" : buildYieldToneStyle(normalizeYieldPercentValue(getDisplayDividendYieldPercent(snapshot)));
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td class="cell-ticker">
+        <button class="ticker-link" data-action="open-review" type="button">
+          <span class="ticker-name">${getDisplayName(ticker)}</span>
+        </button>
+        <div class="ticker-code">${ticker || "-"}</div>
+      </td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.marketCap, "JPY", true)}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.currentPrice, "JPY")}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekHigh, "JPY")}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekLow, "JPY")}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${perStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.trailingPE)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${pbrStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.priceToBook)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${roeStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnEquity, 1)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${roaStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnAssets, 1)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${dividendYieldStyle}">${loading ? "読込中..." : formatMaybeYieldPercent(getDisplayDividendYieldPercent(snapshot), 1)}</td>
+    `;
+
+    row.querySelector('[data-action="open-review"]').addEventListener("click", () => {
+      activateView("review");
+      reviewTickerInput.value = ticker;
+      loadReviewSnapshot(ticker);
+    });
+    holdingsBody.appendChild(row);
+  });
+}
+
 function renderWatchlistTable() {
   watchlistBody.innerHTML = "";
+  if (watchlistTableMode === "metrics") {
+    renderWatchlistMetricsTable();
+    return;
+  }
 
   if (!appState.watchlist.length) {
     const empty = document.createElement("tr");
@@ -1529,6 +2065,66 @@ function renderWatchlistTable() {
     });
 
     watchlistBody.appendChild(fragment);
+  });
+}
+
+function renderWatchlistMetricsTable() {
+  const watchlist = getUniqueJapaneseWatchlist();
+  const hasMissingSnapshot = watchlist.some((item) => {
+    const ticker = String(item.ticker || "").trim().toUpperCase();
+    return ticker && !getHoldingMetricSnapshot(ticker) && !holdingMetricsLoading.has(ticker);
+  });
+
+  if (hasMissingSnapshot) {
+    void ensureHoldingMetricsLoaded();
+  }
+
+  if (!watchlist.length) {
+    const empty = document.createElement("tr");
+    empty.className = "table-empty-row";
+    empty.innerHTML = '<td colspan="10">企業指標は日本株のウォッチリスト銘柄があると表示されます</td>';
+    watchlistBody.appendChild(empty);
+    return;
+  }
+
+  watchlist.forEach((item) => {
+    const ticker = String(item.ticker || "").trim().toUpperCase();
+    const snapshot = getHoldingMetricSnapshot(ticker);
+    const loading = holdingMetricsLoading.has(ticker);
+    const overview = snapshot?.overview || {};
+    const valuation = snapshot?.valuation || {};
+    const profitability = snapshot?.profitability || {};
+    const perStyle = loading ? "" : buildMetricToneStyle(valuation.trailingPE, [8, 15, 40]);
+    const pbrStyle = loading ? "" : buildMetricToneStyle(valuation.priceToBook, [0.8, 1.5, 5]);
+    const roeStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnEquity, [5, 10, 15]);
+    const roaStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnAssets, [2, 5, 8]);
+    const dividendYieldStyle = loading ? "" : buildYieldToneStyle(normalizeYieldPercentValue(getDisplayDividendYieldPercent(snapshot)));
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td class="cell-ticker">
+        <button class="ticker-link" data-action="open-review" type="button">
+          <span class="ticker-name">${getDisplayName(ticker)}</span>
+        </button>
+        <div class="ticker-code">${ticker || "-"}</div>
+      </td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.marketCap, "JPY", true)}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.currentPrice, "JPY")}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekHigh, "JPY")}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekLow, "JPY")}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${perStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.trailingPE)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${pbrStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.priceToBook)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${roeStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnEquity, 1)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${roaStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnAssets, 1)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${dividendYieldStyle}">${loading ? "読込中..." : formatMaybeYieldPercent(getDisplayDividendYieldPercent(snapshot), 1)}</td>
+    `;
+
+    row.querySelector('[data-action="open-review"]').addEventListener("click", () => {
+      activateView("review");
+      reviewTickerInput.value = ticker;
+      loadReviewSnapshot(ticker);
+    });
+    watchlistBody.appendChild(row);
   });
 }
 
@@ -1667,7 +2263,7 @@ function renderReviewSnapshot() {
     { label: "PER", value: formatMaybeMultiple(valuation.trailingPE) },
     { label: "PBR", value: formatMaybeMultiple(valuation.priceToBook) },
     { label: "EV/EBITDA", value: formatMaybeMultiple(valuation.enterpriseToEbitda) },
-    { label: "配当利回り", value: formatMaybeYieldPercent(valuation.dividendYield, 1) }
+    { label: "配当利回り", value: formatMaybeYieldPercent(getDisplayDividendYieldPercent(reviewSnapshot), 1) }
   ]);
 
   renderReviewKeyValueGrid(reviewProfitabilityGrid, [
@@ -1871,6 +2467,10 @@ function drawPerformanceChart() {
 
 function render() {
   renderPortfolioSummary();
+  renderHoldingsTableModeToggle();
+  renderHoldingsTableHead();
+  renderWatchlistTableModeToggle();
+  renderWatchlistTableHead();
   renderDayChangeToggle();
   renderHoldingsTable();
   renderWatchlistTable();

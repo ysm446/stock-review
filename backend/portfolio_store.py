@@ -41,6 +41,11 @@ def parse_number(value) -> int:
         return 0
 
 
+def sanitize_text(value) -> str:
+    text = str(value or "")
+    return "".join(ch for ch in text if not 0xD800 <= ord(ch) <= 0xDFFF)
+
+
 def ensure_data_dir() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -200,7 +205,7 @@ def migrate_legacy_json(conn: sqlite3.Connection) -> None:
                 ticker,
                 parse_number(holding.get("shares")),
                 parse_number(holding.get("buyPrice")),
-                str(holding.get("note") or ""),
+                sanitize_text(holding.get("note")),
                 index,
                 now,
             ),
@@ -589,7 +594,7 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
                 ticker,
                 parse_number(holding.get("shares")),
                 parse_number(holding.get("buyPrice")),
-                str(holding.get("note") or ""),
+                sanitize_text(holding.get("note")),
                 index,
                 now,
             ),
@@ -618,7 +623,7 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
                     ticker,
                     price_jpy,
                     holding.get("sourcePrice"),
-                    str(holding.get("currency") or "JPY").upper(),
+                    sanitize_text(holding.get("currency") or "JPY").upper(),
                     None,
                     parse_number(holding.get("previousClose")),
                     holding.get("sourcePreviousClose"),
@@ -656,9 +661,9 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
             """,
             (
                 ticker,
-                str(item.get("rating") or "B"),
-                str(item.get("thesis") or ""),
-                str(item.get("risk") or ""),
+                sanitize_text(item.get("rating") or "B"),
+                sanitize_text(item.get("thesis")),
+                sanitize_text(item.get("risk")),
                 index,
                 now,
             ),

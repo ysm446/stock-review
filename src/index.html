@@ -112,14 +112,18 @@
                   <h2>保有銘柄</h2>
                 </div>
                 <div class="panel-actions">
-                  <span class="panel-hint">米国株と `7203.T` のような日本株コードに対応。外貨は円換算で集計</span>
+                  <div class="view-toggle" role="tablist" aria-label="Holdings table mode">
+                    <button class="view-toggle-button is-active" id="holdings-mode-positions" type="button" data-mode="positions" aria-pressed="true">株式情報</button>
+                    <button class="view-toggle-button" id="holdings-mode-metrics" type="button" data-mode="metrics" aria-pressed="false">企業指標</button>
+                  </div>
+                  <span class="panel-hint">企業指標は日本株の保有銘柄を対象に表示します</span>
                   <button class="accent-button" id="add-holding">銘柄を追加</button>
                 </div>
               </div>
 
               <div class="table-wrap">
                 <table class="holdings-table">
-                  <thead>
+                  <thead id="holdings-head">
                     <tr>
                       <th class="drag-column"></th>
                       <th>銘柄</th>
@@ -149,13 +153,17 @@
                   <h2>ウォッチリスト</h2>
                 </div>
                 <div class="panel-actions">
+                  <div class="view-toggle" role="tablist" aria-label="Watchlist table mode">
+                    <button class="view-toggle-button is-active" id="watchlist-mode-positions" type="button" data-mode="positions" aria-pressed="true">株式情報</button>
+                    <button class="view-toggle-button" id="watchlist-mode-metrics" type="button" data-mode="metrics" aria-pressed="false">企業指標</button>
+                  </div>
                   <button class="accent-button" id="add-watchlist">ウォッチ追加</button>
                 </div>
               </div>
 
               <div class="table-wrap">
                 <table class="watchlist-table">
-                  <thead>
+                  <thead id="watchlist-head">
                     <tr>
                       <th class="drag-column"></th>
                       <th>銘柄</th>
@@ -377,6 +385,14 @@
       </section>
     </div>
 
+    <div class="metric-help-popup is-hidden" id="metric-help-popup" role="dialog" aria-live="polite" aria-labelledby="metric-help-popup-title">
+      <div class="metric-help-content">
+        <h3 class="metric-help-popup-title" id="metric-help-popup-title">指標の説明</h3>
+        <p class="metric-help-text" id="metric-help-popup-text"></p>
+      </div>
+    </div>
+
     <script src="renderer.js"></script>
   </body>
 </html>
+

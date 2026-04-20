@@ -21,6 +21,8 @@ VALUATION_FIELDS = {
     "priceToBook": "priceToBook",
     "enterpriseToEbitda": "enterpriseToEbitda",
     "dividendYield": "dividendYield",
+    "dividendRate": "dividendRate",
+    "trailingAnnualDividendRate": "trailingAnnualDividendRate",
 }
 
 PROFITABILITY_FIELDS = {
@@ -60,6 +62,63 @@ def normalize_text(value):
     if value is None:
         return ""
     return str(value).strip()
+
+
+def load_info_safe(ticker):
+    try:
+        info = ticker.info
+        return info if isinstance(info, dict) else {}
+    except Exception:
+        return {}
+
+
+def load_fast_info_safe(ticker):
+    try:
+        fast_info = ticker.fast_info
+        return dict(fast_info) if fast_info is not None else {}
+    except Exception:
+        return {}
+
+
+def get_history_fallback_prices(ticker):
+    try:
+        history = ticker.history(period="1y", interval="1d", auto_adjust=False)
+    except Exception:
+        return {}
+    if history is None or getattr(history, "empty", True):
+        return {}
+
+    closes = history["Close"].dropna() if "Close" in history else []
+    if len(closes) == 0:
+        return {}
+
+    result = {
+        "currentPrice": to_float(closes.iloc[-1]),
+        "fiftyTwoWeekHigh": to_float(history["High"].max()) if "High" in history else None,
+        "fiftyTwoWeekLow": to_float(history["Low"].min()) if "Low" in history else None,
+    }
+    return result
+
+
+def build_overview(info, fast_info, history_fallback):
+    overview = {key: info.get(field) for key, field in OVERVIEW_FIELDS.items()}
+    overview["currentPrice"] = (
+        overview.get("currentPrice")
+        or fast_info.get("lastPrice")
+        or fast_info.get("regularMarketPrice")
+        or history_fallback.get("currentPrice")
+    )
+    overview["fiftyTwoWeekHigh"] = (
+        overview.get("fiftyTwoWeekHigh")
+        or fast_info.get("yearHigh")
+        or history_fallback.get("fiftyTwoWeekHigh")
+    )
+    overview["fiftyTwoWeekLow"] = (
+        overview.get("fiftyTwoWeekLow")
+        or fast_info.get("yearLow")
+        or history_fallback.get("fiftyTwoWeekLow")
+    )
+    return overview
 
 
 def extract_financial_summary(ticker):
@@ -122,9 +181,11 @@ def extract_news(ticker):
 
 def build_payload(symbol: str):
     ticker = yf.Ticker(symbol)
-    info = ticker.info
+    info = load_info_safe(ticker)
+    fast_info = load_fast_info_safe(ticker)
+    history_fallback = get_history_fallback_prices(ticker)
 
-    overview = {key: info.get(field) for key, field in OVERVIEW_FIELDS.items()}
+    overview = build_overview(info, fast_info, history_fallback)
     valuation = {key: info.get(field) for key, field in VALUATION_FIELDS.items()}
     profitability = {key: info.get(field) for key, field in PROFITABILITY_FIELDS.items()}
     analyst = {key: info.get(field) for key, field in ANALYST_FIELDS.items()}
@@ -136,7 +197,7 @@ def build_payload(symbol: str):
     return {
         "ticker": symbol,
         "name": normalize_text(info.get("longName") or info.get("shortName") or symbol),
-        "currency": normalize_text(info.get("currency") or "JPY").upper(),
+        "currency": normalize_text(info.get("currency") or fast_info.get("currency") or "JPY").upper(),
         "overview": overview,
         "valuation": valuation,
         "profitability": profitability,
@@ -151,7 +212,8 @@ def main():
     if not symbol:
         raise SystemExit("Ticker is required")
 
-    print(json.dumps(build_payload(symbol), ensure_ascii=False))
+    payload = json.dumps(build_payload(symbol), ensure_ascii=False)
+    sys.stdout.buffer.write(payload.encode("utf-8"))
     return 0
 
 
