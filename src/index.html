@@ -139,6 +139,33 @@
                 </table>
               </div>
             </article>
+
+            <article class="panel panel-table">
+              <div class="panel-head">
+                <div>
+                  <p class="panel-kicker">Watchlist</p>
+                  <h2>ウォッチリスト</h2>
+                </div>
+                <div class="panel-actions">
+                  <button class="accent-button" id="add-watchlist">ウォッチ追加</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="watchlist-table">
+                  <thead>
+                    <tr>
+                      <th>銘柄</th>
+                      <th>現在値</th>
+                      <th>前日比</th>
+                      <th>前日比（％）</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="watchlist-body"></tbody>
+                </table>
+              </div>
+            </article>
           </section>
         </section>
 
@@ -259,6 +286,24 @@
       </tr>
     </template>
 
+    <template id="watchlist-row-template">
+      <tr>
+        <td class="cell-ticker">
+          <button class="ticker-link" data-action="open-review" type="button">
+            <span class="ticker-name" data-field="displayName">-</span>
+          </button>
+          <div class="ticker-code" data-field="ticker">-</div>
+        </td>
+        <td class="computed-cell" data-field="price">-</td>
+        <td class="computed-cell profit-cell" data-field="dayChange">-</td>
+        <td class="computed-cell profit-rate-cell" data-field="dayChangeRate">-</td>
+        <td class="row-actions">
+          <button class="table-action" data-action="edit-watchlist">編集</button>
+          <button class="icon-remove" data-action="remove-watchlist" aria-label="remove">×</button>
+        </td>
+      </tr>
+    </template>
+
     <div class="modal-backdrop is-hidden" id="holding-modal-backdrop">
       <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="holding-modal-title">
         <div class="modal-head">
@@ -284,6 +329,40 @@
           <div class="modal-actions">
             <button type="button" class="ghost-button" id="cancel-holding-modal">キャンセル</button>
             <button type="submit" class="accent-button" id="submit-holding-modal">保存</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop is-hidden" id="watchlist-modal-backdrop">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="watchlist-modal-title">
+        <div class="modal-head">
+          <h2 id="watchlist-modal-title">ウォッチリストに追加</h2>
+          <button class="icon-remove" id="close-watchlist-modal" aria-label="close">×</button>
+        </div>
+        <form class="modal-form" id="watchlist-form">
+          <label>
+            <span>銘柄コード</span>
+            <div class="search-select">
+              <input id="watchlist-ticker-input" name="ticker" type="text" placeholder="AAPL / 7203.T / 任天堂" autocomplete="off" required />
+              <div class="search-dropdown is-hidden" id="watchlist-ticker-suggestions"></div>
+            </div>
+          </label>
+          <label>
+            <span>評価</span>
+            <input id="watchlist-rating-input" name="rating" type="text" placeholder="A" />
+          </label>
+          <label>
+            <span>投資仮説</span>
+            <textarea id="watchlist-thesis-input" name="thesis" rows="3" placeholder="注目理由"></textarea>
+          </label>
+          <label>
+            <span>リスク</span>
+            <textarea id="watchlist-risk-input" name="risk" rows="3" placeholder="気になる点"></textarea>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="ghost-button" id="cancel-watchlist-modal">キャンセル</button>
+            <button type="submit" class="accent-button" id="submit-watchlist-modal">保存</button>
           </div>
         </form>
       </section>

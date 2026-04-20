@@ -45,6 +45,7 @@ const views = document.querySelectorAll(".view");
 const navButtons = document.querySelectorAll(".nav-button");
 const statsGrid = document.getElementById("stats-grid");
 const holdingsBody = document.getElementById("holdings-body");
+const watchlistBody = document.getElementById("watchlist-body");
 const reviewTickerInput = document.getElementById("review-ticker-input");
 const reviewTickerSuggestions = document.getElementById("review-ticker-suggestions");
 const loadReviewButton = document.getElementById("load-review");
@@ -60,6 +61,7 @@ const allocationLegend = document.getElementById("allocation-legend");
 const allocationChart = document.getElementById("allocation-chart");
 const performanceChart = document.getElementById("performance-chart");
 const holdingRowTemplate = document.getElementById("holding-row-template");
+const watchlistRowTemplate = document.getElementById("watchlist-row-template");
 const priceStatus = document.getElementById("price-status");
 const refreshPricesButton = document.getElementById("refresh-prices");
 const trendRangeSelect = document.getElementById("trend-range");
@@ -82,6 +84,17 @@ const closeHoldingModalButton = document.getElementById("close-holding-modal");
 const cancelHoldingModalButton = document.getElementById("cancel-holding-modal");
 const submitHoldingModalButton = document.getElementById("submit-holding-modal");
 const dayChangeToggleButton = document.getElementById("day-change-toggle");
+const watchlistModalBackdrop = document.getElementById("watchlist-modal-backdrop");
+const watchlistForm = document.getElementById("watchlist-form");
+const watchlistModalTitle = document.getElementById("watchlist-modal-title");
+const watchlistTickerInput = document.getElementById("watchlist-ticker-input");
+const watchlistTickerSuggestions = document.getElementById("watchlist-ticker-suggestions");
+const watchlistRatingInput = document.getElementById("watchlist-rating-input");
+const watchlistThesisInput = document.getElementById("watchlist-thesis-input");
+const watchlistRiskInput = document.getElementById("watchlist-risk-input");
+const closeWatchlistModalButton = document.getElementById("close-watchlist-modal");
+const cancelWatchlistModalButton = document.getElementById("cancel-watchlist-modal");
+const submitWatchlistModalButton = document.getElementById("submit-watchlist-modal");
 
 let statusTimer = null;
 let trendRange = "3m";
@@ -96,6 +109,7 @@ let activeReviewTicker = "";
 let reviewSnapshot = null;
 let holdingSectorMap = {};
 let holdingsDayChangeMode = "perShare";
+let editingWatchlistIndex = null;
 
 function activateView(view) {
   navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
@@ -110,6 +124,9 @@ navButtons.forEach((button) => {
 
 document.getElementById("add-holding").addEventListener("click", () => {
   openHoldingModal();
+});
+document.getElementById("add-watchlist").addEventListener("click", () => {
+  openWatchlistModal();
 });
 
 loadReviewButton.addEventListener("click", () => {
@@ -178,13 +195,30 @@ holdingModalBackdrop.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !holdingModalBackdrop.classList.contains("is-hidden")) {
+  if (event.key !== "Escape") {
+    return;
+  }
+  if (!holdingModalBackdrop.classList.contains("is-hidden")) {
     closeHoldingModal();
+  }
+  if (!watchlistModalBackdrop.classList.contains("is-hidden")) {
+    closeWatchlistModal();
   }
 });
 holdingForm.addEventListener("submit", (event) => {
   event.preventDefault();
   saveHoldingFromModal();
+});
+closeWatchlistModalButton.addEventListener("click", closeWatchlistModal);
+cancelWatchlistModalButton.addEventListener("click", closeWatchlistModal);
+watchlistModalBackdrop.addEventListener("click", (event) => {
+  if (event.target === watchlistModalBackdrop) {
+    closeWatchlistModal();
+  }
+});
+watchlistForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveWatchlistFromModal();
 });
 holdingTickerInput.addEventListener("input", () => {
   renderTickerSuggestions(holdingTickerInput.value);
@@ -195,6 +229,17 @@ holdingTickerInput.addEventListener("focus", () => {
 holdingTickerInput.addEventListener("blur", () => {
   setTimeout(() => {
     hideTickerSuggestions();
+  }, 120);
+});
+watchlistTickerInput.addEventListener("input", () => {
+  renderWatchlistTickerSuggestions(watchlistTickerInput.value);
+});
+watchlistTickerInput.addEventListener("focus", () => {
+  renderWatchlistTickerSuggestions(watchlistTickerInput.value);
+});
+watchlistTickerInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    hideWatchlistTickerSuggestions();
   }, 120);
 });
 
@@ -287,6 +332,13 @@ function getDisplayName(ticker) {
   return stockMaster[normalized] || normalized || "-";
 }
 
+function normalizeSearchText(value) {
+  return String(value || "")
+    .trim()
+    .normalize("NFKC")
+    .toLowerCase();
+}
+
 function hideTickerSuggestions() {
   holdingTickerSuggestions.innerHTML = "";
   holdingTickerSuggestions.classList.add("is-hidden");
@@ -297,8 +349,18 @@ function applyTickerSuggestion(ticker) {
   hideTickerSuggestions();
 }
 
+function hideWatchlistTickerSuggestions() {
+  watchlistTickerSuggestions.innerHTML = "";
+  watchlistTickerSuggestions.classList.add("is-hidden");
+}
+
+function applyWatchlistTickerSuggestion(ticker) {
+  watchlistTickerInput.value = ticker;
+  hideWatchlistTickerSuggestions();
+}
+
 function renderTickerSuggestions(keyword) {
-  const normalizedKeyword = String(keyword || "").trim().toLowerCase();
+  const normalizedKeyword = normalizeSearchText(keyword);
   if (!normalizedKeyword) {
     hideTickerSuggestions();
     return;
@@ -306,8 +368,8 @@ function renderTickerSuggestions(keyword) {
 
   const matches = stockMasterEntries
     .filter(({ ticker, name }) => {
-      const tickerText = ticker.toLowerCase();
-      const nameText = String(name || "").toLowerCase();
+      const tickerText = normalizeSearchText(ticker);
+      const nameText = normalizeSearchText(name);
       return tickerText.includes(normalizedKeyword) || nameText.includes(normalizedKeyword);
     })
     .slice(0, 8);
@@ -335,6 +397,44 @@ function renderTickerSuggestions(keyword) {
   holdingTickerSuggestions.classList.remove("is-hidden");
 }
 
+function renderWatchlistTickerSuggestions(keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) {
+    hideWatchlistTickerSuggestions();
+    return;
+  }
+
+  const matches = stockMasterEntries
+    .filter(({ ticker, name }) => {
+      const tickerText = normalizeSearchText(ticker);
+      const nameText = normalizeSearchText(name);
+      return tickerText.includes(normalizedKeyword) || nameText.includes(normalizedKeyword);
+    })
+    .slice(0, 8);
+
+  if (!matches.length) {
+    hideWatchlistTickerSuggestions();
+    return;
+  }
+
+  watchlistTickerSuggestions.innerHTML = "";
+  matches.forEach(({ ticker, name }) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "search-option";
+    item.innerHTML = `
+      <span class="search-option-name">${name}</span>
+      <span class="search-option-code">${ticker}</span>
+    `;
+    item.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      applyWatchlistTickerSuggestion(ticker);
+    });
+    watchlistTickerSuggestions.appendChild(item);
+  });
+  watchlistTickerSuggestions.classList.remove("is-hidden");
+}
+
 function hideReviewTickerSuggestions() {
   reviewTickerSuggestions.innerHTML = "";
   reviewTickerSuggestions.classList.add("is-hidden");
@@ -347,7 +447,7 @@ function applyReviewTickerSuggestion(ticker) {
 }
 
 function renderReviewTickerSuggestions(keyword) {
-  const normalizedKeyword = String(keyword || "").trim().toLowerCase();
+  const normalizedKeyword = normalizeSearchText(keyword);
   if (!normalizedKeyword) {
     hideReviewTickerSuggestions();
     return;
@@ -355,8 +455,8 @@ function renderReviewTickerSuggestions(keyword) {
 
   const matches = stockMasterEntries
     .filter(({ ticker, name }) => {
-      const tickerText = ticker.toLowerCase();
-      const nameText = String(name || "").toLowerCase();
+      const tickerText = normalizeSearchText(ticker);
+      const nameText = normalizeSearchText(name);
       return tickerText.includes(normalizedKeyword) || nameText.includes(normalizedKeyword);
     })
     .slice(0, 8);
@@ -529,8 +629,8 @@ async function refreshDividendSummary() {
 }
 
 async function refreshHoldingSectors() {
-  const tickers = appState.holdings
-    .map((holding) => String(holding.ticker || "").trim())
+  const tickers = [...appState.holdings, ...appState.watchlist]
+    .map((item) => String(item.ticker || "").trim())
     .filter(Boolean);
 
   if (!tickers.length) {
@@ -854,6 +954,56 @@ function saveHoldingFromModal() {
   closeHoldingModal();
   render();
   refreshDividendSummary();
+  refreshHoldingSectors();
+  queueAutosave();
+}
+
+function openWatchlistModal(index = null) {
+  editingWatchlistIndex = index;
+  const item = index === null
+    ? { ticker: "", rating: "B", thesis: "", risk: "" }
+    : appState.watchlist[index];
+  watchlistModalTitle.textContent = index === null ? "ウォッチリストに追加" : "ウォッチリストを編集";
+  submitWatchlistModalButton.textContent = index === null ? "追加" : "更新";
+  watchlistTickerInput.value = item.ticker || "";
+  watchlistRatingInput.value = item.rating || "B";
+  watchlistThesisInput.value = item.thesis || "";
+  watchlistRiskInput.value = item.risk || "";
+  watchlistModalBackdrop.classList.remove("is-hidden");
+  hideWatchlistTickerSuggestions();
+  watchlistTickerInput.focus();
+}
+
+function closeWatchlistModal() {
+  editingWatchlistIndex = null;
+  watchlistForm.reset();
+  hideWatchlistTickerSuggestions();
+  watchlistModalBackdrop.classList.add("is-hidden");
+}
+
+function saveWatchlistFromModal() {
+  const ticker = watchlistTickerInput.value.trim();
+  if (!ticker) {
+    setStatus("ウォッチする銘柄コードを入力してください。", "error");
+    return;
+  }
+
+  const nextItem = {
+    ...(editingWatchlistIndex === null ? {} : appState.watchlist[editingWatchlistIndex]),
+    ticker,
+    rating: watchlistRatingInput.value.trim() || "B",
+    thesis: watchlistThesisInput.value.trim(),
+    risk: watchlistRiskInput.value.trim()
+  };
+
+  if (editingWatchlistIndex === null) {
+    appState.watchlist.push(nextItem);
+  } else {
+    appState.watchlist[editingWatchlistIndex] = nextItem;
+  }
+
+  closeWatchlistModal();
+  render();
   refreshHoldingSectors();
   queueAutosave();
 }
@@ -1195,6 +1345,56 @@ function renderHoldingsTable() {
   });
 }
 
+function renderWatchlistTable() {
+  watchlistBody.innerHTML = "";
+
+  if (!appState.watchlist.length) {
+    const empty = document.createElement("tr");
+    empty.className = "table-empty-row";
+    empty.innerHTML = '<td colspan="5">ウォッチリストはまだありません</td>';
+    watchlistBody.appendChild(empty);
+    return;
+  }
+
+  appState.watchlist.forEach((item, index) => {
+    const normalized = normalizeHolding(item);
+    const fragment = watchlistRowTemplate.content.cloneNode(true);
+    const row = fragment.querySelector("tr");
+    const dayChangeCell = row.querySelector('[data-field="dayChange"]');
+    const dayChangeRateCell = row.querySelector('[data-field="dayChangeRate"]');
+    const openReviewButton = row.querySelector('[data-action="open-review"]');
+    const ticker = String(item.ticker || "").trim();
+
+    row.querySelector('[data-field="displayName"]').textContent = getDisplayName(item.ticker);
+    row.querySelector('[data-field="ticker"]').textContent = item.ticker || "-";
+    row.querySelector('[data-field="price"]').textContent = normalized.price > 0 ? formatCurrency(normalized.price) : "-";
+    dayChangeCell.textContent = normalized.previousClose > 0 ? formatSignedCurrency(normalized.dayChange) : "-";
+    dayChangeRateCell.textContent = normalized.previousClose > 0 ? formatSignedPercent(normalized.dayChangeRate) : "-";
+    dayChangeCell.classList.toggle("is-positive", normalized.previousClose > 0 && normalized.dayChange >= 0);
+    dayChangeCell.classList.toggle("is-negative", normalized.previousClose > 0 && normalized.dayChange < 0);
+    dayChangeRateCell.classList.toggle("is-positive", normalized.previousClose > 0 && normalized.dayChangeRate >= 0);
+    dayChangeRateCell.classList.toggle("is-negative", normalized.previousClose > 0 && normalized.dayChangeRate < 0);
+
+    openReviewButton.addEventListener("click", () => {
+      if (!ticker) {
+        return;
+      }
+      activateView("review");
+      reviewTickerInput.value = ticker;
+      loadReviewSnapshot(ticker);
+    });
+    row.querySelector('[data-action="edit-watchlist"]').addEventListener("click", () => openWatchlistModal(index));
+    row.querySelector('[data-action="remove-watchlist"]').addEventListener("click", () => {
+      appState.watchlist.splice(index, 1);
+      render();
+      refreshHoldingSectors();
+      queueAutosave();
+    });
+
+    watchlistBody.appendChild(fragment);
+  });
+}
+
 function getReviewQuickTickers() {
   const tickers = new Set();
   appState.holdings.forEach((item) => {
@@ -1519,13 +1719,14 @@ function render() {
   renderPortfolioSummary();
   renderDayChangeToggle();
   renderHoldingsTable();
+  renderWatchlistTable();
   renderReviewSnapshot();
   drawPerformanceChart();
 }
 
 async function refreshPrices() {
-  const tickers = appState.holdings
-    .map((holding) => String(holding.ticker || "").trim())
+  const tickers = [...appState.holdings, ...appState.watchlist]
+    .map((item) => String(item.ticker || "").trim())
     .filter(Boolean);
 
   if (!tickers.length) {
@@ -1554,6 +1755,24 @@ async function refreshPrices() {
       updatedCount += 1;
       return {
         ...holding,
+        price: String(parseWholeNumber(quote.price_jpy ?? quote.price)),
+        sourcePrice: quote.price,
+        currency: quote.currency,
+        previousClose: quote.previous_close_jpy ? String(parseWholeNumber(quote.previous_close_jpy)) : "",
+        sourcePreviousClose: quote.previous_close
+      };
+    });
+
+    appState.watchlist = appState.watchlist.map((item) => {
+      const ticker = String(item.ticker || "").trim();
+      const quote = quotes[ticker];
+      if (!quote || typeof quote.price !== "number") {
+        return item;
+      }
+
+      updatedCount += 1;
+      return {
+        ...item,
         price: String(parseWholeNumber(quote.price_jpy ?? quote.price)),
         sourcePrice: quote.price,
         currency: quote.currency,

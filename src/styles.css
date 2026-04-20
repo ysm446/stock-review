@@ -703,6 +703,46 @@ select:focus {
   white-space: nowrap;
 }
 
+.watchlist-table {
+  table-layout: fixed;
+}
+
+.watchlist-table th:nth-child(1),
+.watchlist-table td:nth-child(1),
+.watchlist-table th:nth-child(2),
+.watchlist-table td:nth-child(2),
+.watchlist-table th:nth-child(3),
+.watchlist-table td:nth-child(3),
+.watchlist-table th:nth-child(4),
+.watchlist-table td:nth-child(4) {
+  width: calc((100% - 96px) / 4);
+}
+
+.watchlist-table th:nth-child(2),
+.watchlist-table td:nth-child(2),
+.watchlist-table th:nth-child(3),
+.watchlist-table td:nth-child(3),
+.watchlist-table th:nth-child(4),
+.watchlist-table td:nth-child(4) {
+  text-align: right;
+}
+
+.watchlist-table th:nth-child(5),
+.watchlist-table td:nth-child(5) {
+  width: 96px;
+}
+
+.watchlist-table .computed-cell {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.table-empty-row td {
+  color: var(--muted);
+  text-align: center;
+  padding: 18px 8px;
+}
+
 .chart-stack {
   display: grid;
   place-items: center;
