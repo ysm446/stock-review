@@ -37,6 +37,8 @@ tmp/
 temp/
 *.log
 data/*.db
+portfolio.json
+data/portfolio.json
 
 # Large local runtime assets
 bin/

@@ -63,6 +63,8 @@ const performanceChart = document.getElementById("performance-chart");
 const holdingRowTemplate = document.getElementById("holding-row-template");
 const watchlistRowTemplate = document.getElementById("watchlist-row-template");
 const priceStatus = document.getElementById("price-status");
+const exportPortfolioButton = document.getElementById("export-portfolio");
+const importPortfolioButton = document.getElementById("import-portfolio");
 const refreshPricesButton = document.getElementById("refresh-prices");
 const trendRangeSelect = document.getElementById("trend-range");
 const trendChart = document.getElementById("trend-chart");
@@ -133,6 +135,8 @@ document.getElementById("add-watchlist").addEventListener("click", () => {
 loadReviewButton.addEventListener("click", () => {
   loadReviewSnapshot(reviewTickerInput.value);
 });
+exportPortfolioButton?.addEventListener("click", exportPortfolio);
+importPortfolioButton?.addEventListener("click", importPortfolio);
 reviewTickerInput.addEventListener("input", () => {
   renderReviewTickerSuggestions(reviewTickerInput.value);
 });
@@ -588,15 +592,69 @@ function setStatus(message, tone = "neutral") {
 }
 
 async function persistPortfolio({ silent = false } = {}) {
-  await window.stockReviewApi.savePortfolio({
+  const result = await window.stockReviewApi.savePortfolio({
     holdings: appState.holdings,
     watchlist: appState.watchlist
   });
-  const trendResult = await window.stockReviewApi.loadTrendHistory(appState.holdings);
-  appState.trendHistory = Array.isArray(trendResult?.trendHistory) ? trendResult.trendHistory : [];
+  appState.trendHistory = Array.isArray(result?.trendHistory) ? result.trendHistory : [];
   renderPortfolioSummary();
   if (!silent) {
     setStatus("保存しました。", "success");
+  }
+}
+
+async function applyPortfolioState(data) {
+  appState.holdings = Array.isArray(data?.holdings) ? data.holdings : [];
+  appState.watchlist = Array.isArray(data?.watchlist) ? data.watchlist : [];
+  appState.trendHistory = Array.isArray(data?.trendHistory) ? data.trendHistory : [];
+  render();
+  await refreshDividendSummary();
+  await refreshHoldingSectors();
+}
+
+async function exportPortfolio() {
+  exportPortfolioButton.disabled = true;
+  const previousText = exportPortfolioButton.textContent;
+  exportPortfolioButton.textContent = "Exporting...";
+
+  try {
+    const result = await window.stockReviewApi.exportPortfolio();
+    if (result?.canceled) {
+      setStatus("エクスポートをキャンセルしました。", "neutral");
+      return;
+    }
+    setStatus(`エクスポートしました: ${result.filePath}`, "success");
+  } catch (error) {
+    setStatus(`エクスポートエラー: ${error.message}`, "error");
+  } finally {
+    exportPortfolioButton.disabled = false;
+    exportPortfolioButton.textContent = previousText;
+  }
+}
+
+async function importPortfolio() {
+  const confirmed = window.confirm("現在の保有銘柄とウォッチリストを、選択したファイルの内容で置き換えます。続けますか？");
+  if (!confirmed) {
+    return;
+  }
+
+  importPortfolioButton.disabled = true;
+  const previousText = importPortfolioButton.textContent;
+  importPortfolioButton.textContent = "Importing...";
+
+  try {
+    const result = await window.stockReviewApi.importPortfolio();
+    if (result?.canceled) {
+      setStatus("インポートをキャンセルしました。", "neutral");
+      return;
+    }
+    await applyPortfolioState(result?.portfolio || {});
+    setStatus(`インポートしました: ${result.filePath}`, "success");
+  } catch (error) {
+    setStatus(`インポートエラー: ${error.message}`, "error");
+  } finally {
+    importPortfolioButton.disabled = false;
+    importPortfolioButton.textContent = previousText;
   }
 }
 
@@ -1908,12 +1966,7 @@ async function init() {
     .map(([ticker, name]) => ({ ticker, name }))
     .sort((a, b) => a.name.localeCompare(b.name, "ja"));
   const data = await window.stockReviewApi.loadPortfolio();
-  appState.holdings = Array.isArray(data.holdings) ? data.holdings : [];
-  appState.watchlist = Array.isArray(data.watchlist) ? data.watchlist : [];
-  appState.trendHistory = Array.isArray(data.trendHistory) ? data.trendHistory : [];
-  render();
-  await refreshDividendSummary();
-  await refreshHoldingSectors();
+  await applyPortfolioState(data);
   const initialTicker = getReviewQuickTickers()[0];
   if (initialTicker) {
     reviewTickerInput.value = initialTicker;

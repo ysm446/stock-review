@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -60,6 +60,47 @@ function readPortfolio() {
 function writePortfolio(payload) {
   ensureDataFile();
   fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(payload, null, 2), "utf8");
+}
+
+async function syncPortfolioStore(payload) {
+  try {
+    return await runPortfolioStore("save", payload);
+  } catch (error) {
+    console.warn("Failed to sync portfolio store:", error);
+    return null;
+  }
+}
+
+function buildExportPayload(portfolio) {
+  return {
+    version: 1,
+    source: "stock-review",
+    exportedAt: new Date().toISOString(),
+    holdings: Array.isArray(portfolio?.holdings) ? portfolio.holdings : [],
+    watchlist: Array.isArray(portfolio?.watchlist) ? portfolio.watchlist : []
+  };
+}
+
+function sanitizePortfolioPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Import file must be a JSON object.");
+  }
+
+  const holdings = Array.isArray(payload.holdings) ? payload.holdings : null;
+  const watchlist = Array.isArray(payload.watchlist) ? payload.watchlist : null;
+
+  if (!holdings || !watchlist) {
+    throw new Error("Import file must include holdings and watchlist arrays.");
+  }
+
+  return { holdings, watchlist };
+}
+
+function formatExportDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function readStockMaster() {
@@ -323,10 +364,72 @@ ipcMain.handle("portfolio:load", async () => {
 });
 ipcMain.handle("portfolio:save", async (_event, payload) => {
   writePortfolio(payload);
-  return { ok: true };
+  const synced = await syncPortfolioStore(payload);
+  return {
+    ok: true,
+    trendHistory: Array.isArray(synced?.trendHistory) ? synced.trendHistory : []
+  };
 });
 ipcMain.handle("portfolio:refresh-prices", async (_event, tickers) => runPortfolioStore("refresh", { tickers }));
 ipcMain.handle("portfolio:trend-history", async (_event, holdings) => runPortfolioStore("history", { holdings }));
+ipcMain.handle("portfolio:export", async () => {
+  const portfolio = readPortfolio();
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const defaultPath = path.join(DATA_DIR, `stock-review-export-${formatExportDate()}.json`);
+  const result = await dialog.showSaveDialog(targetWindow, {
+    title: "Export Portfolio Data",
+    defaultPath,
+    filters: [{ name: "JSON Files", extensions: ["json"] }]
+  });
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true };
+  }
+
+  const exportPayload = buildExportPayload(portfolio);
+  fs.writeFileSync(result.filePath, JSON.stringify(exportPayload, null, 2), "utf8");
+  return {
+    canceled: false,
+    filePath: result.filePath,
+    holdingCount: exportPayload.holdings.length,
+    watchlistCount: exportPayload.watchlist.length
+  };
+});
+ipcMain.handle("portfolio:import", async () => {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const result = await dialog.showOpenDialog(targetWindow, {
+    title: "Import Portfolio Data",
+    properties: ["openFile"],
+    filters: [{ name: "JSON Files", extensions: ["json"] }]
+  });
+
+  if (result.canceled || !result.filePaths?.length) {
+    return { canceled: true };
+  }
+
+  const raw = fs.readFileSync(result.filePaths[0], "utf8");
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Invalid JSON file: ${error.message}`);
+  }
+
+  const payload = sanitizePortfolioPayload(parsed);
+  writePortfolio(payload);
+  const synced = await syncPortfolioStore(payload);
+  const history = Array.isArray(synced?.trendHistory)
+    ? synced.trendHistory
+    : (await runPortfolioStore("history", { holdings: payload.holdings || [] }))?.trendHistory || [];
+  return {
+    canceled: false,
+    filePath: result.filePaths[0],
+    portfolio: {
+      ...payload,
+      trendHistory: Array.isArray(history) ? history : []
+    }
+  };
+});
 ipcMain.handle("portfolio:dividend-summary", async (_event, holdings) => runDividendFetcher(holdings));
 ipcMain.handle("portfolio:sectors", async (_event, tickers) => runSectorFetcher(tickers));
 ipcMain.handle("stock-master:load", async () => readStockMaster());

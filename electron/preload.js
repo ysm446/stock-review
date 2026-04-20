@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("stockReviewApi", {
   loadPortfolio: () => ipcRenderer.invoke("portfolio:load"),
   savePortfolio: (payload) => ipcRenderer.invoke("portfolio:save", payload),
+  exportPortfolio: () => ipcRenderer.invoke("portfolio:export"),
+  importPortfolio: () => ipcRenderer.invoke("portfolio:import"),
   refreshPrices: (tickers) => ipcRenderer.invoke("portfolio:refresh-prices", tickers),
   loadTrendHistory: (holdings) => ipcRenderer.invoke("portfolio:trend-history", holdings),
   loadDividendSummary: (holdings) => ipcRenderer.invoke("portfolio:dividend-summary", holdings),
