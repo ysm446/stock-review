@@ -451,6 +451,53 @@ table {
   font-size: 0.88rem;
 }
 
+.holdings-table {
+  table-layout: fixed;
+}
+
+.holdings-table th,
+.holdings-table td {
+  vertical-align: middle;
+}
+
+.holdings-table th:nth-child(1),
+.holdings-table td:nth-child(1) {
+  width: 34px;
+}
+
+.holdings-table th:nth-child(2),
+.holdings-table td:nth-child(2),
+.holdings-table th:nth-child(3),
+.holdings-table td:nth-child(3),
+.holdings-table th:nth-child(4),
+.holdings-table td:nth-child(4),
+.holdings-table th:nth-child(5),
+.holdings-table td:nth-child(5),
+.holdings-table th:nth-child(6),
+.holdings-table td:nth-child(6),
+.holdings-table th:nth-child(7),
+.holdings-table td:nth-child(7),
+.holdings-table th:nth-child(8),
+.holdings-table td:nth-child(8),
+.holdings-table th:nth-child(9),
+.holdings-table td:nth-child(9),
+.holdings-table th:nth-child(10),
+.holdings-table td:nth-child(10),
+.holdings-table th:nth-child(11),
+.holdings-table td:nth-child(11) {
+  width: calc((100% - 130px) / 10);
+}
+
+.holdings-table th:nth-child(12),
+.holdings-table td:nth-child(12) {
+  width: 96px;
+}
+
+.holdings-table th:nth-child(n + 3):nth-child(-n + 11),
+.holdings-table td:nth-child(n + 3):nth-child(-n + 11) {
+  text-align: right;
+}
+
 .drag-column {
   width: 34px;
 }
@@ -586,9 +633,12 @@ select:focus {
 
 .cell-ticker {
   font-weight: 600;
+  overflow: hidden;
 }
 
 .ticker-link {
+  display: block;
+  width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
@@ -606,6 +656,10 @@ select:focus {
 }
 
 .ticker-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text);
   font-size: 0.92rem;
   line-height: 1.3;
@@ -616,10 +670,20 @@ select:focus {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-number {
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.holdings-table .computed-cell,
+.holdings-table .cell-number {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .chart-stack {
