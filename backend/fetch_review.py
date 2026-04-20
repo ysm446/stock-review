@@ -4,6 +4,8 @@ from datetime import datetime
 
 import yfinance as yf
 
+MAX_FINANCIAL_SUMMARY_PERIODS = 4
+
 
 OVERVIEW_FIELDS = {
     "sector": "sector",
@@ -78,7 +80,7 @@ def extract_financial_summary(ticker):
         return None
 
     items = []
-    for column in table.columns[:2]:
+    for column in table.columns[:MAX_FINANCIAL_SUMMARY_PERIODS]:
         label = column.strftime("%Y-%m") if hasattr(column, "strftime") else str(column)
         items.append(
             {
