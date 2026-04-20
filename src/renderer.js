@@ -850,9 +850,9 @@ function buildMetricToneStyle(value, stops) {
   }
 
   const [min, mid, max] = stops;
-  const lowColor = [46, 125, 110];
-  const neutralColor = [112, 117, 125];
-  const highColor = [176, 88, 52];
+  const lowColor = [32, 163, 140];
+  const neutralColor = [118, 126, 140];
+  const highColor = [214, 94, 48];
   let rgb;
 
   if (numeric <= mid) {
@@ -872,9 +872,9 @@ function buildYieldToneStyle(value) {
     return "";
   }
 
-  const lowColor = [112, 117, 125];
-  const goodColor = [46, 125, 110];
-  const highColor = [176, 88, 52];
+  const lowColor = [118, 126, 140];
+  const goodColor = [32, 163, 140];
+  const highColor = [214, 94, 48];
   let rgb;
 
   if (numeric <= 3) {
@@ -903,9 +903,9 @@ function buildPositiveMetricToneStyle(value, stops) {
   }
 
   const [min, mid, max] = stops;
-  const lowColor = [112, 117, 125];
-  const midColor = [87, 121, 150];
-  const goodColor = [46, 125, 110];
+  const lowColor = [118, 126, 140];
+  const midColor = [76, 133, 183];
+  const goodColor = [32, 163, 140];
   let rgb;
 
   if (numeric <= mid) {
