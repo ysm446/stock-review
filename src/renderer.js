@@ -102,6 +102,7 @@ let editingHoldingIndex = null;
 let autosaveTimer = null;
 let stockMasterEntries = [];
 let draggingHoldingIndex = null;
+let draggingWatchlistIndex = null;
 let trendChartModel = null;
 let hoveredTrendIndex = null;
 let resizeTimer = null;
@@ -780,6 +781,22 @@ function moveHolding(fromIndex, toIndex) {
   return true;
 }
 
+function moveWatchlist(fromIndex, toIndex) {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= appState.watchlist.length ||
+    toIndex >= appState.watchlist.length
+  ) {
+    return false;
+  }
+
+  const [movedItem] = appState.watchlist.splice(fromIndex, 1);
+  appState.watchlist.splice(toIndex, 0, movedItem);
+  return true;
+}
+
 function clearHoldingDragState() {
   holdingsBody.querySelectorAll("tr").forEach((row) => {
     row.classList.remove("is-dragging", "is-drag-target");
@@ -835,6 +852,67 @@ function attachHoldingDragEvents(row, index) {
   handle.addEventListener("dragend", () => {
     draggingHoldingIndex = null;
     clearHoldingDragState();
+  });
+}
+
+function attachWatchlistDragEvents(row, index) {
+  row.dataset.index = String(index);
+  const handle = row.querySelector('[data-action="drag-handle"]');
+  if (!handle) {
+    return;
+  }
+
+  handle.draggable = true;
+  handle.addEventListener("dragstart", (event) => {
+    draggingWatchlistIndex = index;
+    row.classList.add("is-dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(index));
+    }
+  });
+
+  row.addEventListener("dragover", (event) => {
+    if (draggingWatchlistIndex === null || draggingWatchlistIndex === index) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    watchlistBody.querySelectorAll("tr.is-drag-target").forEach((item) => {
+      if (item !== row) {
+        item.classList.remove("is-drag-target");
+      }
+    });
+    row.classList.add("is-drag-target");
+  });
+
+  row.addEventListener("dragleave", (event) => {
+    const related = event.relatedTarget;
+    if (!related || !row.contains(related)) {
+      row.classList.remove("is-drag-target");
+    }
+  });
+
+  row.addEventListener("drop", (event) => {
+    event.preventDefault();
+    row.classList.remove("is-drag-target");
+    if (draggingWatchlistIndex === null || draggingWatchlistIndex === index) {
+      return;
+    }
+    if (moveWatchlist(draggingWatchlistIndex, index)) {
+      renderWatchlistTable();
+      queueAutosave();
+    }
+  });
+
+  handle.addEventListener("dragend", () => {
+    draggingWatchlistIndex = null;
+    row.classList.remove("is-dragging", "is-drag-target");
+    watchlistBody.querySelectorAll("tr").forEach((item) => {
+      item.classList.remove("is-dragging", "is-drag-target");
+    });
   });
 }
 
@@ -1351,7 +1429,7 @@ function renderWatchlistTable() {
   if (!appState.watchlist.length) {
     const empty = document.createElement("tr");
     empty.className = "table-empty-row";
-    empty.innerHTML = '<td colspan="5">ウォッチリストはまだありません</td>';
+    empty.innerHTML = '<td colspan="6">ウォッチリストはまだありません</td>';
     watchlistBody.appendChild(empty);
     return;
   }
@@ -1383,6 +1461,7 @@ function renderWatchlistTable() {
       reviewTickerInput.value = ticker;
       loadReviewSnapshot(ticker);
     });
+    attachWatchlistDragEvents(row, index);
     row.querySelector('[data-action="edit-watchlist"]').addEventListener("click", () => openWatchlistModal(index));
     row.querySelector('[data-action="remove-watchlist"]').addEventListener("click", () => {
       appState.watchlist.splice(index, 1);
@@ -1453,13 +1532,30 @@ function renderReviewFinancials(rows) {
     return;
   }
 
-  rows.forEach((row) => {
+  const getFinancialTone = (currentValue, previousValue) => {
+    if (typeof currentValue !== "number" || typeof previousValue !== "number") {
+      return "";
+    }
+    if (currentValue > previousValue) {
+      return "is-positive";
+    }
+    if (currentValue < previousValue) {
+      return "is-negative";
+    }
+    return "";
+  };
+
+  rows.forEach((row, index) => {
+    const previousRow = rows[index + 1] || null;
     const tr = document.createElement("tr");
+    const revenueTone = getFinancialTone(row.revenue, previousRow?.revenue);
+    const operatingIncomeTone = getFinancialTone(row.operatingIncome, previousRow?.operatingIncome);
+    const netIncomeTone = getFinancialTone(row.netIncome, previousRow?.netIncome);
     tr.innerHTML = `
       <td>${row.period || "-"}</td>
-      <td>${formatStatementNumber(row.revenue)}</td>
-      <td>${formatStatementNumber(row.operatingIncome)}</td>
-      <td>${formatStatementNumber(row.netIncome)}</td>
+      <td class="review-financial-value ${revenueTone}">${formatStatementNumber(row.revenue)}</td>
+      <td class="review-financial-value ${operatingIncomeTone}">${formatStatementNumber(row.operatingIncome)}</td>
+      <td class="review-financial-value ${netIncomeTone}">${formatStatementNumber(row.netIncome)}</td>
     `;
     reviewFinancialBody.appendChild(tr);
   });

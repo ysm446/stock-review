@@ -85,6 +85,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             rating TEXT NOT NULL DEFAULT 'B',
             thesis TEXT NOT NULL DEFAULT '',
             risk TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (ticker) REFERENCES stocks(ticker) ON DELETE CASCADE
         );
@@ -122,6 +123,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE latest_quotes ADD COLUMN previous_close_jpy INTEGER")
     if "previous_close_source" not in columns:
         conn.execute("ALTER TABLE latest_quotes ADD COLUMN previous_close_source REAL")
+    watchlist_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(watchlist)").fetchall()
+    }
+    if "sort_order" not in watchlist_columns:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
     conn.commit()
 
 
@@ -225,21 +232,22 @@ def migrate_legacy_json(conn: sqlite3.Connection) -> None:
                 (ticker, today, price_jpy, source_price, currency),
             )
 
-    for item in watchlist:
+    for index, item in enumerate(watchlist):
         ticker = str(item.get("ticker") or "").strip()
         if not ticker:
             continue
         ensure_stock(conn, ticker)
         conn.execute(
             """
-            INSERT INTO watchlist (ticker, rating, thesis, risk, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO watchlist (ticker, rating, thesis, risk, sort_order, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 ticker,
                 str(item.get("rating") or "B"),
                 str(item.get("thesis") or ""),
                 str(item.get("risk") or ""),
+                index,
                 now,
             ),
         )
@@ -520,7 +528,7 @@ def load_state(conn: sqlite3.Connection) -> dict[str, object]:
         """
         SELECT ticker, rating, thesis, risk
         FROM watchlist
-        ORDER BY ticker ASC
+        ORDER BY sort_order ASC, ticker ASC
         """
     ).fetchall()
 
@@ -629,7 +637,7 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
         conn.execute("DELETE FROM holdings")
 
     incoming_watchlist_tickers = []
-    for item in watchlist:
+    for index, item in enumerate(watchlist):
         ticker = str(item.get("ticker") or "").strip()
         if not ticker:
             continue
@@ -637,12 +645,13 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
         ensure_stock(conn, ticker)
         conn.execute(
             """
-            INSERT INTO watchlist (ticker, rating, thesis, risk, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO watchlist (ticker, rating, thesis, risk, sort_order, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(ticker) DO UPDATE SET
                 rating = excluded.rating,
                 thesis = excluded.thesis,
                 risk = excluded.risk,
+                sort_order = excluded.sort_order,
                 updated_at = excluded.updated_at
             """,
             (
@@ -650,6 +659,7 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
                 str(item.get("rating") or "B"),
                 str(item.get("thesis") or ""),
                 str(item.get("risk") or ""),
+                index,
                 now,
             ),
         )

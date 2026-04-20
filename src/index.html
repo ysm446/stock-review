@@ -155,6 +155,7 @@
                 <table class="watchlist-table">
                   <thead>
                     <tr>
+                      <th class="drag-column"></th>
                       <th>銘柄</th>
                       <th>現在値</th>
                       <th>前日比</th>
@@ -288,6 +289,12 @@
 
     <template id="watchlist-row-template">
       <tr>
+        <td class="drag-cell">
+          <button class="drag-handle" data-action="drag-handle" type="button" aria-label="Reorder watchlist">
+            <span></span>
+            <span></span>
+          </button>
+        </td>
         <td class="cell-ticker">
           <button class="ticker-link" data-action="open-review" type="button">
             <span class="ticker-name" data-field="displayName">-</span>

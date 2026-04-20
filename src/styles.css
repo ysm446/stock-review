@@ -708,14 +708,8 @@ select:focus {
 }
 
 .watchlist-table th:nth-child(1),
-.watchlist-table td:nth-child(1),
-.watchlist-table th:nth-child(2),
-.watchlist-table td:nth-child(2),
-.watchlist-table th:nth-child(3),
-.watchlist-table td:nth-child(3),
-.watchlist-table th:nth-child(4),
-.watchlist-table td:nth-child(4) {
-  width: calc((100% - 96px) / 4);
+.watchlist-table td:nth-child(1) {
+  width: 34px;
 }
 
 .watchlist-table th:nth-child(2),
@@ -724,11 +718,20 @@ select:focus {
 .watchlist-table td:nth-child(3),
 .watchlist-table th:nth-child(4),
 .watchlist-table td:nth-child(4) {
+  width: calc((100% - 130px) / 4);
+}
+
+.watchlist-table th:nth-child(3),
+.watchlist-table td:nth-child(3),
+.watchlist-table th:nth-child(4),
+.watchlist-table td:nth-child(4),
+.watchlist-table th:nth-child(5),
+.watchlist-table td:nth-child(5) {
   text-align: right;
 }
 
-.watchlist-table th:nth-child(5),
-.watchlist-table td:nth-child(5) {
+.watchlist-table th:nth-child(6),
+.watchlist-table td:nth-child(6) {
   width: 96px;
 }
 
@@ -1164,6 +1167,14 @@ select:focus {
 
 .review-table {
   width: 100%;
+}
+
+.review-financial-value.is-positive {
+  color: #54e291;
+}
+
+.review-financial-value.is-negative {
+  color: #ff7b83;
 }
 
 .review-news-list {
