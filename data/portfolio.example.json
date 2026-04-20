@@ -1,0 +1,28 @@
+{
+  "holdings": [
+    {
+      "ticker": "7203.T",
+      "shares": "100",
+      "buyPrice": "2500",
+      "price": "2650",
+      "sourcePrice": 2650,
+      "currency": "JPY",
+      "previousClose": "2620",
+      "sourcePreviousClose": 2620,
+      "note": ""
+    }
+  ],
+  "watchlist": [
+    {
+      "ticker": "6758.T",
+      "rating": "B",
+      "thesis": "",
+      "risk": "",
+      "price": "12850",
+      "sourcePrice": 12850,
+      "currency": "JPY",
+      "previousClose": "12710",
+      "sourcePreviousClose": 12710
+    }
+  ]
+}
