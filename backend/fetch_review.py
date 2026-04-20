@@ -64,6 +64,21 @@ def normalize_text(value):
     return str(value).strip()
 
 
+def format_month_day(value):
+    if value is None:
+        return ""
+    if hasattr(value, "strftime"):
+        return f"{value.month}/{value.day}"
+    text = normalize_text(value)
+    if not text:
+        return ""
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return f"{dt.month}/{dt.day}"
+    except ValueError:
+        return text
+
+
 def load_info_safe(ticker):
     try:
         info = ticker.info
@@ -92,10 +107,23 @@ def get_history_fallback_prices(ticker):
     if len(closes) == 0:
         return {}
 
+    high_date = None
+    low_date = None
+    if "High" in history:
+        highs = history["High"].dropna()
+        if len(highs):
+            high_date = format_month_day(highs.idxmax())
+    if "Low" in history:
+        lows = history["Low"].dropna()
+        if len(lows):
+            low_date = format_month_day(lows.idxmin())
+
     result = {
         "currentPrice": to_float(closes.iloc[-1]),
         "fiftyTwoWeekHigh": to_float(history["High"].max()) if "High" in history else None,
         "fiftyTwoWeekLow": to_float(history["Low"].min()) if "Low" in history else None,
+        "fiftyTwoWeekHighDate": high_date,
+        "fiftyTwoWeekLowDate": low_date,
     }
     return result
 
@@ -118,6 +146,8 @@ def build_overview(info, fast_info, history_fallback):
         or fast_info.get("yearLow")
         or history_fallback.get("fiftyTwoWeekLow")
     )
+    overview["fiftyTwoWeekHighDate"] = history_fallback.get("fiftyTwoWeekHighDate") or ""
+    overview["fiftyTwoWeekLowDate"] = history_fallback.get("fiftyTwoWeekLowDate") or ""
     return overview
 
 

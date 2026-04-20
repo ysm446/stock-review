@@ -782,6 +782,15 @@ function formatMaybeYieldPercent(value, digits = 1) {
   return `${normalized.toFixed(digits)}%`;
 }
 
+function formatPriceWithDate(value, currency, dateLabel = "", compact = false) {
+  const formattedValue = formatMaybeCurrency(value, currency, compact);
+  const normalizedDateLabel = String(dateLabel || "").trim();
+  if (formattedValue === "-" || !normalizedDateLabel) {
+    return formattedValue;
+  }
+  return `${formattedValue} (${normalizedDateLabel})`;
+}
+
 function normalizeYieldPercentValue(value) {
   const numeric = toFiniteNumber(value);
   if (numeric === null) {
@@ -1995,8 +2004,8 @@ function renderHoldingsMetricsTable() {
       </td>
       <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.marketCap, "JPY", true)}</td>
       <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.currentPrice, "JPY")}</td>
-      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekHigh, "JPY")}</td>
-      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekLow, "JPY")}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatPriceWithDate(overview.fiftyTwoWeekHigh, "JPY", overview.fiftyTwoWeekHighDate)}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatPriceWithDate(overview.fiftyTwoWeekLow, "JPY", overview.fiftyTwoWeekLowDate)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${perStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.trailingPE)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${pbrStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.priceToBook)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${roeStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnEquity, 1)}</td>
@@ -2110,8 +2119,8 @@ function renderWatchlistMetricsTable() {
       </td>
       <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.marketCap, "JPY", true)}</td>
       <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.currentPrice, "JPY")}</td>
-      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekHigh, "JPY")}</td>
-      <td class="computed-cell cell-number">${loading ? "読込中..." : formatMaybeCurrency(overview.fiftyTwoWeekLow, "JPY")}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatPriceWithDate(overview.fiftyTwoWeekHigh, "JPY", overview.fiftyTwoWeekHighDate)}</td>
+      <td class="computed-cell cell-number">${loading ? "読込中..." : formatPriceWithDate(overview.fiftyTwoWeekLow, "JPY", overview.fiftyTwoWeekLowDate)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${perStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.trailingPE)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${pbrStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.priceToBook)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${roeStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnEquity, 1)}</td>
@@ -2255,8 +2264,8 @@ function renderReviewSnapshot() {
     { label: "業種", value: overview.industry || "-" },
     { label: "現在値", value: formatMaybeCurrency(overview.currentPrice, currency) },
     { label: "時価総額", value: formatMaybeCurrency(overview.marketCap, currency, true) },
-    { label: "52週高値", value: formatMaybeCurrency(overview.fiftyTwoWeekHigh, currency) },
-    { label: "52週安値", value: formatMaybeCurrency(overview.fiftyTwoWeekLow, currency) }
+    { label: "52週高値", value: formatPriceWithDate(overview.fiftyTwoWeekHigh, currency, overview.fiftyTwoWeekHighDate) },
+    { label: "52週安値", value: formatPriceWithDate(overview.fiftyTwoWeekLow, currency, overview.fiftyTwoWeekLowDate) }
   ]);
 
   renderReviewKeyValueGrid(reviewValuationGrid, [
