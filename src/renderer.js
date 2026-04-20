@@ -788,7 +788,7 @@ function formatPriceWithDate(value, currency, dateLabel = "", compact = false) {
   if (formattedValue === "-" || !normalizedDateLabel) {
     return formattedValue;
   }
-  return `${formattedValue} (${normalizedDateLabel})`;
+  return `${formattedValue} <span class="metric-date-note">(${normalizedDateLabel})</span>`;
 }
 
 function normalizeYieldPercentValue(value) {
@@ -1660,6 +1660,21 @@ function getRecentBusinessDates(count, anchorDate = new Date()) {
   return dates.reverse();
 }
 
+function buildXAxisTickIndexes(length, targetTicks = 8) {
+  if (length <= 1) {
+    return [0];
+  }
+
+  const tickCount = Math.min(length, Math.max(2, targetTicks));
+  const lastIndex = length - 1;
+  const indexes = [];
+  for (let step = 0; step < tickCount; step += 1) {
+    const ratio = tickCount === 1 ? 1 : step / (tickCount - 1);
+    indexes.push(Math.round(lastIndex * ratio));
+  }
+  return [...new Set(indexes)].sort((a, b) => a - b);
+}
+
 function buildTrendSeriesFromHistory(range) {
   const source = Array.isArray(appState.trendHistory) ? appState.trendHistory : [];
   if (!source.length) {
@@ -1771,7 +1786,7 @@ function drawTrendChart() {
   const chartHeight = height - padding.top - padding.bottom;
   const totalValue = appState.holdings.map(normalizeHolding).reduce((sum, item) => sum + item.marketValue, 0);
   const holdingsCount = appState.holdings.filter((item) => String(item.ticker || "").trim()).length;
-  const { labels, values, labelEvery } = buildTrendSeries(totalValue, holdingsCount, trendRange);
+  const { labels, values } = buildTrendSeries(totalValue, holdingsCount, trendRange);
 
   ctx.clearRect(0, 0, width, height);
 
@@ -1794,13 +1809,7 @@ function drawTrendChart() {
     ctx.stroke();
   }
 
-  const xTickIndexes = [];
-  for (let i = 0; i < labels.length; i += Math.max(1, labelEvery)) {
-    xTickIndexes.push(i);
-  }
-  if (xTickIndexes[xTickIndexes.length - 1] !== labels.length - 1) {
-    xTickIndexes.push(labels.length - 1);
-  }
+  const xTickIndexes = buildXAxisTickIndexes(labels.length, 8);
 
   for (const index of xTickIndexes) {
     const x = padding.left + xStep * index;

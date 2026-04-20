@@ -54,3 +54,7 @@ pip install yfinance
 conda activate main
 python backend/update_stock_master.py
 ```
+
+## Notes
+
+- `企業指標` ビューは日本株（`.T`）の保有銘柄 / ウォッチリスト銘柄を対象に表示します。
