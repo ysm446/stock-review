@@ -114,6 +114,14 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             ON price_history(trade_date);
         """
     )
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(latest_quotes)").fetchall()
+    }
+    if "previous_close_jpy" not in columns:
+        conn.execute("ALTER TABLE latest_quotes ADD COLUMN previous_close_jpy INTEGER")
+    if "previous_close_source" not in columns:
+        conn.execute("ALTER TABLE latest_quotes ADD COLUMN previous_close_source REAL")
     conn.commit()
 
 
@@ -272,13 +280,18 @@ def get_latest_quote(ticker: str) -> dict[str, object]:
     stock = yf.Ticker(ticker)
     info = stock.fast_info
     price = info.get("lastPrice") or info.get("regularMarketPrice") or info.get("previousClose")
+    previous_close = info.get("previousClose")
     currency = (info.get("currency") or "USD").upper()
-    if price is None:
+    if price is None or previous_close is None:
         history = stock.history(period="5d", interval="1d", auto_adjust=False)
         if history.empty:
             raise ValueError("No market data returned")
-        price = float(history["Close"].dropna().iloc[-1])
-    return {"price": float(price), "currency": currency}
+        closes = history["Close"].dropna()
+        if price is None:
+            price = float(closes.iloc[-1])
+        if previous_close is None:
+            previous_close = float(closes.iloc[-2]) if len(closes) >= 2 else float(closes.iloc[-1])
+    return {"price": float(price), "previous_close": float(previous_close), "currency": currency}
 
 
 def convert_price_to_jpy(price: float, currency: str, fx_map: dict[str, float] | None = None, trade_date: str | None = None):
@@ -395,17 +408,23 @@ def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, objec
     ensure_stock(conn, normalized)
     latest = get_latest_quote(normalized)
     price_jpy, fx_rate = convert_price_to_jpy(latest["price"], latest["currency"])
+    previous_close_jpy, _ = convert_price_to_jpy(latest["previous_close"], latest["currency"])
     now = utc_now()
     quote_date = today_iso()
     conn.execute(
         """
-        INSERT INTO latest_quotes (ticker, price_jpy, source_price, currency, fx_rate_jpy, quote_date, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO latest_quotes (
+            ticker, price_jpy, source_price, currency, fx_rate_jpy,
+            previous_close_jpy, previous_close_source, quote_date, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ticker) DO UPDATE SET
             price_jpy = excluded.price_jpy,
             source_price = excluded.source_price,
             currency = excluded.currency,
             fx_rate_jpy = excluded.fx_rate_jpy,
+            previous_close_jpy = excluded.previous_close_jpy,
+            previous_close_source = excluded.previous_close_source,
             quote_date = excluded.quote_date,
             updated_at = excluded.updated_at
         """,
@@ -415,6 +434,8 @@ def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, objec
             float(latest["price"]),
             latest["currency"],
             float(fx_rate),
+            int(round(previous_close_jpy)),
+            float(latest["previous_close"]),
             quote_date,
             now,
         ),
@@ -422,8 +443,10 @@ def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, objec
     conn.commit()
     return {
         "price": float(latest["price"]),
+        "previous_close": float(latest["previous_close"]),
         "currency": latest["currency"],
         "price_jpy": float(price_jpy),
+        "previous_close_jpy": float(previous_close_jpy),
         "fx_rate_jpy": float(fx_rate),
         "quote_date": quote_date,
     }
@@ -487,7 +510,7 @@ def load_state(conn: sqlite3.Connection) -> dict[str, object]:
     holdings_rows = conn.execute(
         """
         SELECT h.ticker, h.shares, h.buy_price, h.note, h.sort_order,
-               q.price_jpy, q.source_price, q.currency
+               q.price_jpy, q.source_price, q.currency, q.previous_close_jpy, q.previous_close_source
         FROM holdings h
         LEFT JOIN latest_quotes q ON q.ticker = h.ticker
         ORDER BY h.sort_order ASC, h.ticker ASC
@@ -507,8 +530,10 @@ def load_state(conn: sqlite3.Connection) -> dict[str, object]:
             "shares": str(row["shares"] or 0),
             "buyPrice": str(row["buy_price"] or 0),
             "price": str(row["price_jpy"] or 0) if row["price_jpy"] else "",
+            "previousClose": str(row["previous_close_jpy"] or 0) if row["previous_close_jpy"] else "",
             "note": row["note"] or "",
             "sourcePrice": row["source_price"],
+            "sourcePreviousClose": row["previous_close_source"],
             "currency": row["currency"] or "JPY",
         }
         for row in holdings_rows
@@ -566,13 +591,18 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
         if price_jpy > 0:
             conn.execute(
                 """
-                INSERT INTO latest_quotes (ticker, price_jpy, source_price, currency, fx_rate_jpy, quote_date, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO latest_quotes (
+                    ticker, price_jpy, source_price, currency, fx_rate_jpy,
+                    previous_close_jpy, previous_close_source, quote_date, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticker) DO UPDATE SET
                     price_jpy = excluded.price_jpy,
                     source_price = excluded.source_price,
                     currency = excluded.currency,
                     fx_rate_jpy = excluded.fx_rate_jpy,
+                    previous_close_jpy = excluded.previous_close_jpy,
+                    previous_close_source = excluded.previous_close_source,
                     quote_date = excluded.quote_date,
                     updated_at = excluded.updated_at
                 """,
@@ -582,6 +612,8 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
                     holding.get("sourcePrice"),
                     str(holding.get("currency") or "JPY").upper(),
                     None,
+                    parse_number(holding.get("previousClose")),
+                    holding.get("sourcePreviousClose"),
                     today_iso(),
                     now,
                 ),

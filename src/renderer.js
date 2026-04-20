@@ -195,18 +195,24 @@ function normalizeHolding(raw) {
   const shares = parseWholeNumber(raw.shares);
   const buyPrice = parseWholeNumber(raw.buyPrice);
   const price = parseWholeNumber(raw.price);
+  const previousClose = parseWholeNumber(raw.previousClose);
   const costBasis = shares * buyPrice;
   const marketValue = shares * price;
   const profitLoss = marketValue - costBasis;
   const profitRate = costBasis > 0 ? (profitLoss / costBasis) * 100 : 0;
+  const dayChangePerShare = price > 0 && previousClose > 0 ? price - previousClose : 0;
+  const dayChangeRate = previousClose > 0 ? (dayChangePerShare / previousClose) * 100 : 0;
   return {
     ticker: raw.ticker || "",
     shares,
     buyPrice,
     price,
+    previousClose,
     note: raw.note || "",
     costBasis,
     marketValue,
+    dayChange: dayChangePerShare,
+    dayChangeRate,
     profitLoss,
     profitRate
   };
@@ -845,6 +851,31 @@ function getRangeConfig(range) {
   }
 }
 
+function isWeekend(date) {
+  const day = date.getDay();
+  return day === 0 || day === 6;
+}
+
+function shiftToPreviousBusinessDay(date) {
+  const current = new Date(date);
+  while (isWeekend(current)) {
+    current.setDate(current.getDate() - 1);
+  }
+  return current;
+}
+
+function getRecentBusinessDates(count, anchorDate = new Date()) {
+  const dates = [];
+  const cursor = shiftToPreviousBusinessDay(anchorDate);
+  while (dates.length < count) {
+    if (!isWeekend(cursor)) {
+      dates.push(new Date(cursor));
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return dates.reverse();
+}
+
 function buildTrendSeriesFromHistory(range) {
   const source = Array.isArray(appState.trendHistory) ? appState.trendHistory : [];
   if (!source.length) {
@@ -856,7 +887,12 @@ function buildTrendSeriesFromHistory(range) {
       date: String(item.date || "").trim(),
       value: parseNumericInput(item.value)
     }))
-    .filter((item) => item.date && item.value > 0)
+    .filter((item) => {
+      if (!item.date || item.value <= 0) {
+        return false;
+      }
+      return !isWeekend(new Date(`${item.date}T00:00:00`));
+    })
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (sorted.length < 2) {
@@ -892,7 +928,7 @@ function buildTrendSeries(totalValue, holdingsCount, range) {
   const safeTotal = totalValue > 0 ? totalValue : 12000000;
   const { days, labelEvery, volatility, drift } = getRangeConfig(range);
   const points = days;
-  const anchorDate = new Date("2026-04-17T00:00:00");
+  const businessDates = getRecentBusinessDates(points);
   const labels = [];
   const values = [];
   const base = safeTotal * (1 - drift);
@@ -906,8 +942,7 @@ function buildTrendSeries(totalValue, holdingsCount, range) {
     const value = index === points - 1 ? safeTotal : base * (1 + bias + waveA + waveB);
     values.push(Math.max(value, safeTotal * 0.55));
 
-    const date = new Date(anchorDate);
-    date.setDate(anchorDate.getDate() - (points - 1 - index));
+    const date = businessDates[index];
     labels.push(`${date.getMonth() + 1}/${date.getDate()}`);
   }
 
@@ -1087,6 +1122,8 @@ function renderHoldingsTable() {
     const normalized = normalizeHolding(holding);
     const fragment = holdingRowTemplate.content.cloneNode(true);
     const row = fragment.querySelector("tr");
+    const dayChangeCell = row.querySelector('[data-field="dayChange"]');
+    const dayChangeRateCell = row.querySelector('[data-field="dayChangeRate"]');
     const profitCell = row.querySelector('[data-field="profitLoss"]');
     const profitRateCell = row.querySelector('[data-field="profitRate"]');
     const weightCell = row.querySelector('[data-field="weight"]');
@@ -1099,10 +1136,16 @@ function renderHoldingsTable() {
     row.querySelector('[data-field="shares"]').textContent = formatPlainNumber(normalized.shares);
     row.querySelector('[data-field="buyPrice"]').textContent = normalized.buyPrice > 0 ? formatCurrency(normalized.buyPrice) : "-";
     row.querySelector('[data-field="price"]').textContent = normalized.price > 0 ? formatCurrency(normalized.price) : "-";
+    dayChangeCell.textContent = normalized.previousClose > 0 ? formatSignedCurrency(normalized.dayChange) : "-";
+    dayChangeRateCell.textContent = normalized.previousClose > 0 ? formatSignedPercent(normalized.dayChangeRate) : "-";
     profitCell.textContent = formatSignedCurrency(normalized.profitLoss);
     profitRateCell.textContent = formatSignedPercent(normalized.profitRate);
     weightCell.textContent = formatPercent(weight);
     row.querySelector('[data-field="marketValue"]').textContent = formatCurrency(normalized.marketValue);
+    dayChangeCell.classList.toggle("is-positive", normalized.previousClose > 0 && normalized.dayChange >= 0);
+    dayChangeCell.classList.toggle("is-negative", normalized.previousClose > 0 && normalized.dayChange < 0);
+    dayChangeRateCell.classList.toggle("is-positive", normalized.previousClose > 0 && normalized.dayChangeRate >= 0);
+    dayChangeRateCell.classList.toggle("is-negative", normalized.previousClose > 0 && normalized.dayChangeRate < 0);
     profitCell.classList.toggle("is-positive", normalized.profitLoss >= 0);
     profitCell.classList.toggle("is-negative", normalized.profitLoss < 0);
     profitRateCell.classList.toggle("is-positive", normalized.profitRate >= 0);
@@ -1488,7 +1531,9 @@ async function refreshPrices() {
         ...holding,
         price: String(parseWholeNumber(quote.price_jpy ?? quote.price)),
         sourcePrice: quote.price,
-        currency: quote.currency
+        currency: quote.currency,
+        previousClose: quote.previous_close_jpy ? String(parseWholeNumber(quote.previous_close_jpy)) : "",
+        sourcePreviousClose: quote.previous_close
       };
     });
 
