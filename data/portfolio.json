@@ -7,7 +7,9 @@
       "note": "長期保有",
       "sourcePrice": 30530,
       "currency": "JPY",
-      "buyPrice": "17110"
+      "buyPrice": "17110",
+      "previousClose": "33860",
+      "sourcePreviousClose": 33860
     },
     {
       "ticker": "5803.T",
@@ -16,7 +18,9 @@
       "note": "AI関連の主力",
       "sourcePrice": 5762,
       "currency": "JPY",
-      "buyPrice": "3800"
+      "buyPrice": "3800",
+      "previousClose": "5954",
+      "sourcePreviousClose": 5954
     },
     {
       "ticker": "6857.T",
@@ -25,7 +29,9 @@
       "note": "配当狙い",
       "sourcePrice": 27870,
       "currency": "JPY",
-      "buyPrice": "26000"
+      "buyPrice": "26000",
+      "previousClose": "28785",
+      "sourcePreviousClose": 28785
     },
     {
       "ticker": "4062.T",
@@ -34,7 +40,9 @@
       "price": "9235",
       "note": "",
       "sourcePrice": 9235,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "9605",
+      "sourcePreviousClose": 9605
     },
     {
       "ticker": "5802.T",
@@ -43,7 +51,9 @@
       "price": "9976",
       "note": "",
       "sourcePrice": 9976,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "10150",
+      "sourcePreviousClose": 10150
     },
     {
       "ticker": "5713.T",
@@ -52,7 +62,9 @@
       "price": "10150",
       "note": "",
       "sourcePrice": 10150,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "11040",
+      "sourcePreviousClose": 11040
     },
     {
       "ticker": "7751.T",
@@ -61,7 +73,9 @@
       "price": "4485",
       "note": "",
       "sourcePrice": 4485,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "4480",
+      "sourcePreviousClose": 4480
     },
     {
       "ticker": "7011.T",
@@ -70,7 +84,9 @@
       "price": "4371",
       "note": "",
       "sourcePrice": 4371,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "4594",
+      "sourcePreviousClose": 4594
     },
     {
       "ticker": "8058.T",
@@ -79,7 +95,9 @@
       "price": "4952",
       "note": "",
       "sourcePrice": 4952,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "5095",
+      "sourcePreviousClose": 5095
     },
     {
       "ticker": "8031.T",
@@ -88,7 +106,9 @@
       "price": "5800",
       "note": "",
       "sourcePrice": 5800,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "5994",
+      "sourcePreviousClose": 5994
     },
     {
       "ticker": "8053.T",
@@ -97,7 +117,9 @@
       "price": "6015",
       "note": "",
       "sourcePrice": 6015,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "6118",
+      "sourcePreviousClose": 6118
     },
     {
       "ticker": "2914.T",
@@ -106,7 +128,9 @@
       "price": "5800",
       "note": "",
       "sourcePrice": 5800,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "5859",
+      "sourcePreviousClose": 5859
     },
     {
       "ticker": "7974.T",
@@ -115,7 +139,20 @@
       "price": "8615",
       "note": "",
       "sourcePrice": 8615,
-      "currency": "JPY"
+      "currency": "JPY",
+      "previousClose": "8337",
+      "sourcePreviousClose": 8337
+    },
+    {
+      "ticker": "6326.T",
+      "shares": "400",
+      "buyPrice": "2150",
+      "price": "2571",
+      "note": "",
+      "sourcePrice": 2571,
+      "currency": "JPY",
+      "previousClose": "2617",
+      "sourcePreviousClose": 2616.5
     }
   ],
   "watchlist": [
