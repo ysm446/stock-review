@@ -1149,16 +1149,18 @@ select:focus {
 
 .review-grid-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr) minmax(280px, 0.8fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+  align-items: stretch;
 }
 
 .review-panel {
   padding: 18px 20px;
+  height: 100%;
 }
 
 .review-overview-panel {
-  min-height: 280px;
+  min-height: 240px;
 }
 
 .review-symbol {
@@ -1262,11 +1264,11 @@ select:focus {
 }
 
 .review-financial-panel {
-  grid-column: 1 / 2;
+  grid-column: auto;
 }
 
 .review-news-panel {
-  grid-column: 3 / 4;
+  grid-column: 2 / 5;
 }
 
 .review-notes-panel {
@@ -1275,6 +1277,20 @@ select:focus {
 
 .review-table {
   width: 100%;
+}
+
+.review-financial-panel th,
+.review-financial-panel td {
+  padding: 8px 6px;
+  white-space: nowrap;
+}
+
+.review-financial-panel th {
+  font-size: 0.75rem;
+}
+
+.review-financial-panel td {
+  font-size: 0.78rem;
 }
 
 .review-financial-value.is-positive {
@@ -1390,7 +1406,7 @@ select:focus {
   }
 
   .review-grid-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .review-financial-panel,
@@ -1416,6 +1432,10 @@ select:focus {
 @media (max-width: 760px) {
   .app-shell {
     display: block;
+  }
+
+  .review-grid-layout {
+    grid-template-columns: 1fr;
   }
 
   .sidebar {

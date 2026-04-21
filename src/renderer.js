@@ -2189,7 +2189,7 @@ function renderReviewKeyValueGrid(container, rows) {
     item.className = "review-kv-row";
     item.innerHTML = `
       <span class="review-kv-label${helpText ? " review-kv-label-help" : ""}"${helpText ? ` data-tooltip="${helpText}" tabindex="0"` : ""}>${row.label}</span>
-      <strong class="review-kv-value${row.tone ? ` is-${row.tone}` : ""}">${row.value}</strong>
+      <strong class="review-kv-value${row.tone ? ` is-${row.tone}` : ""}"${row.style ? ` style="${row.style}"` : ""}>${row.value}</strong>
     `;
     container.appendChild(item);
   });
@@ -2278,15 +2278,15 @@ function renderReviewSnapshot() {
   ]);
 
   renderReviewKeyValueGrid(reviewValuationGrid, [
-    { label: "PER", value: formatMaybeMultiple(valuation.trailingPE) },
-    { label: "PBR", value: formatMaybeMultiple(valuation.priceToBook) },
+    { label: "PER", value: formatMaybeMultiple(valuation.trailingPE), style: buildMetricToneStyle(valuation.trailingPE, [8, 15, 40]) },
+    { label: "PBR", value: formatMaybeMultiple(valuation.priceToBook), style: buildMetricToneStyle(valuation.priceToBook, [0.8, 1.5, 5]) },
     { label: "EV/EBITDA", value: formatMaybeMultiple(valuation.enterpriseToEbitda) },
     { label: "配当利回り", value: formatMaybeYieldPercent(getDisplayDividendYieldPercent(reviewSnapshot), 1) }
   ]);
 
   renderReviewKeyValueGrid(reviewProfitabilityGrid, [
-    { label: "ROE", value: formatMaybePercent(profitability.returnOnEquity, 1) },
-    { label: "ROA", value: formatMaybePercent(profitability.returnOnAssets, 1) },
+    { label: "ROE", value: formatMaybePercent(profitability.returnOnEquity, 1), style: buildPositiveMetricToneStyle(profitability.returnOnEquity, [5, 10, 15]) },
+    { label: "ROA", value: formatMaybePercent(profitability.returnOnAssets, 1), style: buildPositiveMetricToneStyle(profitability.returnOnAssets, [2, 5, 8]) },
     { label: "営業利益率", value: formatMaybePercent(profitability.operatingMargins, 1) },
     { label: "FCFマージン", value: formatMaybePercent(profitability.fcfMargin, 1) }
   ]);
