@@ -1,3 +1,98 @@
+import {
+  allocationChart,
+  allocationLegend,
+  cancelHoldingModalButton,
+  cancelWatchlistModalButton,
+  closeHoldingModalButton,
+  closeWatchlistModalButton,
+  exportPortfolioButton,
+  holdingBuyPriceInput,
+  holdingForm,
+  holdingModalBackdrop,
+  holdingModalTitle,
+  holdingRowTemplate,
+  holdingSharesInput,
+  holdingTickerInput,
+  holdingTickerSuggestions,
+  holdingsBody,
+  holdingsHead,
+  holdingsModeButtons,
+  holdingsTable,
+  importPortfolioButton,
+  loadReviewButton,
+  metricHelpPopup,
+  metricHelpPopupText,
+  metricHelpPopupTitle,
+  navButtons,
+  performanceChart,
+  priceStatus,
+  refreshPricesButton,
+  reviewAnalystGrid,
+  reviewChipRow,
+  reviewFinancialBody,
+  reviewHistoryButton,
+  reviewHistoryDropdown,
+  reviewNewsList,
+  reviewOverviewGrid,
+  reviewProfitabilityGrid,
+  reviewSymbol,
+  reviewTickerInput,
+  reviewTickerSuggestions,
+  reviewValuationGrid,
+  statsGrid,
+  submitHoldingModalButton,
+  submitWatchlistModalButton,
+  trendChart,
+  trendChartWrap,
+  trendDailyChange,
+  trendPeriodChange,
+  trendRangeSelect,
+  trendTooltip,
+  trendTooltipChange,
+  trendTooltipDate,
+  trendTooltipValue,
+  views,
+  watchlistBody,
+  watchlistForm,
+  watchlistHead,
+  watchlistModalBackdrop,
+  watchlistModalTitle,
+  watchlistModeButtons,
+  watchlistRatingInput,
+  watchlistRiskInput,
+  watchlistRowTemplate,
+  watchlistTable,
+  watchlistThesisInput,
+  watchlistTickerInput,
+  watchlistTickerSuggestions
+} from "./renderer-dom.js";
+import {
+  buildMetricHeaderCell,
+  buildMetricToneStyle,
+  buildPositiveMetricToneStyle,
+  buildYieldToneStyle,
+  clamp,
+  formatCurrency,
+  formatMaybeCurrency,
+  formatMaybeMultiple,
+  formatMaybeNumber,
+  formatMaybePercent,
+  formatMaybeYieldPercent,
+  formatNormalizedPercent,
+  formatPercent,
+  formatPlainNumber,
+  formatPriceWithDate,
+  formatSignedCurrency,
+  formatSignedPercent,
+  formatStatementNumber,
+  getMetricToneHelpText,
+  normalizeSearchText,
+  normalizeYieldPercentValue,
+  parseNumericInput,
+  parseWholeNumber,
+  toFiniteNumber
+} from "./renderer-utils.js";
+
 const appState = {
   holdings: [],
   watchlist: [],
@@ -40,73 +135,6 @@ const REVIEW_LABEL_HELP = {
   "アナリスト数": "目標株価や推奨を出しているアナリスト人数です。",
   "推奨": "アナリストの総合評価です。buy なら買い寄りです。"
 };
-
-const views = document.querySelectorAll(".view");
-const navButtons = document.querySelectorAll(".nav-button");
-const statsGrid = document.getElementById("stats-grid");
-const holdingsTable = document.querySelector(".holdings-table");
-const holdingsHead = document.getElementById("holdings-head");
-const holdingsBody = document.getElementById("holdings-body");
-const watchlistTable = document.querySelector(".watchlist-table");
-const watchlistHead = document.getElementById("watchlist-head");
-const watchlistBody = document.getElementById("watchlist-body");
-const reviewTickerInput = document.getElementById("review-ticker-input");
-const reviewTickerSuggestions = document.getElementById("review-ticker-suggestions");
-const loadReviewButton = document.getElementById("load-review");
-const reviewHistoryButton = document.getElementById("review-history-button");
-const reviewHistoryDropdown = document.getElementById("review-history-dropdown");
-const reviewChipRow = document.getElementById("review-chip-row");
-const reviewSymbol = document.getElementById("review-symbol");
-const reviewOverviewGrid = document.getElementById("review-overview-grid");
-const reviewValuationGrid = document.getElementById("review-valuation-grid");
-const reviewProfitabilityGrid = document.getElementById("review-profitability-grid");
-const reviewFinancialBody = document.getElementById("review-financial-body");
-const reviewAnalystGrid = document.getElementById("review-analyst-grid");
-const reviewNewsList = document.getElementById("review-news-list");
-const allocationLegend = document.getElementById("allocation-legend");
-const allocationChart = document.getElementById("allocation-chart");
-const performanceChart = document.getElementById("performance-chart");
-const holdingRowTemplate = document.getElementById("holding-row-template");
-const watchlistRowTemplate = document.getElementById("watchlist-row-template");
-const priceStatus = document.getElementById("price-status");
-const exportPortfolioButton = document.getElementById("export-portfolio");
-const importPortfolioButton = document.getElementById("import-portfolio");
-const refreshPricesButton = document.getElementById("refresh-prices");
-const trendRangeSelect = document.getElementById("trend-range");
-const trendChart = document.getElementById("trend-chart");
-const trendChartWrap = document.getElementById("trend-chart-wrap");
-const trendDailyChange = document.getElementById("trend-daily-change");
-const trendPeriodChange = document.getElementById("trend-period-change");
-const trendTooltip = document.getElementById("trend-tooltip");
-const trendTooltipDate = document.getElementById("trend-tooltip-date");
-const trendTooltipValue = document.getElementById("trend-tooltip-value");
-const trendTooltipChange = document.getElementById("trend-tooltip-change");
-const holdingModalBackdrop = document.getElementById("holding-modal-backdrop");
-const holdingForm = document.getElementById("holding-form");
-const holdingModalTitle = document.getElementById("holding-modal-title");
-const holdingTickerInput = document.getElementById("holding-ticker-input");
-const holdingTickerSuggestions = document.getElementById("holding-ticker-suggestions");
-const holdingSharesInput = document.getElementById("holding-shares-input");
-const holdingBuyPriceInput = document.getElementById("holding-buy-price-input");
-const closeHoldingModalButton = document.getElementById("close-holding-modal");
-const cancelHoldingModalButton = document.getElementById("cancel-holding-modal");
-const submitHoldingModalButton = document.getElementById("submit-holding-modal");
-const holdingsModeButtons = document.querySelectorAll('#holdings-mode-positions, #holdings-mode-metrics');
-const watchlistModeButtons = document.querySelectorAll('#watchlist-mode-positions, #watchlist-mode-metrics');
-const watchlistModalBackdrop = document.getElementById("watchlist-modal-backdrop");
-const watchlistForm = document.getElementById("watchlist-form");
-const watchlistModalTitle = document.getElementById("watchlist-modal-title");
-const watchlistTickerInput = document.getElementById("watchlist-ticker-input");
-const watchlistTickerSuggestions = document.getElementById("watchlist-ticker-suggestions");
-const watchlistRatingInput = document.getElementById("watchlist-rating-input");
-const watchlistThesisInput = document.getElementById("watchlist-thesis-input");
-const watchlistRiskInput = document.getElementById("watchlist-risk-input");
-const closeWatchlistModalButton = document.getElementById("close-watchlist-modal");
-const cancelWatchlistModalButton = document.getElementById("cancel-watchlist-modal");
-const submitWatchlistModalButton = document.getElementById("submit-watchlist-modal");
-const metricHelpPopup = document.getElementById("metric-help-popup");
-const metricHelpPopupTitle = document.getElementById("metric-help-popup-title");
-const metricHelpPopupText = document.getElementById("metric-help-popup-text");
 
 let statusTimer = null;
 let trendRange = "3m";
@@ -528,59 +556,9 @@ function setWatchlistTableMode(mode) {
   }
 }
 
-function parseNumericInput(value) {
-  const normalized = String(value ?? "")
-    .trim()
-    .replaceAll(",", "");
-  if (!normalized) {
-    return 0;
-  }
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parseWholeNumber(value) {
-  return Math.round(parseNumericInput(value));
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0
-  }).format(value);
-}
-
-function formatPercent(value) {
-  return `${value.toFixed(1)}%`;
-}
-
-function formatSignedCurrency(value) {
-  const abs = formatCurrency(Math.abs(value));
-  return `${value >= 0 ? "+" : "-"}${abs}`;
-}
-
-function formatSignedPercent(value) {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
-}
-
-function formatPlainNumber(value) {
-  return new Intl.NumberFormat("ja-JP", {
-    maximumFractionDigits: 0
-  }).format(value);
-}
-
 function getDisplayName(ticker) {
   const normalized = String(ticker || "").trim();
   return stockMaster[normalized] || normalized || "-";
-}
-
-function normalizeSearchText(value) {
-  return String(value || "")
-    .trim()
-    .normalize("NFKC")
-    .toLowerCase();
 }
 
 function hideTickerSuggestions() {
@@ -728,93 +706,6 @@ function renderReviewTickerSuggestions(keyword) {
   reviewTickerSuggestions.classList.remove("is-hidden");
 }
 
-function formatMaybeCurrency(value, currency = "JPY", compact = false) {
-  const numeric = parseNumericInput(value);
-  if (!numeric) {
-    return "-";
-  }
-  const options = {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0
-  };
-  if (compact) {
-    options.notation = "compact";
-    options.compactDisplay = "short";
-  }
-  return new Intl.NumberFormat("ja-JP", options).format(numeric);
-}
-
-function formatMaybeNumber(value, digits = 1, suffix = "") {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "-";
-  }
-  return `${numeric.toFixed(digits)}${suffix}`;
-}
-
-function formatMaybeMultiple(value) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "-";
-  }
-  return `${numeric.toFixed(2)} 倍`;
-}
-
-function formatMaybePercent(value, digits = 1) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "-";
-  }
-  return `${(numeric * 100).toFixed(digits)}%`;
-}
-
-function formatMaybeYieldPercent(value, digits = 1) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "-";
-  }
-
-  let normalized = numeric;
-  if (Math.abs(normalized) <= 1) {
-    normalized *= 100;
-  } else if (Math.abs(normalized) >= 100) {
-    normalized /= 100;
-  }
-  return `${normalized.toFixed(digits)}%`;
-}
-
-function formatPriceWithDate(value, currency, dateLabel = "", compact = false) {
-  const formattedValue = formatMaybeCurrency(value, currency, compact);
-  const normalizedDateLabel = String(dateLabel || "").trim();
-  if (formattedValue === "-" || !normalizedDateLabel) {
-    return formattedValue;
-  }
-  return `${formattedValue} <span class="metric-date-note">(${normalizedDateLabel})</span>`;
-}
-
-function normalizeYieldPercentValue(value) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return null;
-  }
-
-  let normalized = numeric;
-  if (Math.abs(normalized) <= 1) {
-    normalized *= 100;
-  } else if (Math.abs(normalized) >= 100) {
-    normalized /= 100;
-  }
-  return normalized;
-}
-
-function formatNormalizedPercent(value, digits = 1) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "-";
-  }
-  return `${numeric.toFixed(digits)}%`;
-}
 
 function getDisplayDividendYieldPercent(snapshot) {
   const overview = snapshot?.overview || {};
@@ -836,120 +727,6 @@ function getDisplayDividendYieldPercent(snapshot) {
   return rawYield === null ? null : rawYield / 100;
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function interpolateColor(start, end, ratio) {
-  const safeRatio = clamp(ratio, 0, 1);
-  return start.map((value, index) => Math.round(value + (end[index] - value) * safeRatio));
-}
-
-function buildMetricToneStyle(value, stops) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "";
-  }
-
-  const [min, mid, max] = stops;
-  const lowColor = [32, 163, 140];
-  const neutralColor = [118, 126, 140];
-  const highColor = [214, 94, 48];
-  let rgb;
-
-  if (numeric <= mid) {
-    const ratio = mid === min ? 1 : clamp((numeric - min) / (mid - min), 0, 1);
-    rgb = interpolateColor(lowColor, neutralColor, ratio);
-  } else {
-    const ratio = max === mid ? 1 : clamp((numeric - mid) / (max - mid), 0, 1);
-    rgb = interpolateColor(neutralColor, highColor, ratio);
-  }
-
-  return `color: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});`;
-}
-
-function buildYieldToneStyle(value) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "";
-  }
-
-  const lowColor = [118, 126, 140];
-  const goodColor = [32, 163, 140];
-  const highColor = [214, 94, 48];
-  let rgb;
-
-  if (numeric <= 3) {
-    const ratio = clamp((numeric - 0.5) / (3 - 0.5), 0, 1);
-    rgb = interpolateColor(lowColor, goodColor, ratio);
-  } else {
-    const ratio = clamp((numeric - 3) / (6 - 3), 0, 1);
-    rgb = interpolateColor(goodColor, highColor, ratio);
-  }
-
-  return `color: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});`;
-}
-
-function normalizePercentLikeValue(value) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return null;
-  }
-  return Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
-}
-
-function buildPositiveMetricToneStyle(value, stops) {
-  const numeric = normalizePercentLikeValue(value);
-  if (numeric === null) {
-    return "";
-  }
-
-  const [min, mid, max] = stops;
-  const lowColor = [118, 126, 140];
-  const midColor = [76, 133, 183];
-  const goodColor = [32, 163, 140];
-  let rgb;
-
-  if (numeric <= mid) {
-    const ratio = mid === min ? 1 : clamp((numeric - min) / (mid - min), 0, 1);
-    rgb = interpolateColor(lowColor, midColor, ratio);
-  } else {
-    const ratio = max === mid ? 1 : clamp((numeric - mid) / (max - mid), 0, 1);
-    rgb = interpolateColor(midColor, goodColor, ratio);
-  }
-
-  return `color: rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]});`;
-}
-
-function getMetricToneHelpText(metric) {
-  switch (metric) {
-    case "PER":
-      return "PERは株価が1株利益の何倍まで買われているかを見る指標です。色は低めで青緑、中間でグレー、高めで赤寄りです。";
-    case "PBR":
-      return "PBRは株価が1株純資産の何倍かを見る指標です。色は低めで青緑、中間でグレー、高めで赤寄りです。";
-    case "dividendYield":
-      return "配当利回りは現在株価に対する年間配当の割合です。色は2〜4%前後が見やすい帯で青緑、低すぎるとグレー、高すぎると赤寄りです。";
-    case "ROE":
-      return "ROEは自己資本を使ってどれだけ効率よく利益を出したかを見る指標です。色は低いとグレー、10%前後から良化し、15%以上で青緑寄りです。";
-    case "ROA":
-      return "ROAは総資産全体を使ってどれだけ利益を出したかを見る指標です。色は低いとグレー、5%前後から良化し、8%以上で青緑寄りです。";
-    default:
-      return "";
-  }
-}
-
-function buildMetricHeaderCell(label, metricKey = "") {
-  const helpText = metricKey ? getMetricToneHelpText(metricKey) : "";
-  if (!helpText) {
-    return `<th>${label}</th>`;
-  }
-  return `<th><button type="button" class="metric-help-label" data-metric-key="${metricKey}">${label}</button></th>`;
-}
-
-function toFiniteNumber(value) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
 
 function getHoldingMetricSnapshot(ticker) {
   return holdingMetricsByTicker[String(ticker || "").trim().toUpperCase()] || null;
@@ -1019,18 +796,6 @@ async function ensureHoldingMetricsLoaded() {
       renderWatchlistTable();
     }
   }
-}
-
-function formatStatementNumber(value) {
-  const numeric = toFiniteNumber(value);
-  if (numeric === null) {
-    return "-";
-  }
-  return new Intl.NumberFormat("ja-JP", {
-    notation: "compact",
-    compactDisplay: "short",
-    maximumFractionDigits: 1
-  }).format(numeric);
 }
 
 function setStatus(message, tone = "neutral") {
