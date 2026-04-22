@@ -53,6 +53,8 @@ const watchlistBody = document.getElementById("watchlist-body");
 const reviewTickerInput = document.getElementById("review-ticker-input");
 const reviewTickerSuggestions = document.getElementById("review-ticker-suggestions");
 const loadReviewButton = document.getElementById("load-review");
+const reviewHistoryButton = document.getElementById("review-history-button");
+const reviewHistoryDropdown = document.getElementById("review-history-dropdown");
 const reviewChipRow = document.getElementById("review-chip-row");
 const reviewSymbol = document.getElementById("review-symbol");
 const reviewOverviewGrid = document.getElementById("review-overview-grid");
@@ -2266,7 +2268,7 @@ function renderReviewSnapshot() {
   }
 
   const { ticker, name, currency, overview, valuation, profitability, analyst, financialSummary, news } = reviewSnapshot;
-  reviewSymbol.textContent = `${name || getDisplayName(ticker)} (${ticker})`;
+  reviewSymbol.textContent = `${stockMaster[ticker] || name || ticker} (${ticker})`;
 
   renderReviewKeyValueGrid(reviewOverviewGrid, [
     { label: "セクター", value: overview.sector || "-" },
@@ -2303,6 +2305,73 @@ function renderReviewSnapshot() {
   renderReviewNews(news || []);
 }
 
+const REVIEW_HISTORY_KEY = "review-history";
+const REVIEW_HISTORY_MAX = 20;
+
+function getReviewHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(REVIEW_HISTORY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function addToReviewHistory(ticker, name) {
+  const history = getReviewHistory().filter((item) => item.ticker !== ticker);
+  history.unshift({ ticker, name, viewedAt: Date.now() });
+  localStorage.setItem(REVIEW_HISTORY_KEY, JSON.stringify(history.slice(0, REVIEW_HISTORY_MAX)));
+}
+
+function renderReviewHistoryDropdown() {
+  const history = getReviewHistory();
+  reviewHistoryDropdown.innerHTML = "";
+
+  if (!history.length) {
+    const empty = document.createElement("div");
+    empty.className = "review-history-empty";
+    empty.textContent = "履歴はありません";
+    reviewHistoryDropdown.appendChild(empty);
+    return;
+  }
+
+  history.forEach(({ ticker, name }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "search-option";
+    const displayName = getDisplayName(ticker) || name || ticker;
+    btn.innerHTML = `<span class="search-option-name">${displayName}</span><span class="search-option-code">${ticker}</span>`;
+    btn.addEventListener("click", () => {
+      hideReviewHistoryDropdown();
+      loadReviewSnapshot(ticker);
+    });
+    reviewHistoryDropdown.appendChild(btn);
+  });
+}
+
+function showReviewHistoryDropdown() {
+  renderReviewHistoryDropdown();
+  reviewHistoryDropdown.classList.remove("is-hidden");
+}
+
+function hideReviewHistoryDropdown() {
+  reviewHistoryDropdown.classList.add("is-hidden");
+}
+
+reviewHistoryButton.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if (reviewHistoryDropdown.classList.contains("is-hidden")) {
+    showReviewHistoryDropdown();
+  } else {
+    hideReviewHistoryDropdown();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!reviewHistoryDropdown.contains(e.target) && e.target !== reviewHistoryButton) {
+    hideReviewHistoryDropdown();
+  }
+});
+
 async function loadReviewSnapshot(rawTicker) {
   const ticker = String(rawTicker || "").trim().toUpperCase();
   if (!ticker) {
@@ -2317,6 +2386,7 @@ async function loadReviewSnapshot(rawTicker) {
   try {
     const snapshot = await window.stockReviewApi.fetchReview(ticker);
     reviewSnapshot = snapshot;
+    addToReviewHistory(ticker, snapshot.name || "");
     renderReviewSnapshot();
   } catch (error) {
     reviewSnapshot = null;

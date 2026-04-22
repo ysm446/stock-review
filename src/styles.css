@@ -1120,6 +1120,43 @@ select:focus {
   width: min(360px, 56vw);
 }
 
+.review-history-wrap {
+  position: relative;
+}
+
+.review-history-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+
+.review-history-button:hover {
+  color: var(--text);
+  border-color: var(--text);
+  background: rgba(255,255,255,0.04);
+}
+
+.review-history-dropdown {
+  left: auto;
+  right: 0;
+  min-width: 260px;
+}
+
+.review-history-empty {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .review-dashboard {
   display: grid;
   gap: 16px;
