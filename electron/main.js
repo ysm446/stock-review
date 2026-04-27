@@ -1,6 +1,8 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const fs = require("fs");
+const http = require("http");
 const path = require("path");
+const { spawn } = require("child_process");
 
 const {
   DATA_DIR,
@@ -21,6 +23,77 @@ const {
   runSectorFetcher,
   syncPortfolioStore
 } = require("./python-services");
+
+let llamaServerProcess = null;
+const LLAMA_PORT = 8080;
+let loadedModelPath = null;
+
+function findLatestLlamaServer() {
+  const serverDir = path.join(__dirname, "..", "bin", "llama-server");
+  const builds = fs.readdirSync(serverDir).filter(d =>
+    fs.statSync(path.join(serverDir, d)).isDirectory()
+  );
+  builds.sort((a, b) => {
+    const numA = parseInt(a.match(/b(\d+)/)?.[1] ?? "0");
+    const numB = parseInt(b.match(/b(\d+)/)?.[1] ?? "0");
+    return numB - numA;
+  });
+  if (!builds.length) throw new Error("No llama-server builds found");
+  return path.join(serverDir, builds[0], "llama-server.exe");
+}
+
+function findGgufFiles() {
+  const modelsDir = path.join(__dirname, "..", "models");
+  if (!fs.existsSync(modelsDir)) return [];
+  const results = [];
+  function scan(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { scan(full); continue; }
+      if (entry.name.toLowerCase().endsWith(".gguf") && !entry.name.toLowerCase().startsWith("mmproj")) {
+        results.push({ name: entry.name, path: full, relativePath: path.relative(modelsDir, full) });
+      }
+    }
+  }
+  scan(modelsDir);
+  return results;
+}
+
+function killLlamaServer() {
+  return new Promise(resolve => {
+    if (!llamaServerProcess) { resolve(); return; }
+    const proc = llamaServerProcess;
+    llamaServerProcess = null;
+    loadedModelPath = null;
+    proc.once("exit", resolve);
+    proc.kill("SIGTERM");
+    setTimeout(() => { try { proc.kill("SIGKILL"); } catch (_) {} resolve(); }, 3000);
+  });
+}
+
+function waitForServer(proc, port, timeout = 90000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeout;
+    let done = false;
+    proc.once("exit", code => {
+      if (!done) { done = true; reject(new Error(`llama-server exited (code ${code})`)); }
+    });
+    function check() {
+      if (done) return;
+      http.get(`http://localhost:${port}/health`, res => {
+        res.resume();
+        if (res.statusCode === 200) { done = true; resolve(); }
+        else retry();
+      }).on("error", retry);
+    }
+    function retry() {
+      if (done) return;
+      if (Date.now() > deadline) { done = true; reject(new Error("llama-server startup timed out")); return; }
+      setTimeout(check, 1500);
+    }
+    setTimeout(check, 3000);
+  });
+}
 
 function getMainWindow() {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -167,3 +240,80 @@ ipcMain.handle("portfolio:sectors", async (_event, tickers) =>
 
 ipcMain.handle("stock-master:load", async () => readStockMaster());
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
+
+ipcMain.handle("chat:list-models", async () => findGgufFiles());
+
+ipcMain.handle("chat:load-model", async (_event, modelPath) => {
+  await killLlamaServer();
+  const serverExe = findLatestLlamaServer();
+  const proc = spawn(serverExe, ["-m", modelPath, "--port", String(LLAMA_PORT), "-ngl", "99", "-c", "4096"], {
+    cwd: path.dirname(serverExe)
+  });
+  llamaServerProcess = proc;
+  loadedModelPath = modelPath;
+  await waitForServer(proc, LLAMA_PORT);
+  return { ok: true };
+});
+
+ipcMain.handle("chat:unload-model", async () => {
+  await killLlamaServer();
+  return { ok: true };
+});
+
+ipcMain.handle("chat:server-status", async () => ({
+  loaded: !!llamaServerProcess,
+  modelPath: loadedModelPath
+}));
+
+ipcMain.handle("chat:stream", async (event, messages) => {
+  if (!llamaServerProcess) throw new Error("モデルが読み込まれていません");
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ model: "local", messages, stream: true });
+    let settled = false;
+    function finish(err) {
+      if (settled) return;
+      settled = true;
+      if (err) {
+        event.sender.send("chat:stream-error", err.message ?? String(err));
+        reject(err);
+      } else {
+        event.sender.send("chat:stream-done");
+        resolve();
+      }
+    }
+    const req = http.request({
+      hostname: "localhost",
+      port: LLAMA_PORT,
+      path: "/v1/chat/completions",
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
+    }, res => {
+      let buf = "";
+      res.on("data", raw => {
+        buf += raw.toString();
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]") { finish(null); return; }
+          try {
+            const json = JSON.parse(payload);
+            const chunk = json.choices?.[0]?.delta?.content;
+            if (chunk) event.sender.send("chat:stream-chunk", chunk);
+          } catch (_) {}
+        }
+      });
+      res.on("end", () => finish(null));
+      res.on("error", finish);
+    });
+    req.setTimeout(120000, () => { req.destroy(); finish(new Error("リクエストがタイムアウトしました")); });
+    req.on("error", finish);
+    req.write(body);
+    req.end();
+  });
+});
+
+app.on("will-quit", () => {
+  if (llamaServerProcess) { try { llamaServerProcess.kill("SIGTERM"); } catch (_) {} }
+});

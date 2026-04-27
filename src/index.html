@@ -28,6 +28,11 @@
               <path d="M9 13h6m-6 3h6"></path>
             </svg>
           </button>
+          <button class="nav-button" data-view="chat" title="チャット" aria-label="チャット">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
         </nav>
         <div class="sidebar-foot">2026</div>
       </aside>
@@ -273,6 +278,27 @@
 
           </section>
         </section>
+        <section class="view" id="view-chat">
+          <header class="hero">
+            <div>
+              <h1>チャット</h1>
+            </div>
+            <div class="hero-actions">
+              <button class="chat-model-bar ghost-button" id="chat-model-bar">
+                <span class="chat-model-indicator" id="chat-model-indicator"></span>
+                <span id="chat-model-name">モデルを選択</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="chat-layout">
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-footer">
+              <textarea class="chat-input" id="chat-input" placeholder="メッセージを入力...（Shift+Enter で改行）" rows="1" disabled></textarea>
+              <button class="accent-button" id="chat-send" disabled>送信</button>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 
@@ -391,6 +417,16 @@
             <button type="submit" class="accent-button" id="submit-watchlist-modal">保存</button>
           </div>
         </form>
+      </section>
+    </div>
+
+    <div class="modal-backdrop is-hidden" id="chat-model-modal-backdrop">
+      <section class="modal-card chat-model-modal" role="dialog" aria-modal="true" aria-labelledby="chat-model-modal-title">
+        <div class="modal-head">
+          <h2 id="chat-model-modal-title">モデルを選択</h2>
+          <button class="icon-remove" id="close-chat-model-modal" aria-label="close">×</button>
+        </div>
+        <div class="chat-model-list" id="chat-model-list"></div>
       </section>
     </div>
 

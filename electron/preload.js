@@ -10,5 +10,18 @@ contextBridge.exposeInMainWorld("stockReviewApi", {
   loadDividendSummary: (holdings) => ipcRenderer.invoke("portfolio:dividend-summary", holdings),
   loadHoldingSectors: (tickers) => ipcRenderer.invoke("portfolio:sectors", tickers),
   loadStockMaster: () => ipcRenderer.invoke("stock-master:load"),
-  fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker)
+  fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker),
+  listChatModels: () => ipcRenderer.invoke("chat:list-models"),
+  loadChatModel: (modelPath) => ipcRenderer.invoke("chat:load-model", modelPath),
+  unloadChatModel: () => ipcRenderer.invoke("chat:unload-model"),
+  getChatServerStatus: () => ipcRenderer.invoke("chat:server-status"),
+  streamChat: (messages) => ipcRenderer.invoke("chat:stream", messages),
+  onStreamChunk: (cb) => ipcRenderer.on("chat:stream-chunk", (_e, chunk) => cb(chunk)),
+  onStreamDone: (cb) => ipcRenderer.on("chat:stream-done", () => cb()),
+  onStreamError: (cb) => ipcRenderer.on("chat:stream-error", (_e, err) => cb(err)),
+  offStreamListeners: () => {
+    ipcRenderer.removeAllListeners("chat:stream-chunk");
+    ipcRenderer.removeAllListeners("chat:stream-done");
+    ipcRenderer.removeAllListeners("chat:stream-error");
+  }
 });

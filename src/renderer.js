@@ -1,3 +1,4 @@
+import "./renderer-chat.js";
 import {
   allocationChart,
   allocationLegend,
