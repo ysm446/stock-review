@@ -1536,6 +1536,7 @@ select:focus {
   height: calc(100vh - 40px);
 }
 
+/* Model status bar */
 .chat-model-bar {
   display: inline-flex;
   align-items: center;
@@ -1566,15 +1567,173 @@ select:focus {
   50% { opacity: 0.3; }
 }
 
+/* Inner layout: sidebar + main */
+.chat-inner {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Conversation sidebar */
+.chat-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.chat-sidebar-head {
+  padding: 10px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.chat-new-btn {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.chat-new-btn:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.chat-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.chat-tree-empty {
+  padding: 14px 12px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Tree items */
+.chat-tree-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 8px 5px 10px;
+  cursor: pointer;
+  font-size: 0.83rem;
+  color: var(--muted);
+  border-radius: 6px;
+  margin: 1px 5px;
+  min-height: 28px;
+  transition: background 100ms ease, color 100ms ease;
+  user-select: none;
+}
+
+.chat-tree-item:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.chat-tree-item.is-active {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.chat-tree-toggle {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: 0.65rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.chat-tree-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.chat-tree-rename-input {
+  flex: 1;
+  background: var(--bg-alt);
+  border: 1px solid var(--accent-soft);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 1px 5px;
+  font-size: 0.83rem;
+  outline: none;
+  min-width: 0;
+}
+
+.chat-tree-item-actions {
+  display: none;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.chat-tree-item:hover .chat-tree-item-actions {
+  display: flex;
+}
+
+.chat-tree-action-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  padding: 0;
+  line-height: 1;
+}
+
+.chat-tree-action-btn:hover {
+  background: var(--line);
+  color: var(--text);
+}
+
+.chat-tree-children {
+  padding-left: 12px;
+}
+
+/* Main chat area */
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+
 .chat-layout {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--panel-soft);
 }
 
 .chat-messages {
@@ -1584,6 +1743,12 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.chat-empty-hint {
+  margin: auto;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .chat-message {
@@ -1668,7 +1833,6 @@ select:focus {
 }
 
 /* Model picker modal */
-
 .chat-model-modal {
   min-width: 480px;
   max-width: 640px;

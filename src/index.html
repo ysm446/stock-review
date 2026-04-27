@@ -291,11 +291,23 @@
             </div>
           </header>
 
-          <div class="chat-layout">
-            <div class="chat-messages" id="chat-messages"></div>
-            <div class="chat-footer">
-              <textarea class="chat-input" id="chat-input" placeholder="メッセージを入力...（Shift+Enter で改行）" rows="1" disabled></textarea>
-              <button class="accent-button" id="chat-send" disabled>送信</button>
+          <div class="chat-inner">
+            <aside class="chat-sidebar">
+              <div class="chat-sidebar-head">
+                <button class="chat-new-btn" id="chat-new-btn">+ 新しい会話</button>
+              </div>
+              <div class="chat-tree" id="chat-tree"></div>
+            </aside>
+            <div class="chat-main">
+              <div class="chat-layout">
+                <div class="chat-messages" id="chat-messages">
+                  <p class="chat-empty-hint" id="chat-empty-hint">サイドバーから会話を選択してください</p>
+                </div>
+                <div class="chat-footer">
+                  <textarea class="chat-input" id="chat-input" placeholder="メッセージを入力...（Shift+Enter で改行）" rows="1" disabled></textarea>
+                  <button class="accent-button" id="chat-send" disabled>送信</button>
+                </div>
+              </div>
             </div>
           </div>
         </section>

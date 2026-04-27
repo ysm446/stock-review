@@ -24,6 +24,35 @@ const {
   syncPortfolioStore
 } = require("./python-services");
 
+// ── Chat SQLite database ─────────────────────────────────
+let chatDb = null;
+
+function initChatDb() {
+  const { DatabaseSync } = require("node:sqlite");
+  const dbPath = path.join(__dirname, "..", "data", "chat.db");
+  chatDb = new DatabaseSync(dbPath);
+  chatDb.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE IF NOT EXISTS conversations (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      parent_id  INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+      title      TEXT    NOT NULL DEFAULT '新しい会話',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role            TEXT    NOT NULL,
+      content         TEXT    NOT NULL,
+      created_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_conv_parent ON conversations(parent_id);
+  `);
+}
+
 let llamaServerProcess = null;
 const LLAMA_PORT = 8080;
 let loadedModelPath = null;
@@ -160,6 +189,7 @@ async function importPortfolioFromFile(filePath) {
 app.whenReady().then(() => {
   ensurePortfolioFile();
   ensureStockMasterFile();
+  initChatDb();
   createWindow();
 
   app.on("activate", () => {
@@ -240,6 +270,39 @@ ipcMain.handle("portfolio:sectors", async (_event, tickers) =>
 
 ipcMain.handle("stock-master:load", async () => readStockMaster());
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
+
+// ── Conversation & message handlers ─────────────────────
+ipcMain.handle("chat:conversations-load", () =>
+  chatDb.prepare("SELECT id, parent_id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC").all()
+);
+
+ipcMain.handle("chat:conversation-create", (_event, { parentId = null, title = "新しい会話" } = {}) => {
+  const now = Date.now();
+  const r = chatDb.prepare("INSERT INTO conversations (parent_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)").run(parentId, title, now, now);
+  return { id: Number(r.lastInsertRowid), parent_id: parentId, title, created_at: now, updated_at: now };
+});
+
+ipcMain.handle("chat:conversation-rename", (_event, { id, title }) => {
+  chatDb.prepare("UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?").run(title, Date.now(), id);
+  return { ok: true };
+});
+
+ipcMain.handle("chat:conversation-delete", (_event, id) => {
+  chatDb.prepare("PRAGMA foreign_keys = ON").run();
+  chatDb.prepare("DELETE FROM conversations WHERE id = ?").run(id);
+  return { ok: true };
+});
+
+ipcMain.handle("chat:messages-load", (_event, conversationId) =>
+  chatDb.prepare("SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(conversationId)
+);
+
+ipcMain.handle("chat:message-append", (_event, { conversationId, role, content }) => {
+  const now = Date.now();
+  const r = chatDb.prepare("INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)").run(conversationId, role, content, now);
+  chatDb.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(now, conversationId);
+  return { id: Number(r.lastInsertRowid) };
+});
 
 ipcMain.handle("chat:list-models", async () => findGgufFiles());
 
