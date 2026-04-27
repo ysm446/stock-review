@@ -222,10 +222,13 @@ async def chat_stream(req: ChatRequest):
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             return
 
+        assistant_message = None
         if accumulated:
-            await asyncio.to_thread(store.append_message, req.session_id, "assistant", accumulated)
+            assistant_message = await asyncio.to_thread(
+                store.append_message, req.session_id, "assistant", accumulated
+            )
 
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message})}\n\n"
 
     return StreamingResponse(
         generate(),

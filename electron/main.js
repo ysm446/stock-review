@@ -1,8 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const fs = require("fs");
-const http = require("http");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawnSync } = require("child_process");
 
 const {
   DATA_DIR,
@@ -21,20 +20,60 @@ const {
   runPortfolioStore,
   runReviewFetcher,
   runSectorFetcher,
+  spawnPython,
   syncPortfolioStore
 } = require("./python-services");
 
 // ── Chat server (Python FastAPI) ─────────────────────────
 let chatServerProcess = null;
-const CHAT_SERVER_PORT = 8001;
+const LLAMA_PATHS_FILE = path.join(__dirname, "..", "data", "llama_paths.json");
 
 function startChatServer() {
   const script = path.join(__dirname, "..", "backend", "chat_server.py");
-  chatServerProcess = spawn("python", [script], {
-    cwd: path.join(__dirname, ".."),
-    windowsHide: true
-  });
+  chatServerProcess = spawnPython(script);
   chatServerProcess.on("error", err => console.error("Chat server error:", err));
+  chatServerProcess.stderr.on("data", chunk => console.error("Chat server:", chunk.toString()));
+  chatServerProcess.on("exit", code => {
+    if (code !== null && code !== 0) console.error(`Chat server exited with code ${code}`);
+  });
+}
+
+function stopLlamaServer() {
+  let paths = {};
+  try {
+    if (fs.existsSync(LLAMA_PATHS_FILE)) {
+      paths = JSON.parse(fs.readFileSync(LLAMA_PATHS_FILE, "utf8"));
+    }
+  } catch (error) {
+    console.warn("Failed to read llama server state:", error);
+  }
+
+  const pid = Number(paths.llama_server_pid);
+  if (Number.isInteger(pid) && pid > 0) {
+    try {
+      if (process.platform === "win32") {
+        spawnSync("taskkill", ["/F", "/T", "/PID", String(pid)], {
+          windowsHide: true,
+          stdio: "ignore"
+        });
+      } else {
+        process.kill(pid, "SIGTERM");
+      }
+    } catch (error) {
+      console.warn("Failed to stop llama-server:", error);
+    }
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(LLAMA_PATHS_FILE), { recursive: true });
+    fs.writeFileSync(
+      LLAMA_PATHS_FILE,
+      JSON.stringify({ active_model_path: "", llama_server_pid: null }, null, 2),
+      "utf8"
+    );
+  } catch (error) {
+    console.warn("Failed to clear llama server state:", error);
+  }
 }
 
 function getMainWindow() {
@@ -112,6 +151,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", () => {
+  stopLlamaServer();
   if (chatServerProcess) { try { chatServerProcess.kill("SIGTERM"); } catch (_) {} }
 });
 

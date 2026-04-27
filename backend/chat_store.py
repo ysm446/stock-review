@@ -19,6 +19,70 @@ def _now() -> int:
     return int(time.time() * 1000)
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _ensure_default_workspace(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT id FROM workspaces ORDER BY id LIMIT 1").fetchone()
+    if row:
+        return int(row["id"])
+
+    now = _now()
+    cur = conn.execute(
+        "INSERT INTO workspaces (name, sort_order, created_at, updated_at) VALUES (?, 0, ?, ?)",
+        ("デフォルト", now, now),
+    )
+    return int(cur.lastrowid)
+
+
+def _ensure_messages_schema(conn: sqlite3.Connection) -> None:
+    columns = _table_columns(conn, "messages")
+    if not columns:
+        conn.execute("""
+            CREATE TABLE messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                role       TEXT    NOT NULL,
+                content    TEXT    NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        return
+
+    if "session_id" in columns:
+        return
+
+    if "conversation_id" not in columns:
+        raise RuntimeError("Unsupported chat messages schema")
+
+    workspace_id = _ensure_default_workspace(conn)
+    if "conversations" in {
+        row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }:
+        conn.execute("""
+            INSERT OR IGNORE INTO sessions (id, workspace_id, title, sort_order, created_at, updated_at)
+            SELECT id, ?, title, 0, created_at, updated_at FROM conversations
+        """, (workspace_id,))
+
+    conn.execute("ALTER TABLE messages RENAME TO messages_legacy")
+    conn.execute("""
+        CREATE TABLE messages (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+            role       TEXT    NOT NULL,
+            content    TEXT    NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    conn.execute("""
+        INSERT INTO messages (id, session_id, role, content, created_at)
+        SELECT id, conversation_id, role, content, created_at FROM messages_legacy
+        WHERE conversation_id IN (SELECT id FROM sessions)
+    """)
+    conn.execute("DROP TABLE messages_legacy")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript("""
@@ -37,13 +101,9 @@ def init_db() -> None:
                 created_at   INTEGER NOT NULL,
                 updated_at   INTEGER NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS messages (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-                role       TEXT    NOT NULL,
-                content    TEXT    NOT NULL,
-                created_at INTEGER NOT NULL
-            );
+        """)
+        _ensure_messages_schema(conn)
+        conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_sessions_ws  ON sessions(workspace_id);
             CREATE INDEX IF NOT EXISTS idx_messages_ses ON messages(session_id);
         """)

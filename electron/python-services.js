@@ -1,5 +1,6 @@
 const path = require("path");
 const { spawn } = require("child_process");
+const fs = require("fs");
 
 const ROOT_DIR = path.join(__dirname, "..");
 const PORTFOLIO_STORE = path.join(ROOT_DIR, "backend", "portfolio_store.py");
@@ -7,12 +8,47 @@ const REVIEW_FETCHER = path.join(ROOT_DIR, "backend", "fetch_review.py");
 const DIVIDEND_FETCHER = path.join(ROOT_DIR, "backend", "fetch_dividends.py");
 const SECTOR_FETCHER = path.join(ROOT_DIR, "backend", "fetch_sectors.py");
 
+function getPythonCommand() {
+  const candidates = [
+    process.env.PYTHON,
+    process.env.CONDA_DEFAULT_ENV === "main" && process.env.CONDA_PREFIX
+      ? path.join(process.env.CONDA_PREFIX, "python.exe")
+      : null,
+    process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "miniconda3", "envs", "main", "python.exe") : null,
+    "D:\\miniconda3\\conda_envs\\main\\python.exe",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fs.existsSync(candidate)) {
+        return { command: candidate, argsPrefix: [] };
+      }
+    } catch (_) {}
+  }
+
+  const condaExe = process.env.USERPROFILE
+    ? path.join(process.env.USERPROFILE, "miniconda3", "Scripts", "conda.exe")
+    : null;
+  if (condaExe && fs.existsSync(condaExe)) {
+    return { command: condaExe, argsPrefix: ["run", "-n", "main", "python"] };
+  }
+
+  return { command: "python", argsPrefix: [] };
+}
+
+function spawnPython(scriptPath, args = [], options = {}) {
+  const python = getPythonCommand();
+  return spawn(python.command, [...python.argsPrefix, scriptPath, ...args], {
+    cwd: ROOT_DIR,
+    env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+    windowsHide: true,
+    ...options
+  });
+}
+
 function runPythonJson(scriptPath, args = [], payload = null, errorLabel = "Python script") {
   return new Promise((resolve, reject) => {
-    const child = spawn("python", [scriptPath, ...args], {
-      cwd: ROOT_DIR,
-      windowsHide: true
-    });
+    const child = spawnPython(scriptPath, args);
 
     let stdout = "";
     let stderr = "";
@@ -85,10 +121,12 @@ function runSectorFetcher(tickers) {
 }
 
 module.exports = {
+  getPythonCommand,
   normalizeTickers,
   runDividendFetcher,
   runPortfolioStore,
   runReviewFetcher,
   runSectorFetcher,
+  spawnPython,
   syncPortfolioStore
 };

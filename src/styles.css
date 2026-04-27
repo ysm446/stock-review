@@ -1709,13 +1709,13 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px 8px 4px 22px;
+  padding: 5px 8px 5px 22px;
   margin: 1px 4px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.83rem;
   color: var(--muted);
-  min-height: 26px;
+  min-height: 40px;
   transition: background 100ms ease, color 100ms ease;
   user-select: none;
 }
@@ -1730,12 +1730,25 @@ select:focus {
   color: var(--text);
 }
 
-.chat-session-label {
+.chat-session-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.chat-session-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
+}
+
+.chat-session-date {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.1;
+  opacity: 0.78;
 }
 
 .chat-session-actions {
@@ -1815,15 +1828,27 @@ select:focus {
 
 .chat-message {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
   max-width: 80%;
 }
 
 .chat-message.user {
   align-self: flex-end;
+  align-items: flex-end;
 }
 
 .chat-message.assistant {
   align-self: flex-start;
+  align-items: flex-start;
+}
+
+.chat-message-meta {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0 4px;
+  opacity: 0.78;
 }
 
 .chat-message-bubble {

@@ -47,7 +47,7 @@ async function streamChat(sessionId, messages, onToken, onDone, onError) {
       try {
         const evt = JSON.parse(payload);
         if (evt.type === "token") onToken(evt.content);
-        else if (evt.type === "done") onDone();
+        else if (evt.type === "done") onDone(evt);
         else if (evt.type === "error") onError(evt.message);
       } catch (_) {}
     }
@@ -89,6 +89,21 @@ function setInputEnabled(on) {
   chatSendButton.disabled = !on;
 }
 
+async function refreshModelStatus() {
+  const status = await api("GET", "/model/status");
+  serverLoaded = Boolean(status.loaded);
+
+  if (serverLoaded) {
+    setModelStatus("is-loaded", status.model_name || "読み込み済み");
+    if (activeSessionId !== null) setInputEnabled(true);
+  } else {
+    setModelStatus("", "モデルを選択");
+    setInputEnabled(false);
+  }
+
+  return status;
+}
+
 function clearMessages(hint = "") {
   chatMessages.innerHTML = "";
   if (hint) {
@@ -97,6 +112,17 @@ function clearMessages(hint = "") {
     p.textContent = hint;
     chatMessages.appendChild(p);
   }
+}
+
+function formatChatDate(value, withTime = true) {
+  if (!value) return "";
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return "";
+
+  const options = withTime
+    ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+    : { year: "numeric", month: "2-digit", day: "2-digit" };
+  return new Intl.DateTimeFormat("ja-JP", options).format(date);
 }
 
 // ── Server readiness ──────────────────────────────────────
@@ -119,6 +145,7 @@ async function loadWorkspaces() {
     chatTree.innerHTML = '<p class="chat-tree-empty">バックエンドに接続できません</p>';
     return;
   }
+  await refreshModelStatus().catch(() => {});
   const wsList = await api("GET", "/workspaces");
   workspaces = await Promise.all(
     wsList.map(async ws => ({
@@ -184,16 +211,25 @@ function buildSessionItem(sess) {
   item.className = `chat-session-item${sess.id === activeSessionId ? " is-active" : ""}`;
   item.dataset.sessionId = sess.id;
 
+  const content = document.createElement("div");
+  content.className = "chat-session-content";
+
   const label = document.createElement("span");
   label.className = "chat-session-label";
   label.textContent = sess.title;
   label.addEventListener("dblclick", e => { e.stopPropagation(); startRename(label, v => renameSession(sess.id, v)); });
 
+  const date = document.createElement("span");
+  date.className = "chat-session-date";
+  date.textContent = formatChatDate(sess.updated_at || sess.created_at);
+
+  content.append(label, date);
+
   const actions = document.createElement("div");
   actions.className = "chat-session-actions";
   actions.appendChild(makeActionBtn("×", "削除", e => { e.stopPropagation(); deleteSession(sess.id); }));
 
-  item.append(label, actions);
+  item.append(content, actions);
   item.addEventListener("click", () => selectSession(sess.id));
   return item;
 }
@@ -310,7 +346,7 @@ async function selectSession(id) {
   const msgs = await api("GET", `/sessions/${id}/messages`);
   for (const m of msgs) {
     chatHistory.push({ role: m.role, content: m.content });
-    appendBubble(m.role, m.content);
+    appendBubble(m.role, m.content, m.created_at);
   }
   if (!msgs.length) clearMessages("メッセージを入力してください");
 
@@ -328,14 +364,17 @@ async function newSessionInActiveWs() {
 }
 
 // ── Chat ──────────────────────────────────────────────────
-function appendBubble(role, content) {
+function appendBubble(role, content, createdAt = Date.now()) {
   chatMessages.querySelectorAll(".chat-empty-hint").forEach(el => el.remove());
   const wrap = document.createElement("div");
   wrap.className = `chat-message ${role}`;
+  const meta = document.createElement("div");
+  meta.className = "chat-message-meta";
+  meta.textContent = formatChatDate(createdAt);
   const bubble = document.createElement("div");
   bubble.className = "chat-message-bubble";
   bubble.textContent = content;
-  wrap.appendChild(bubble);
+  wrap.append(meta, bubble);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   return wrap;
@@ -355,9 +394,12 @@ async function sendMessage() {
 
   const wrap = document.createElement("div");
   wrap.className = "chat-message assistant loading";
+  const meta = document.createElement("div");
+  meta.className = "chat-message-meta";
+  meta.textContent = "生成中";
   const bubble = document.createElement("div");
   bubble.className = "chat-message-bubble";
-  wrap.appendChild(bubble);
+  wrap.append(meta, bubble);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -373,8 +415,9 @@ async function sendMessage() {
       bubble.textContent = accumulated;
       chatMessages.scrollTop = chatMessages.scrollHeight;
     },
-    () => {
+    evt => {
       wrap.classList.remove("loading");
+      meta.textContent = formatChatDate(evt?.message?.created_at || Date.now());
       chatHistory.push({ role: "assistant", content: accumulated });
       // Refresh session title in sidebar (auto-title was applied server-side)
       refreshSession(sidAtSend);
@@ -412,14 +455,10 @@ async function openModelPicker() {
   chatModelModalBackdrop.classList.remove("is-hidden");
 
   let models;
+  let status;
   try {
     models = await api("GET", "/models");
-    const status = await api("GET", "/model/status");
-    if (status.loaded && !serverLoaded) {
-      serverLoaded = true;
-      setModelStatus("is-loaded", status.model_name || "読み込み済み");
-      if (activeSessionId !== null) setInputEnabled(true);
-    }
+    status = await refreshModelStatus();
   } catch (err) {
     chatModelList.innerHTML = `<p style="padding:16px;color:var(--muted)">取得失敗: ${err.message}</p>`;
     return;
@@ -430,10 +469,10 @@ async function openModelPicker() {
     return;
   }
 
-  const status = await api("GET", "/model/status");
   models.forEach(({ name, path, relative_path }) => {
     const btn = document.createElement("button");
     btn.className = `chat-model-item${path === status.model_path ? " is-active" : ""}`;
+    btn.type = "button";
     btn.innerHTML = `<div>
       <div class="chat-model-item-name">${name}</div>
       <div class="chat-model-item-path">${relative_path}</div>
