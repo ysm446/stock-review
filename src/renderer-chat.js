@@ -1,126 +1,201 @@
-// ── DOM refs ────────────────────────────────────────────
-const chatModelBar       = document.getElementById("chat-model-bar");
-const chatModelIndicator = document.getElementById("chat-model-indicator");
-const chatModelNameEl    = document.getElementById("chat-model-name");
-const chatMessages       = document.getElementById("chat-messages");
-const chatInput          = document.getElementById("chat-input");
-const chatSendButton     = document.getElementById("chat-send");
-const chatNewBtn         = document.getElementById("chat-new-btn");
-const chatTree           = document.getElementById("chat-tree");
-const chatEmptyHint      = document.getElementById("chat-empty-hint");
+const API = "http://127.0.0.1:8001";
+
+// ── HTTP helpers ─────────────────────────────────────────
+async function api(method, path, body = null) {
+  const opts = { method, headers: {} };
+  if (body !== null) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${API}${path}`, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${method} ${path} → ${res.status}${text ? ": " + text : ""}`);
+  }
+  return res.json();
+}
+
+async function streamChat(sessionId, messages, onToken, onDone, onError) {
+  let res;
+  try {
+    res = await fetch(`${API}/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, messages }),
+    });
+  } catch (e) {
+    onError(e.message);
+    return;
+  }
+  if (!res.ok) {
+    onError(`HTTP ${res.status}`);
+    return;
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (!payload) continue;
+      try {
+        const evt = JSON.parse(payload);
+        if (evt.type === "token") onToken(evt.content);
+        else if (evt.type === "done") onDone();
+        else if (evt.type === "error") onError(evt.message);
+      } catch (_) {}
+    }
+  }
+}
+
+// ── DOM refs ─────────────────────────────────────────────
+const chatModelBar        = document.getElementById("chat-model-bar");
+const chatModelIndicator  = document.getElementById("chat-model-indicator");
+const chatModelNameEl     = document.getElementById("chat-model-name");
+const chatMessages        = document.getElementById("chat-messages");
+const chatInput           = document.getElementById("chat-input");
+const chatSendButton      = document.getElementById("chat-send");
+const chatNewSessionBtn   = document.getElementById("chat-new-session-btn");
+const chatNewWsBtn        = document.getElementById("chat-new-ws-btn");
+const chatTree            = document.getElementById("chat-tree");
 const chatModelModalBackdrop = document.getElementById("chat-model-modal-backdrop");
 const chatModelList          = document.getElementById("chat-model-list");
 const closeChatModelModal    = document.getElementById("close-chat-model-modal");
 
-// ── State ───────────────────────────────────────────────
-let conversations       = [];   // flat list from DB
-let activeConvId        = null;
-let chatHistory         = [];   // [{role, content}]
-let expandedIds         = new Set();
-let serverLoaded        = false;
-let loadingModel        = false;
-let currentModelPath    = "";
-let streaming           = false;
+// ── State ────────────────────────────────────────────────
+let workspaces       = [];   // [{id, name, sessions:[]}]
+let activeWsId       = null;
+let activeSessionId  = null;
+let chatHistory      = [];
+let expandedWsIds    = new Set();
+let serverLoaded     = false;
+let loadingModel     = false;
+let streaming        = false;
 
-// ── Helpers ─────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────
 function setModelStatus(state, label) {
   chatModelIndicator.className = `chat-model-indicator${state ? " " + state : ""}`;
   chatModelNameEl.textContent = label;
 }
 
-function setInputEnabled(enabled) {
-  chatInput.disabled = !enabled;
-  chatSendButton.disabled = !enabled;
+function setInputEnabled(on) {
+  chatInput.disabled = !on;
+  chatSendButton.disabled = !on;
 }
 
-function hideEmptyHint() {
-  if (chatEmptyHint) chatEmptyHint.remove();
+function clearMessages(hint = "") {
+  chatMessages.innerHTML = "";
+  if (hint) {
+    const p = document.createElement("p");
+    p.className = "chat-empty-hint";
+    p.textContent = hint;
+    chatMessages.appendChild(p);
+  }
 }
 
-// ── Conversation tree ────────────────────────────────────
-function buildTree(list) {
-  const map = new Map(list.map(c => [c.id, { ...c, children: [] }]));
-  const roots = [];
-  for (const item of map.values()) {
-    if (item.parent_id) map.get(item.parent_id)?.children.push(item);
-    else roots.push(item);
+// ── Server readiness ──────────────────────────────────────
+async function waitForServer(maxMs = 20000) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${API}/health`);
+      if (r.ok) return true;
+    } catch (_) {}
+    await new Promise(r => setTimeout(r, 1000));
   }
-  function sortBy(arr) {
-    arr.sort((a, b) => b.updated_at - a.updated_at);
-    arr.forEach(n => sortBy(n.children));
+  return false;
+}
+
+// ── Workspace tree ────────────────────────────────────────
+async function loadWorkspaces() {
+  const ready = await waitForServer();
+  if (!ready) {
+    chatTree.innerHTML = '<p class="chat-tree-empty">バックエンドに接続できません</p>';
+    return;
   }
-  sortBy(roots);
-  return roots;
+  const wsList = await api("GET", "/workspaces");
+  workspaces = await Promise.all(
+    wsList.map(async ws => ({
+      ...ws,
+      sessions: await api("GET", `/workspaces/${ws.id}/sessions`),
+    }))
+  );
+  if (workspaces.length > 0) expandedWsIds.add(workspaces[0].id);
+  renderTree();
 }
 
 function renderTree() {
   chatTree.innerHTML = "";
-  const roots = buildTree(conversations);
-
-  if (!roots.length) {
-    chatTree.innerHTML = '<p class="chat-tree-empty">会話がありません</p>';
+  if (!workspaces.length) {
+    chatTree.innerHTML = '<p class="chat-tree-empty">ワークスペースがありません</p>';
     return;
   }
+  for (const ws of workspaces) {
+    chatTree.appendChild(buildWsSection(ws));
+  }
+}
 
-  function renderNode(node, depth) {
-    const hasChildren = node.children.length > 0;
-    const isExpanded  = expandedIds.has(node.id);
+function buildWsSection(ws) {
+  const isExpanded = expandedWsIds.has(ws.id);
+  const section = document.createElement("div");
+  section.className = "chat-ws-section";
+  section.dataset.wsId = ws.id;
 
-    const item = document.createElement("div");
-    item.className = `chat-tree-item${node.id === activeConvId ? " is-active" : ""}`;
-    item.style.paddingLeft = `${10 + depth * 14}px`;
-    item.dataset.id = String(node.id);
+  // Header
+  const header = document.createElement("div");
+  header.className = "chat-ws-header";
 
-    // Expand/collapse toggle
-    const toggle = document.createElement("button");
-    toggle.className = "chat-tree-toggle";
-    toggle.textContent = hasChildren ? (isExpanded ? "▾" : "▸") : "";
-    toggle.addEventListener("click", e => {
-      e.stopPropagation();
-      if (!hasChildren) return;
-      if (expandedIds.has(node.id)) expandedIds.delete(node.id);
-      else expandedIds.add(node.id);
-      renderTree();
-    });
+  const toggle = document.createElement("button");
+  toggle.className = "chat-ws-toggle";
+  toggle.textContent = isExpanded ? "▾" : "▸";
+  toggle.addEventListener("click", e => { e.stopPropagation(); toggleWs(ws.id); });
 
-    // Label
-    const label = document.createElement("span");
-    label.className = "chat-tree-item-label";
-    label.textContent = node.title;
+  const label = document.createElement("span");
+  label.className = "chat-ws-label";
+  label.textContent = ws.name;
+  label.addEventListener("dblclick", e => { e.stopPropagation(); startRename(label, v => renameWorkspace(ws.id, v)); });
 
-    // Action buttons (visible on hover)
-    const actions = document.createElement("div");
-    actions.className = "chat-tree-item-actions";
+  const actions = document.createElement("div");
+  actions.className = "chat-ws-actions";
+  actions.appendChild(makeActionBtn("+", "会話を追加", () => createSession(ws.id)));
+  actions.appendChild(makeActionBtn("×", "削除", () => deleteWorkspace(ws.id)));
 
-    const addBtn = makeActionBtn("+", "子会話を追加", e => {
-      e.stopPropagation();
-      createConversation(node.id);
-    });
-    const delBtn = makeActionBtn("×", "削除", e => {
-      e.stopPropagation();
-      deleteConversation(node.id);
-    });
-    actions.append(addBtn, delBtn);
+  header.append(toggle, label, actions);
+  header.addEventListener("click", () => toggleWs(ws.id));
+  section.appendChild(header);
 
-    item.append(toggle, label, actions);
-
-    // Click → select
-    item.addEventListener("click", () => selectConversation(node.id));
-
-    // Double-click label → rename
-    label.addEventListener("dblclick", e => {
-      e.stopPropagation();
-      startInlineRename(node.id, label);
-    });
-
-    chatTree.appendChild(item);
-
-    if (hasChildren && isExpanded) {
-      node.children.forEach(child => renderNode(child, depth + 1));
+  // Sessions
+  if (isExpanded) {
+    for (const sess of ws.sessions) {
+      section.appendChild(buildSessionItem(sess));
     }
   }
+  return section;
+}
 
-  roots.forEach(n => renderNode(n, 0));
+function buildSessionItem(sess) {
+  const item = document.createElement("div");
+  item.className = `chat-session-item${sess.id === activeSessionId ? " is-active" : ""}`;
+  item.dataset.sessionId = sess.id;
+
+  const label = document.createElement("span");
+  label.className = "chat-session-label";
+  label.textContent = sess.title;
+  label.addEventListener("dblclick", e => { e.stopPropagation(); startRename(label, v => renameSession(sess.id, v)); });
+
+  const actions = document.createElement("div");
+  actions.className = "chat-session-actions";
+  actions.appendChild(makeActionBtn("×", "削除", e => { e.stopPropagation(); deleteSession(sess.id); }));
+
+  item.append(label, actions);
+  item.addEventListener("click", () => selectSession(sess.id));
+  return item;
 }
 
 function makeActionBtn(text, title, handler) {
@@ -128,106 +203,133 @@ function makeActionBtn(text, title, handler) {
   btn.className = "chat-tree-action-btn";
   btn.title = title;
   btn.textContent = text;
-  btn.addEventListener("click", handler);
+  btn.addEventListener("click", e => { e.stopPropagation(); handler(e); });
   return btn;
 }
 
-function startInlineRename(id, labelEl) {
+function startRename(labelEl, onCommit) {
   const input = document.createElement("input");
   input.className = "chat-tree-rename-input";
   input.value = labelEl.textContent;
-
   let committed = false;
   function commit() {
     if (committed) return;
     committed = true;
     const val = input.value.trim() || labelEl.textContent;
-    renameConversation(id, val);
+    onCommit(val);
     labelEl.textContent = val;
     labelEl.style.display = "";
     input.remove();
   }
-
   input.addEventListener("keydown", e => {
     if (e.key === "Enter") { e.preventDefault(); commit(); }
     if (e.key === "Escape") { committed = true; labelEl.style.display = ""; input.remove(); }
   });
   input.addEventListener("blur", commit);
-
   labelEl.style.display = "none";
   labelEl.after(input);
   input.focus();
   input.select();
 }
 
-// ── CRUD ─────────────────────────────────────────────────
-async function loadConversations() {
-  conversations = await window.stockReviewApi.loadConversations();
+// ── Workspace/session CRUD ────────────────────────────────
+function toggleWs(id) {
+  if (expandedWsIds.has(id)) expandedWsIds.delete(id);
+  else expandedWsIds.add(id);
   renderTree();
 }
 
-async function createConversation(parentId = null) {
-  const conv = await window.stockReviewApi.createConversation({ parentId });
-  conversations.unshift(conv);
-  if (parentId) expandedIds.add(parentId);
+async function createWorkspace() {
+  const ws = await api("POST", "/workspaces", { name: "新しいワークスペース" });
+  ws.sessions = [];
+  workspaces.push(ws);
+  expandedWsIds.add(ws.id);
+  activeWsId = ws.id;
   renderTree();
-  await selectConversation(conv.id);
+  // Focus rename immediately
+  const header = chatTree.querySelector(`[data-ws-id="${ws.id}"] .chat-ws-label`);
+  if (header) startRename(header, v => renameWorkspace(ws.id, v));
 }
 
-async function renameConversation(id, title) {
-  await window.stockReviewApi.renameConversation({ id, title });
-  const conv = conversations.find(c => c.id === id);
-  if (conv) conv.title = title;
+async function renameWorkspace(id, name) {
+  await api("PATCH", `/workspaces/${id}`, { name });
+  const ws = workspaces.find(w => w.id === id);
+  if (ws) ws.name = name;
   renderTree();
 }
 
-async function deleteConversation(id) {
-  function descendants(nodeId) {
-    const ids = [nodeId];
-    conversations.filter(c => c.parent_id === nodeId).forEach(c => ids.push(...descendants(c.id)));
-    return ids;
+async function deleteWorkspace(id) {
+  await api("DELETE", `/workspaces/${id}`);
+  workspaces = workspaces.filter(w => w.id !== id);
+  if (activeSessionId) {
+    const still = workspaces.flatMap(w => w.sessions).find(s => s.id === activeSessionId);
+    if (!still) { activeSessionId = null; chatHistory = []; clearMessages("会話を選択してください"); setInputEnabled(false); }
   }
-  const toRemove = new Set(descendants(id));
+  renderTree();
+}
 
-  await window.stockReviewApi.deleteConversation(id);
-  conversations = conversations.filter(c => !toRemove.has(c.id));
+async function createSession(wsId) {
+  const sess = await api("POST", `/workspaces/${wsId}/sessions`, { title: "新しい会話" });
+  const ws = workspaces.find(w => w.id === wsId);
+  if (ws) { ws.sessions.unshift(sess); expandedWsIds.add(wsId); }
+  activeWsId = wsId;
+  renderTree();
+  await selectSession(sess.id);
+}
 
-  if (activeConvId && toRemove.has(activeConvId)) {
-    activeConvId = null;
+async function renameSession(id, title) {
+  await api("PATCH", `/sessions/${id}`, { title });
+  for (const ws of workspaces) {
+    const s = ws.sessions.find(s => s.id === id);
+    if (s) { s.title = title; break; }
+  }
+  renderTree();
+}
+
+async function deleteSession(id) {
+  await api("DELETE", `/sessions/${id}`);
+  for (const ws of workspaces) {
+    const idx = ws.sessions.findIndex(s => s.id === id);
+    if (idx !== -1) { ws.sessions.splice(idx, 1); break; }
+  }
+  if (activeSessionId === id) {
+    activeSessionId = null;
     chatHistory = [];
-    chatMessages.innerHTML = "";
-    chatMessages.innerHTML = '<p class="chat-tree-empty" style="margin:auto;font-size:.88rem">会話を選択してください</p>';
+    clearMessages("会話を選択してください");
     setInputEnabled(false);
   }
   renderTree();
 }
 
-async function selectConversation(id) {
+async function selectSession(id) {
   if (streaming) return;
-  activeConvId = id;
+  activeSessionId = id;
   chatHistory = [];
-  chatMessages.innerHTML = "";
+  clearMessages();
 
-  const msgs = await window.stockReviewApi.loadMessages(id);
+  const msgs = await api("GET", `/sessions/${id}/messages`);
   for (const m of msgs) {
     chatHistory.push({ role: m.role, content: m.content });
     appendBubble(m.role, m.content);
   }
-
-  if (!msgs.length) {
-    chatMessages.innerHTML = '<p class="chat-empty-hint" style="margin:auto">メッセージを入力してください</p>';
-  }
+  if (!msgs.length) clearMessages("メッセージを入力してください");
 
   renderTree();
   chatMessages.scrollTop = chatMessages.scrollHeight;
   if (serverLoaded) setInputEnabled(true);
 }
 
-// ── Chat messaging ────────────────────────────────────────
-function appendBubble(role, content) {
-  // Remove placeholder hints
-  chatMessages.querySelectorAll(".chat-empty-hint, .chat-tree-empty").forEach(el => el.remove());
+// ── New session from top button ───────────────────────────
+async function newSessionInActiveWs() {
+  let wsId = activeWsId;
+  if (!wsId && workspaces.length > 0) wsId = workspaces[0].id;
+  if (!wsId) { await createWorkspace(); return; }
+  await createSession(wsId);
+}
 
+// ── Chat ──────────────────────────────────────────────────
+function appendBubble(role, content) {
+  chatMessages.querySelectorAll(".chat-empty-hint").forEach(el => el.remove());
   const wrap = document.createElement("div");
   wrap.className = `chat-message ${role}`;
   const bubble = document.createElement("div");
@@ -241,26 +343,16 @@ function appendBubble(role, content) {
 
 async function sendMessage() {
   const text = chatInput.value.trim();
-  if (!text || !serverLoaded || streaming || activeConvId === null) return;
+  if (!text || !serverLoaded || streaming || activeSessionId === null) return;
 
   chatInput.value = "";
   chatInput.style.height = "auto";
   streaming = true;
   setInputEnabled(false);
 
-  // Auto-title on first user message
-  const conv = conversations.find(c => c.id === activeConvId);
-  if (conv && conv.title === "新しい会話") {
-    const autoTitle = text.slice(0, 28).trimEnd();
-    renameConversation(activeConvId, autoTitle);
-  }
-
-  // Persist user message
   chatHistory.push({ role: "user", content: text });
-  await window.stockReviewApi.appendMessage({ conversationId: activeConvId, role: "user", content: text });
   appendBubble("user", text);
 
-  // Assistant placeholder
   const wrap = document.createElement("div");
   wrap.className = "chat-message assistant loading";
   const bubble = document.createElement("div");
@@ -270,46 +362,47 @@ async function sendMessage() {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
   let accumulated = "";
-  const convIdAtSend = activeConvId;
+  const sidAtSend = activeSessionId;
 
-  function onChunk(chunk) {
-    wrap.classList.remove("loading");
-    accumulated += chunk;
-    bubble.textContent = accumulated;
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+  await streamChat(
+    sidAtSend,
+    chatHistory,
+    chunk => {
+      wrap.classList.remove("loading");
+      accumulated += chunk;
+      bubble.textContent = accumulated;
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    },
+    () => {
+      wrap.classList.remove("loading");
+      chatHistory.push({ role: "assistant", content: accumulated });
+      // Refresh session title in sidebar (auto-title was applied server-side)
+      refreshSession(sidAtSend);
+      streaming = false;
+      setInputEnabled(serverLoaded && activeSessionId !== null);
+      if (serverLoaded) chatInput.focus();
+    },
+    err => {
+      chatHistory.pop();
+      wrap.classList.remove("loading");
+      wrap.classList.add("error");
+      bubble.textContent = `エラー: ${err}`;
+      streaming = false;
+      setInputEnabled(serverLoaded && activeSessionId !== null);
+    }
+  );
+}
+
+async function refreshSession(sessionId) {
+  for (const ws of workspaces) {
+    const idx = ws.sessions.findIndex(s => s.id === sessionId);
+    if (idx !== -1) {
+      const updated = await api("GET", `/workspaces/${ws.id}/sessions`);
+      ws.sessions = updated;
+      renderTree();
+      break;
+    }
   }
-
-  async function onDone() {
-    wrap.classList.remove("loading");
-    chatHistory.push({ role: "assistant", content: accumulated });
-    await window.stockReviewApi.appendMessage({ conversationId: convIdAtSend, role: "assistant", content: accumulated });
-    // Refresh updated_at in local list
-    const c = conversations.find(x => x.id === convIdAtSend);
-    if (c) { c.updated_at = Date.now(); renderTree(); }
-    window.stockReviewApi.offStreamListeners();
-    streaming = false;
-    setInputEnabled(serverLoaded && activeConvId !== null);
-    if (serverLoaded) chatInput.focus();
-  }
-
-  function onError(err) {
-    chatHistory.pop();
-    wrap.classList.remove("loading");
-    wrap.classList.add("error");
-    bubble.textContent = `エラー: ${err}`;
-    window.stockReviewApi.offStreamListeners();
-    streaming = false;
-    setInputEnabled(serverLoaded && activeConvId !== null);
-  }
-
-  window.stockReviewApi.offStreamListeners();
-  window.stockReviewApi.onStreamChunk(onChunk);
-  window.stockReviewApi.onStreamDone(onDone);
-  window.stockReviewApi.onStreamError(onError);
-
-  try {
-    await window.stockReviewApi.streamChat(chatHistory);
-  } catch (_) {}
 }
 
 // ── Model picker ──────────────────────────────────────────
@@ -320,7 +413,13 @@ async function openModelPicker() {
 
   let models;
   try {
-    models = await window.stockReviewApi.listChatModels();
+    models = await api("GET", "/models");
+    const status = await api("GET", "/model/status");
+    if (status.loaded && !serverLoaded) {
+      serverLoaded = true;
+      setModelStatus("is-loaded", status.model_name || "読み込み済み");
+      if (activeSessionId !== null) setInputEnabled(true);
+    }
   } catch (err) {
     chatModelList.innerHTML = `<p style="padding:16px;color:var(--muted)">取得失敗: ${err.message}</p>`;
     return;
@@ -331,10 +430,14 @@ async function openModelPicker() {
     return;
   }
 
-  models.forEach(({ name, path, relativePath }) => {
+  const status = await api("GET", "/model/status");
+  models.forEach(({ name, path, relative_path }) => {
     const btn = document.createElement("button");
-    btn.className = `chat-model-item${path === currentModelPath ? " is-active" : ""}`;
-    btn.innerHTML = `<div><div class="chat-model-item-name">${name}</div><div class="chat-model-item-path">${relativePath}</div></div>`;
+    btn.className = `chat-model-item${path === status.model_path ? " is-active" : ""}`;
+    btn.innerHTML = `<div>
+      <div class="chat-model-item-name">${name}</div>
+      <div class="chat-model-item-path">${relative_path}</div>
+    </div>`;
     btn.addEventListener("click", () => loadModel(path, name));
     chatModelList.appendChild(btn);
   });
@@ -352,11 +455,10 @@ async function loadModel(modelPath, displayName) {
   setModelStatus("is-loading", `読み込み中: ${displayName}`);
 
   try {
-    await window.stockReviewApi.loadChatModel(modelPath);
-    currentModelPath = modelPath;
+    await api("POST", "/model/load", { model_path: modelPath });
     serverLoaded = true;
     setModelStatus("is-loaded", displayName);
-    if (activeConvId !== null) setInputEnabled(true);
+    if (activeSessionId !== null) setInputEnabled(true);
   } catch (err) {
     setModelStatus("", "読み込み失敗 — 再選択してください");
   } finally {
@@ -370,8 +472,8 @@ closeChatModelModal.addEventListener("click", closeModelPicker);
 chatModelModalBackdrop.addEventListener("click", e => {
   if (e.target === chatModelModalBackdrop) closeModelPicker();
 });
-
-chatNewBtn.addEventListener("click", () => createConversation(null));
+chatNewSessionBtn.addEventListener("click", newSessionInActiveWs);
+chatNewWsBtn.addEventListener("click", createWorkspace);
 chatSendButton.addEventListener("click", sendMessage);
 chatInput.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -382,4 +484,4 @@ chatInput.addEventListener("input", () => {
 });
 
 // ── Init ──────────────────────────────────────────────────
-loadConversations();
+loadWorkspaces();
