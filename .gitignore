@@ -27,6 +27,9 @@ env/
 .env
 .env.*
 
+# Claude Code
+.claude/settings.local.json
+
 # OS / Editor
 .DS_Store
 Thumbs.db
