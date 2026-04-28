@@ -74,6 +74,9 @@ const chatModelNameEl     = document.getElementById("chat-model-name");
 const chatMessages        = document.getElementById("chat-messages");
 const chatInput           = document.getElementById("chat-input");
 const chatSendButton      = document.getElementById("chat-send");
+const chatFooter          = document.querySelector(".chat-footer");
+const chatSidebar         = document.querySelector(".chat-sidebar");
+const chatSidebarResizer  = document.getElementById("chat-sidebar-resizer");
 const chatNewSessionBtn   = document.getElementById("chat-new-session-btn");
 const chatNewWsBtn        = document.getElementById("chat-new-ws-btn");
 const chatTree            = document.getElementById("chat-tree");
@@ -85,12 +88,23 @@ const closeChatModelModal    = document.getElementById("close-chat-model-modal")
 let workspaces       = [];   // [{id, name, sessions:[]}]
 let activeWsId       = null;
 let activeSessionId  = null;
+let activeDocumentId = null;
+let activeDocument   = null;
 let chatHistory      = [];
 let expandedWsIds    = new Set();
+let expandedDocWsIds = new Set();
 let serverLoaded     = false;
 let loadingModel     = false;
 let streaming        = false;
 let currentModelName = "";
+
+const CHAT_SIDEBAR_WIDTH_KEY = "stock-review.chatSidebarWidth";
+const CHAT_DOC_EXPANDED_KEY = "stock-review.chatDocumentsExpanded";
+const CHAT_SIDEBAR_DEFAULT_WIDTH = 220;
+const CHAT_SIDEBAR_MIN_WIDTH = 180;
+const CHAT_SIDEBAR_MAX_WIDTH = 440;
+
+let treeDragState = null;
 
 // ── Helpers ──────────────────────────────────────────────
 function setModelStatus(state, label) {
@@ -101,6 +115,77 @@ function setModelStatus(state, label) {
 function setInputEnabled(on) {
   chatInput.disabled = !on;
   chatSendButton.disabled = !on;
+}
+
+function loadExpandedDocumentSections() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(CHAT_DOC_EXPANDED_KEY) || "[]");
+    expandedDocWsIds = new Set(ids.map(Number).filter(Number.isFinite));
+  } catch (_) {
+    expandedDocWsIds = new Set();
+  }
+}
+
+function saveExpandedDocumentSections() {
+  localStorage.setItem(CHAT_DOC_EXPANDED_KEY, JSON.stringify([...expandedDocWsIds]));
+}
+
+function clampChatSidebarWidth(width) {
+  const viewportLimit = Math.max(CHAT_SIDEBAR_MIN_WIDTH, window.innerWidth - 520);
+  const maxWidth = Math.min(CHAT_SIDEBAR_MAX_WIDTH, viewportLimit);
+  return Math.min(Math.max(width, CHAT_SIDEBAR_MIN_WIDTH), maxWidth);
+}
+
+function setChatSidebarWidth(width, persist = false) {
+  if (!chatSidebar) return;
+  const nextWidth = clampChatSidebarWidth(Number(width) || CHAT_SIDEBAR_DEFAULT_WIDTH);
+  chatSidebar.style.width = `${nextWidth}px`;
+  if (persist) localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(nextWidth));
+}
+
+function initChatSidebarResize() {
+  if (!chatSidebar) return;
+
+  const savedWidth = Number(localStorage.getItem(CHAT_SIDEBAR_WIDTH_KEY));
+  setChatSidebarWidth(savedWidth || CHAT_SIDEBAR_DEFAULT_WIDTH);
+
+  if (!chatSidebarResizer) return;
+
+  let resizing = false;
+
+  function finishResize() {
+    if (!resizing) return;
+    resizing = false;
+    document.body.classList.remove("is-resizing-chat-sidebar");
+    chatSidebarResizer.classList.remove("is-active");
+    const width = Math.round(chatSidebar.getBoundingClientRect().width);
+    localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(width));
+    window.removeEventListener("pointermove", resizeSidebar);
+    window.removeEventListener("pointerup", finishResize);
+    window.removeEventListener("pointercancel", finishResize);
+  }
+
+  function resizeSidebar(event) {
+    if (!resizing) return;
+    const sidebarLeft = chatSidebar.getBoundingClientRect().left;
+    setChatSidebarWidth(event.clientX - sidebarLeft);
+  }
+
+  chatSidebarResizer.addEventListener("pointerdown", event => {
+    event.preventDefault();
+    resizing = true;
+    document.body.classList.add("is-resizing-chat-sidebar");
+    chatSidebarResizer.classList.add("is-active");
+    chatSidebarResizer.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", resizeSidebar);
+    window.addEventListener("pointerup", finishResize);
+    window.addEventListener("pointercancel", finishResize);
+  });
+
+  window.addEventListener("resize", () => {
+    const width = Number(localStorage.getItem(CHAT_SIDEBAR_WIDTH_KEY)) || chatSidebar.getBoundingClientRect().width;
+    setChatSidebarWidth(width);
+  });
 }
 
 async function refreshModelStatus() {
@@ -148,6 +233,104 @@ function formatMessageMeta(role, createdAt = Date.now()) {
   return date;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function renderMarkdown(markdown) {
+  const lines = String(markdown ?? "").replace(/\r\n/g, "\n").split("\n");
+  const html = [];
+  let paragraph = [];
+  let listItems = [];
+  let inCode = false;
+  let codeLines = [];
+
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    html.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  }
+
+  function flushList() {
+    if (!listItems.length) return;
+    html.push(`<ul>${listItems.map(item => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  }
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inCode) {
+        html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        codeLines = [];
+        inCode = false;
+      } else {
+        flushParagraph();
+        flushList();
+        inCode = true;
+      }
+      continue;
+    }
+
+    if (inCode) {
+      codeLines.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const heading = /^(#{1,3})\s+(.+)$/.exec(trimmed);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const bullet = /^[-*]\s+(.+)$/.exec(trimmed);
+    if (bullet) {
+      flushParagraph();
+      listItems.push(bullet[1]);
+      continue;
+    }
+
+    flushList();
+    paragraph.push(trimmed);
+  }
+
+  if (inCode) {
+    html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  }
+  flushParagraph();
+  flushList();
+  return html.join("");
+}
+
+function setMessageBodyContent(body, role, content) {
+  if (role === "assistant") {
+    body.innerHTML = renderMarkdown(content);
+  } else {
+    body.textContent = content;
+  }
+}
+
 // ── Server readiness ──────────────────────────────────────
 async function waitForServer(maxMs = 20000) {
   const deadline = Date.now() + maxMs;
@@ -174,9 +357,16 @@ async function loadWorkspaces() {
     wsList.map(async ws => ({
       ...ws,
       sessions: await api("GET", `/workspaces/${ws.id}/sessions`),
+      documents: await api("GET", `/workspaces/${ws.id}/documents`),
     }))
   );
   if (workspaces.length > 0) expandedWsIds.add(workspaces[0].id);
+  const hasSavedDocState = localStorage.getItem(CHAT_DOC_EXPANDED_KEY) !== null;
+  for (const ws of workspaces) {
+    if (!hasSavedDocState || activeDocument?.workspace_id === ws.id) {
+      expandedDocWsIds.add(ws.id);
+    }
+  }
   renderTree();
 }
 
@@ -200,6 +390,8 @@ function buildWsSection(ws) {
   // Header
   const header = document.createElement("div");
   header.className = "chat-ws-header";
+  header.draggable = true;
+  header.dataset.wsId = ws.id;
 
   const toggle = document.createElement("button");
   toggle.className = "chat-ws-toggle";
@@ -214,14 +406,24 @@ function buildWsSection(ws) {
   const actions = document.createElement("div");
   actions.className = "chat-ws-actions";
   actions.appendChild(makeActionBtn("+", "会話を追加", () => createSession(ws.id)));
-  actions.appendChild(makeActionBtn("×", "削除", () => deleteWorkspace(ws.id)));
+  actions.appendChild(makeActionBtn("✎", "名前を変更", e => { e.stopPropagation(); startRename(label, v => renameWorkspace(ws.id, v)); }));
+  actions.appendChild(makeActionBtn("trash", "削除", () => deleteWorkspace(ws.id), { icon: "trash" }));
 
   header.append(toggle, label, actions);
   header.addEventListener("click", () => toggleWs(ws.id));
+  header.addEventListener("dragstart", e => startWorkspaceDrag(e, ws.id));
+  header.addEventListener("dragover", e => handleWorkspaceDragOver(e, ws.id, header));
+  header.addEventListener("dragleave", () => clearDropClasses(header));
+  header.addEventListener("drop", e => handleWorkspaceDrop(e, ws.id, header));
+  header.addEventListener("dragend", finishTreeDrag);
   section.appendChild(header);
+  section.addEventListener("dragover", e => handleWorkspaceSectionDragOver(e, ws.id, section));
+  section.addEventListener("dragleave", () => clearDropClasses(section));
+  section.addEventListener("drop", e => handleWorkspaceSectionDrop(e, ws.id, section));
 
   // Sessions
   if (isExpanded) {
+    section.appendChild(buildDocumentsSection(ws));
     for (const sess of ws.sessions) {
       section.appendChild(buildSessionItem(sess));
     }
@@ -229,10 +431,81 @@ function buildWsSection(ws) {
   return section;
 }
 
+function buildDocumentsSection(ws) {
+  const isExpanded = expandedDocWsIds.has(ws.id);
+  const group = document.createElement("div");
+  group.className = `chat-doc-section${isExpanded ? " is-expanded" : ""}`;
+
+  const header = document.createElement("div");
+  header.className = "chat-doc-header";
+
+  const toggle = document.createElement("button");
+  toggle.className = "chat-doc-toggle";
+  toggle.textContent = isExpanded ? "▾" : "▸";
+  toggle.title = isExpanded ? "DOCUMENTS を折りたたむ" : "DOCUMENTS を開く";
+  toggle.addEventListener("click", e => { e.stopPropagation(); toggleDocuments(ws.id); });
+
+  const label = document.createElement("span");
+  label.className = "chat-doc-label";
+  label.textContent = "DOCUMENTS";
+  label.addEventListener("click", e => { e.stopPropagation(); toggleDocuments(ws.id); });
+
+  const actions = document.createElement("div");
+  actions.className = "chat-doc-actions";
+  actions.appendChild(makeActionBtn("+", "DOCUMENTS に追加", e => { e.stopPropagation(); createDocument(ws.id); }));
+
+  header.append(toggle, label, actions);
+  header.addEventListener("click", () => toggleDocuments(ws.id));
+  group.appendChild(header);
+
+  if (!isExpanded) return group;
+
+  if (!ws.documents || !ws.documents.length) {
+    const empty = document.createElement("div");
+    empty.className = "chat-doc-empty";
+    empty.textContent = "No documents";
+    group.appendChild(empty);
+    return group;
+  }
+
+  for (const doc of ws.documents) {
+    group.appendChild(buildDocumentItem(doc));
+  }
+  return group;
+}
+
+function buildDocumentItem(doc) {
+  const item = document.createElement("div");
+  item.className = `chat-doc-item${doc.id === activeDocumentId ? " is-active" : ""}`;
+  item.dataset.documentId = doc.id;
+
+  const content = document.createElement("div");
+  content.className = "chat-session-content";
+
+  const label = document.createElement("span");
+  label.className = "chat-session-label";
+  label.textContent = doc.title || "Untitled";
+
+  const date = document.createElement("span");
+  date.className = "chat-session-date";
+  date.textContent = formatChatDate(doc.updated_at || doc.created_at);
+
+  content.append(label, date);
+
+  const actions = document.createElement("div");
+  actions.className = "chat-session-actions";
+  actions.appendChild(makeActionBtn("trash", "削除", e => { e.stopPropagation(); deleteDocument(doc.id); }, { icon: "trash" }));
+
+  item.append(content, actions);
+  item.addEventListener("click", () => selectDocument(doc.id));
+  return item;
+}
+
 function buildSessionItem(sess) {
   const item = document.createElement("div");
   item.className = `chat-session-item${sess.id === activeSessionId ? " is-active" : ""}`;
   item.dataset.sessionId = sess.id;
+  item.draggable = true;
 
   const content = document.createElement("div");
   content.className = "chat-session-content";
@@ -250,20 +523,194 @@ function buildSessionItem(sess) {
 
   const actions = document.createElement("div");
   actions.className = "chat-session-actions";
-  actions.appendChild(makeActionBtn("×", "削除", e => { e.stopPropagation(); deleteSession(sess.id); }));
+  actions.appendChild(makeActionBtn("✎", "名前を変更", e => { e.stopPropagation(); startRename(label, v => renameSession(sess.id, v)); }));
+  actions.appendChild(makeActionBtn("trash", "削除", e => { e.stopPropagation(); deleteSession(sess.id); }, { icon: "trash" }));
 
   item.append(content, actions);
   item.addEventListener("click", () => selectSession(sess.id));
+  item.addEventListener("dragstart", e => startSessionDrag(e, sess));
+  item.addEventListener("dragover", e => handleSessionDragOver(e, sess, item));
+  item.addEventListener("dragleave", () => clearDropClasses(item));
+  item.addEventListener("drop", e => handleSessionDrop(e, sess, item));
+  item.addEventListener("dragend", finishTreeDrag);
   return item;
 }
 
-function makeActionBtn(text, title, handler) {
+function makeActionBtn(text, title, handler, options = {}) {
   const btn = document.createElement("button");
   btn.className = "chat-tree-action-btn";
+  btn.draggable = false;
   btn.title = title;
-  btn.textContent = text;
+  btn.setAttribute("aria-label", title);
+  if (options.icon === "trash") {
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true">
+        <path d="M4 7h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      </svg>
+    `;
+  } else {
+    btn.textContent = text;
+  }
   btn.addEventListener("click", e => { e.stopPropagation(); handler(e); });
   return btn;
+}
+
+function clearDropClasses(el) {
+  el?.classList.remove("is-dragging", "is-drop-before", "is-drop-after", "is-drop-target");
+}
+
+function clearAllDropClasses() {
+  chatTree.querySelectorAll(".is-dragging, .is-drop-before, .is-drop-after, .is-drop-target")
+    .forEach(clearDropClasses);
+}
+
+function getDropPlacement(event, el) {
+  const rect = el.getBoundingClientRect();
+  return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+}
+
+function findSessionLocation(sessionId) {
+  for (const ws of workspaces) {
+    const index = ws.sessions.findIndex(s => s.id === sessionId);
+    if (index !== -1) return { ws, index };
+  }
+  return null;
+}
+
+function startWorkspaceDrag(event, wsId) {
+  if (event.target.closest("button, input, textarea")) return;
+  treeDragState = { type: "workspace", id: Number(wsId) };
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", `workspace:${wsId}`);
+  event.currentTarget.classList.add("is-dragging");
+}
+
+function startSessionDrag(event, session) {
+  if (event.target.closest("button, input, textarea")) return;
+  treeDragState = {
+    type: "session",
+    id: Number(session.id),
+    sourceWorkspaceId: Number(session.workspace_id),
+  };
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", `session:${session.id}`);
+  event.currentTarget.classList.add("is-dragging");
+}
+
+function finishTreeDrag() {
+  treeDragState = null;
+  clearAllDropClasses();
+}
+
+function handleWorkspaceDragOver(event, targetWsId, header) {
+  if (!treeDragState) return;
+  if (treeDragState.type === "workspace" && treeDragState.id === targetWsId) return;
+  event.preventDefault();
+  event.stopPropagation();
+  clearDropClasses(header);
+  if (treeDragState.type === "workspace") {
+    header.classList.add(getDropPlacement(event, header) === "before" ? "is-drop-before" : "is-drop-after");
+  } else if (treeDragState.type === "session") {
+    header.classList.add("is-drop-target");
+  }
+}
+
+async function handleWorkspaceDrop(event, targetWsId, header) {
+  if (!treeDragState) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const state = treeDragState;
+  const placement = getDropPlacement(event, header);
+  finishTreeDrag();
+  if (state.type === "workspace") {
+    await moveWorkspace(state.id, targetWsId, placement);
+  } else if (state.type === "session") {
+    await moveSession(state.id, targetWsId, null, "start");
+  }
+}
+
+function handleWorkspaceSectionDragOver(event, targetWsId, section) {
+  if (!treeDragState || treeDragState.type !== "session") return;
+  if (event.target.closest(".chat-session-item, .chat-ws-header")) return;
+  event.preventDefault();
+  section.classList.add("is-drop-target");
+}
+
+async function handleWorkspaceSectionDrop(event, targetWsId, section) {
+  if (!treeDragState || treeDragState.type !== "session") return;
+  if (event.target.closest(".chat-session-item, .chat-ws-header")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const sessionId = treeDragState.id;
+  finishTreeDrag();
+  clearDropClasses(section);
+  await moveSession(sessionId, targetWsId, null, "end");
+}
+
+function handleSessionDragOver(event, targetSession, item) {
+  if (!treeDragState || treeDragState.type !== "session" || treeDragState.id === targetSession.id) return;
+  event.preventDefault();
+  event.stopPropagation();
+  clearDropClasses(item);
+  item.classList.add(getDropPlacement(event, item) === "before" ? "is-drop-before" : "is-drop-after");
+}
+
+async function handleSessionDrop(event, targetSession, item) {
+  if (!treeDragState || treeDragState.type !== "session" || treeDragState.id === targetSession.id) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const sessionId = treeDragState.id;
+  const placement = getDropPlacement(event, item);
+  finishTreeDrag();
+  await moveSession(sessionId, targetSession.workspace_id, targetSession.id, placement);
+}
+
+async function moveWorkspace(dragWsId, targetWsId, placement) {
+  const from = workspaces.findIndex(ws => ws.id === dragWsId);
+  const target = workspaces.findIndex(ws => ws.id === targetWsId);
+  if (from === -1 || target === -1 || from === target) return;
+  const [moved] = workspaces.splice(from, 1);
+  let insertAt = workspaces.findIndex(ws => ws.id === targetWsId);
+  if (placement === "after") insertAt += 1;
+  workspaces.splice(insertAt, 0, moved);
+  renderTree();
+  try {
+    await api("PATCH", "/workspaces/reorder", { ids: workspaces.map(ws => ws.id) });
+  } catch (err) {
+    await loadWorkspaces();
+  }
+}
+
+async function moveSession(sessionId, targetWsId, targetSessionId = null, placement = "end") {
+  const source = findSessionLocation(sessionId);
+  const targetWs = workspaces.find(ws => ws.id === targetWsId);
+  if (!source || !targetWs) return;
+
+  const [session] = source.ws.sessions.splice(source.index, 1);
+  session.workspace_id = targetWsId;
+
+  let insertAt = targetWs.sessions.length;
+  if (placement === "start") insertAt = 0;
+  if (targetSessionId !== null) {
+    insertAt = targetWs.sessions.findIndex(s => s.id === targetSessionId);
+    if (insertAt === -1) insertAt = targetWs.sessions.length;
+    if (placement === "after") insertAt += 1;
+  }
+  targetWs.sessions.splice(insertAt, 0, session);
+  expandedWsIds.add(targetWsId);
+  renderTree();
+
+  try {
+    const touchedIds = new Set([source.ws.id, targetWsId]);
+    for (const wsId of touchedIds) {
+      const ws = workspaces.find(w => w.id === wsId);
+      if (ws) await api("PATCH", `/workspaces/${wsId}/sessions/reorder`, { ids: ws.sessions.map(s => s.id) });
+    }
+  } catch (err) {
+    await loadWorkspaces();
+  }
 }
 
 function startRename(labelEl, onCommit) {
@@ -298,11 +745,21 @@ function toggleWs(id) {
   renderTree();
 }
 
+function toggleDocuments(wsId) {
+  if (expandedDocWsIds.has(wsId)) expandedDocWsIds.delete(wsId);
+  else expandedDocWsIds.add(wsId);
+  saveExpandedDocumentSections();
+  renderTree();
+}
+
 async function createWorkspace() {
   const ws = await api("POST", "/workspaces", { name: "新しいワークスペース" });
   ws.sessions = [];
-  workspaces.push(ws);
+  ws.documents = [];
+  workspaces.unshift(ws);
   expandedWsIds.add(ws.id);
+  expandedDocWsIds.add(ws.id);
+  saveExpandedDocumentSections();
   activeWsId = ws.id;
   renderTree();
   // Focus rename immediately
@@ -320,11 +777,137 @@ async function renameWorkspace(id, name) {
 async function deleteWorkspace(id) {
   await api("DELETE", `/workspaces/${id}`);
   workspaces = workspaces.filter(w => w.id !== id);
+  expandedDocWsIds.delete(id);
+  saveExpandedDocumentSections();
   if (activeSessionId) {
     const still = workspaces.flatMap(w => w.sessions).find(s => s.id === activeSessionId);
     if (!still) { activeSessionId = null; chatHistory = []; clearMessages("会話を選択してください"); setInputEnabled(false); }
   }
   renderTree();
+}
+
+async function createDocument(wsId) {
+  const doc = await api("POST", `/workspaces/${wsId}/documents`, {
+    title: "Untitled",
+    content: "",
+  });
+  const ws = workspaces.find(w => w.id === wsId);
+  if (ws) {
+    if (!ws.documents) ws.documents = [];
+    ws.documents.unshift(doc);
+    expandedWsIds.add(wsId);
+    expandedDocWsIds.add(wsId);
+    saveExpandedDocumentSections();
+  }
+  activeWsId = wsId;
+  renderTree();
+  await selectDocument(doc.id);
+}
+
+async function selectDocument(id) {
+  if (streaming) return;
+  activeDocumentId = id;
+  activeSessionId = null;
+  chatHistory = [];
+  activeDocument = await api("GET", `/documents/${id}`);
+  if (activeDocument?.workspace_id) {
+    expandedDocWsIds.add(activeDocument.workspace_id);
+    saveExpandedDocumentSections();
+  }
+  renderDocumentEditor(activeDocument);
+  renderTree();
+  setInputEnabled(false);
+  if (chatFooter) chatFooter.classList.add("is-hidden");
+}
+
+async function saveActiveDocument() {
+  if (!activeDocumentId) return;
+  const titleInput = document.getElementById("document-title-input");
+  const contentInput = document.getElementById("document-content-input");
+  const title = titleInput?.value.trim() || "Untitled";
+  const content = contentInput?.value || "";
+  const updated = await api("PATCH", `/documents/${activeDocumentId}`, { title, content });
+  activeDocument = updated;
+  for (const ws of workspaces) {
+    const idx = (ws.documents || []).findIndex(d => d.id === activeDocumentId);
+    if (idx !== -1) {
+      ws.documents[idx] = {
+        id: updated.id,
+        workspace_id: updated.workspace_id,
+        title: updated.title,
+        sort_order: updated.sort_order,
+        created_at: updated.created_at,
+        updated_at: updated.updated_at,
+      };
+      ws.documents.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+      break;
+    }
+  }
+  renderTree();
+  showDocumentSaveState("Saved");
+}
+
+async function deleteDocument(id) {
+  await api("DELETE", `/documents/${id}`);
+  for (const ws of workspaces) {
+    ws.documents = (ws.documents || []).filter(d => d.id !== id);
+  }
+  if (activeDocumentId === id) {
+    activeDocumentId = null;
+    activeDocument = null;
+    clearMessages("会話を選択してください");
+    if (chatFooter) chatFooter.classList.remove("is-hidden");
+    setInputEnabled(serverLoaded && activeSessionId !== null);
+  }
+  renderTree();
+}
+
+function showDocumentSaveState(text) {
+  const status = document.getElementById("document-save-status");
+  if (!status) return;
+  status.textContent = text;
+  window.clearTimeout(showDocumentSaveState.timer);
+  showDocumentSaveState.timer = window.setTimeout(() => {
+    status.textContent = "";
+  }, 1800);
+}
+
+function renderDocumentEditor(doc) {
+  chatMessages.innerHTML = "";
+  const editor = document.createElement("div");
+  editor.className = "document-editor";
+  editor.innerHTML = `
+    <div class="document-editor-head">
+      <input class="document-title-input" id="document-title-input" value="" placeholder="Untitled" />
+      <div class="document-editor-actions">
+        <span class="document-save-status" id="document-save-status"></span>
+        <button class="ghost-button document-save-btn" id="document-save-btn" type="button">Save</button>
+      </div>
+    </div>
+    <textarea class="document-content-input" id="document-content-input" placeholder="Text data..."></textarea>
+  `;
+  chatMessages.appendChild(editor);
+
+  const titleInput = document.getElementById("document-title-input");
+  const contentInput = document.getElementById("document-content-input");
+  const saveButton = document.getElementById("document-save-btn");
+  titleInput.value = doc.title || "";
+  contentInput.value = doc.content || "";
+  saveButton.addEventListener("click", saveActiveDocument);
+  const markUnsaved = () => {
+    const status = document.getElementById("document-save-status");
+    if (status) status.textContent = "Unsaved";
+  };
+  const saveShortcut = e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      saveActiveDocument();
+    }
+  };
+  titleInput.addEventListener("input", markUnsaved);
+  contentInput.addEventListener("input", markUnsaved);
+  titleInput.addEventListener("keydown", saveShortcut);
+  contentInput.addEventListener("keydown", saveShortcut);
 }
 
 async function createSession(wsId) {
@@ -363,8 +946,11 @@ async function deleteSession(id) {
 async function selectSession(id) {
   if (streaming) return;
   activeSessionId = id;
+  activeDocumentId = null;
+  activeDocument = null;
   chatHistory = [];
   clearMessages();
+  if (chatFooter) chatFooter.classList.remove("is-hidden");
 
   const msgs = await api("GET", `/sessions/${id}/messages`);
   for (const m of msgs) {
@@ -396,7 +982,7 @@ function appendBubble(role, content, createdAt = Date.now()) {
   meta.textContent = formatMessageMeta(role, createdAt);
   const body = document.createElement("div");
   body.className = role === "user" ? "chat-message-bubble" : "chat-message-text";
-  body.textContent = content;
+  setMessageBodyContent(body, role, content);
   wrap.append(meta, body);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -435,7 +1021,7 @@ async function sendMessage() {
     chunk => {
       wrap.classList.remove("loading");
       accumulated += chunk;
-      bubble.textContent = accumulated;
+      setMessageBodyContent(bubble, "assistant", accumulated);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     },
     evt => {
@@ -548,4 +1134,6 @@ chatInput.addEventListener("input", () => {
 });
 
 // ── Init ──────────────────────────────────────────────────
+loadExpandedDocumentSections();
+initChatSidebarResize();
 loadWorkspaces();

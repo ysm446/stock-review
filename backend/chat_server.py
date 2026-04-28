@@ -106,6 +106,15 @@ class WorkspaceBody(BaseModel):
     name: str
 
 
+class ReorderBody(BaseModel):
+    ids: list[int]
+
+
+class DocumentBody(BaseModel):
+    title: str = "Untitled"
+    content: str = ""
+
+
 @app.get("/workspaces")
 def get_workspaces():
     return store.list_workspaces()
@@ -114,6 +123,12 @@ def get_workspaces():
 @app.post("/workspaces", status_code=201)
 def post_workspace(body: WorkspaceBody):
     return store.create_workspace(body.name)
+
+
+@app.patch("/workspaces/reorder")
+def patch_workspaces_reorder(body: ReorderBody):
+    store.reorder_workspaces(body.ids)
+    return {"ok": True}
 
 
 @app.patch("/workspaces/{id}")
@@ -125,6 +140,40 @@ def patch_workspace(id: int, body: WorkspaceBody):
 @app.delete("/workspaces/{id}")
 def del_workspace(id: int):
     store.delete_workspace(id)
+    return {"ok": True}
+
+
+# ── Documents ─────────────────────────────────────────────
+
+@app.get("/workspaces/{workspace_id}/documents")
+def get_documents(workspace_id: int):
+    return store.list_documents(workspace_id)
+
+
+@app.post("/workspaces/{workspace_id}/documents", status_code=201)
+def post_document(workspace_id: int, body: DocumentBody):
+    return store.create_document(workspace_id, body.title, body.content)
+
+
+@app.get("/documents/{id}")
+def get_document(id: int):
+    doc = store.get_document(id)
+    if doc is None:
+        raise HTTPException(404, "Document not found")
+    return doc
+
+
+@app.patch("/documents/{id}")
+def patch_document(id: int, body: DocumentBody):
+    try:
+        return store.update_document(id, body.title, body.content)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.delete("/documents/{id}")
+def del_document(id: int):
+    store.delete_document(id)
     return {"ok": True}
 
 
@@ -142,6 +191,12 @@ def get_sessions(workspace_id: int):
 @app.post("/workspaces/{workspace_id}/sessions", status_code=201)
 def post_session(workspace_id: int, body: SessionBody):
     return store.create_session(workspace_id, body.title)
+
+
+@app.patch("/workspaces/{workspace_id}/sessions/reorder")
+def patch_sessions_reorder(workspace_id: int, body: ReorderBody):
+    store.reorder_sessions(workspace_id, body.ids)
+    return {"ok": True}
 
 
 @app.patch("/sessions/{id}")
@@ -181,6 +236,11 @@ def memory_stats():
     return store.memory_stats()
 
 
+@app.get("/documents/search")
+def document_search(session_id: int, query: str, top_k: int = 3):
+    return {"items": store.search_documents_for_session(session_id, query, top_k=top_k)}
+
+
 # ── Chat streaming ────────────────────────────────────────
 
 class ChatMessage(BaseModel):
@@ -200,19 +260,16 @@ async def chat_stream(req: ChatRequest):
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     user_content = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
-    memory_context = ""
+    context = ""
     if user_content:
-        memory_context = await asyncio.to_thread(
-            store.build_memory_context,
+        context = await asyncio.to_thread(
+            store.build_combined_context,
             req.session_id,
             user_content,
-            5,
-            1500,
-            30,
         )
     llm_messages = messages
-    if memory_context:
-        llm_messages = [{"role": "system", "content": memory_context}, *messages]
+    if context:
+        llm_messages = [{"role": "system", "content": context}, *messages]
 
     # Persist user message and auto-title on first turn
     if user_content:

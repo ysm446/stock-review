@@ -37,6 +37,10 @@ def _new_memory_id() -> str:
     return f"mem_{uuid.uuid4().hex}"
 
 
+def _new_document_chunk_id() -> str:
+    return f"dc_{uuid.uuid4().hex}"
+
+
 def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
@@ -127,6 +131,42 @@ def _ensure_memory_schema(conn: sqlite3.Connection) -> None:
         logger.warning("memory_vec unavailable; vector memory search disabled: %s", e)
 
 
+def _ensure_documents_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS workspace_documents (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            title        TEXT    NOT NULL DEFAULT 'Untitled',
+            content      TEXT    NOT NULL DEFAULT '',
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_documents_ws ON workspace_documents(workspace_id);
+        CREATE TABLE IF NOT EXISTS document_chunks (
+            id           TEXT PRIMARY KEY,
+            document_id  INTEGER NOT NULL REFERENCES workspace_documents(id) ON DELETE CASCADE,
+            workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            chunk_index  INTEGER NOT NULL DEFAULT 0,
+            content      TEXT    NOT NULL,
+            created_at   INTEGER NOT NULL
+        );
+        CREATE VIRTUAL TABLE IF NOT EXISTS document_fts USING fts5(
+            id UNINDEXED,
+            content,
+            tokenize='trigram'
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_doc ON document_chunks(document_id);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_ws ON document_chunks(workspace_id);
+    """)
+    try:
+        conn.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS document_vec USING vec0(chunk_id TEXT PRIMARY KEY, embedding FLOAT[{EMBED_DIM}])"
+        )
+    except Exception as e:
+        logger.warning("document_vec unavailable; vector document search disabled: %s", e)
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript("""
@@ -148,6 +188,7 @@ def init_db() -> None:
         """)
         _ensure_messages_schema(conn)
         _ensure_memory_schema(conn)
+        _ensure_documents_schema(conn)
         conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_sessions_ws  ON sessions(workspace_id);
             CREATE INDEX IF NOT EXISTS idx_messages_ses ON messages(session_id);
@@ -173,11 +214,12 @@ def list_workspaces() -> list[dict]:
 def create_workspace(name: str = "新しいワークスペース") -> dict:
     now = _now()
     with _connect() as conn:
+        sort_order = conn.execute("SELECT COALESCE(MIN(sort_order), 0) - 1 FROM workspaces").fetchone()[0]
         cur = conn.execute(
-            "INSERT INTO workspaces (name, sort_order, created_at, updated_at) VALUES (?, 0, ?, ?)",
-            (name, now, now),
+            "INSERT INTO workspaces (name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (name, sort_order, now, now),
         )
-        return {"id": cur.lastrowid, "name": name, "sort_order": 0, "created_at": now, "updated_at": now}
+        return {"id": cur.lastrowid, "name": name, "sort_order": sort_order, "created_at": now, "updated_at": now}
 
 
 def rename_workspace(id: int, name: str) -> None:
@@ -191,12 +233,186 @@ def delete_workspace(id: int) -> None:
         conn.execute("DELETE FROM workspaces WHERE id = ?", (id,))
 
 
+def reorder_workspaces(ids: list[int]) -> None:
+    with _connect() as conn:
+        for index, workspace_id in enumerate(ids):
+            conn.execute(
+                "UPDATE workspaces SET sort_order = ? WHERE id = ?",
+                (index, workspace_id),
+            )
+
+
+# ── Documents ─────────────────────────────────────────────
+
+def list_documents(workspace_id: int) -> list[dict]:
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(
+            """
+            SELECT id, workspace_id, title, sort_order, created_at, updated_at
+            FROM workspace_documents
+            WHERE workspace_id = ?
+            ORDER BY updated_at DESC
+            """,
+            (workspace_id,),
+        )]
+
+
+def get_document(id: int) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM workspace_documents WHERE id = ?",
+            (id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def create_document(workspace_id: int, title: str = "Untitled", content: str = "") -> dict:
+    now = _now()
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO workspace_documents (workspace_id, title, content, sort_order, created_at, updated_at)
+            VALUES (?, ?, ?, 0, ?, ?)
+            """,
+            (workspace_id, title, content, now, now),
+        )
+        doc = {
+            "id": cur.lastrowid,
+            "workspace_id": workspace_id,
+            "title": title,
+            "content": content,
+            "sort_order": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+    index_document(doc["id"])
+    return doc
+
+
+def update_document(id: int, title: str, content: str) -> dict:
+    now = _now()
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE workspace_documents SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+            (title, content, now, id),
+        )
+        if cur.rowcount == 0:
+            raise ValueError("Document not found")
+    doc = get_document(id)
+    if doc is None:
+        raise ValueError("Document not found")
+    index_document(id)
+    return doc
+
+
+def delete_document(id: int) -> None:
+    with _connect() as conn:
+        delete_document_index(id, conn)
+        conn.execute("DELETE FROM workspace_documents WHERE id = ?", (id,))
+
+
+def split_document_text(text: str, target_chars: int = 800, max_chars: int = 1000, overlap: int = 100) -> list[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
+
+    chunks: list[str] = []
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    current = ""
+    for para in paragraphs or [text]:
+        candidate = f"{current}\n\n{para}".strip() if current else para
+        if len(candidate) <= target_chars:
+            current = candidate
+            continue
+        if current:
+            chunks.extend(_split_long_document_chunk(current, max_chars, overlap))
+        current = para
+    if current:
+        chunks.extend(_split_long_document_chunk(current, max_chars, overlap))
+    return chunks
+
+
+def _split_long_document_chunk(text: str, max_chars: int, overlap: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + max_chars)
+        split_at = max(text.rfind("\n", start, end), text.rfind("。", start, end), text.rfind(". ", start, end))
+        if split_at <= start + max_chars // 2:
+            split_at = end
+        else:
+            split_at += 1
+        chunk = text[start:split_at].strip()
+        if chunk:
+            chunks.append(chunk)
+        if split_at >= len(text):
+            break
+        start = max(0, split_at - overlap)
+    return chunks
+
+
+def delete_document_index(document_id: int, conn: sqlite3.Connection | None = None) -> None:
+    owns_conn = conn is None
+    if conn is None:
+        conn = _connect()
+    try:
+        chunk_ids = [
+            row["id"]
+            for row in conn.execute("SELECT id FROM document_chunks WHERE document_id = ?", (document_id,))
+        ]
+        if chunk_ids:
+            placeholders = ",".join("?" * len(chunk_ids))
+            conn.execute(f"DELETE FROM document_fts WHERE id IN ({placeholders})", chunk_ids)
+            try:
+                conn.execute(f"DELETE FROM document_vec WHERE chunk_id IN ({placeholders})", chunk_ids)
+            except sqlite3.OperationalError:
+                pass
+            conn.execute(f"DELETE FROM document_chunks WHERE id IN ({placeholders})", chunk_ids)
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def index_document(document_id: int) -> int:
+    from chat_embedder import embed
+
+    doc = get_document(document_id)
+    if doc is None:
+        return 0
+    chunks = split_document_text(doc.get("content", ""))
+    now = _now()
+    with _connect() as conn:
+        delete_document_index(document_id, conn)
+        for index, text in enumerate(chunks):
+            chunk_id = _new_document_chunk_id()
+            conn.execute(
+                """
+                INSERT INTO document_chunks (id, document_id, workspace_id, chunk_index, content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (chunk_id, document_id, doc["workspace_id"], index, text, now),
+            )
+            conn.execute("INSERT INTO document_fts (id, content) VALUES (?, ?)", (chunk_id, text))
+            try:
+                vector = embed(text)
+                vec_bytes = struct.pack(f"{len(vector)}f", *vector)
+                conn.execute(
+                    "INSERT INTO document_vec (chunk_id, embedding) VALUES (?, ?)",
+                    (chunk_id, vec_bytes),
+                )
+            except Exception as e:
+                logger.warning("Document vector index failed: %s", e)
+    return len(chunks)
+
+
 # ── Sessions ──────────────────────────────────────────────
 
 def list_sessions(workspace_id: int) -> list[dict]:
     with _connect() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT * FROM sessions WHERE workspace_id = ? ORDER BY updated_at DESC",
+            "SELECT * FROM sessions WHERE workspace_id = ? ORDER BY sort_order ASC, updated_at DESC",
             (workspace_id,),
         )]
 
@@ -204,13 +420,17 @@ def list_sessions(workspace_id: int) -> list[dict]:
 def create_session(workspace_id: int, title: str = "新しい会話") -> dict:
     now = _now()
     with _connect() as conn:
+        sort_order = conn.execute(
+            "SELECT COALESCE(MIN(sort_order), 0) - 1 FROM sessions WHERE workspace_id = ?",
+            (workspace_id,),
+        ).fetchone()[0]
         cur = conn.execute(
-            "INSERT INTO sessions (workspace_id, title, sort_order, created_at, updated_at) VALUES (?, ?, 0, ?, ?)",
-            (workspace_id, title, now, now),
+            "INSERT INTO sessions (workspace_id, title, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (workspace_id, title, sort_order, now, now),
         )
         return {
             "id": cur.lastrowid, "workspace_id": workspace_id,
-            "title": title, "sort_order": 0, "created_at": now, "updated_at": now,
+            "title": title, "sort_order": sort_order, "created_at": now, "updated_at": now,
         }
 
 
@@ -223,6 +443,19 @@ def delete_session(id: int) -> None:
     with _connect() as conn:
         delete_session_memory(id, conn)
         conn.execute("DELETE FROM sessions WHERE id = ?", (id,))
+
+
+def reorder_sessions(workspace_id: int, ids: list[int]) -> None:
+    with _connect() as conn:
+        for index, session_id in enumerate(ids):
+            conn.execute(
+                """
+                UPDATE sessions
+                SET workspace_id = ?, sort_order = ?
+                WHERE id = ?
+                """,
+                (workspace_id, index, session_id),
+            )
 
 
 # ── Messages ──────────────────────────────────────────────
@@ -464,6 +697,10 @@ def memory_stats() -> dict:
             "memory_chunk_count": conn.execute("SELECT COUNT(*) FROM memory_chunks").fetchone()[0],
             "memory_fts_count": conn.execute("SELECT COUNT(*) FROM memory_fts").fetchone()[0],
             "memory_vec_count": _safe_count(conn, "memory_vec"),
+            "document_count": conn.execute("SELECT COUNT(*) FROM workspace_documents").fetchone()[0],
+            "document_chunk_count": conn.execute("SELECT COUNT(*) FROM document_chunks").fetchone()[0],
+            "document_fts_count": conn.execute("SELECT COUNT(*) FROM document_fts").fetchone()[0],
+            "document_vec_count": _safe_count(conn, "document_vec"),
         }
 
 
@@ -509,3 +746,123 @@ def build_memory_context(
 
     context = "\n".join(lines).strip()
     return context[:max_chars] if max_chars > 0 else context
+
+
+def search_documents(
+    workspace_id: int,
+    query: str,
+    top_k: int = 3,
+) -> list[dict]:
+    query = query.strip()
+    if not query or top_k <= 0:
+        return []
+
+    rrf_k = 60
+    scores: dict[str, float] = {}
+    with _connect() as conn:
+        safe_query = '"' + query.replace('"', ' ') + '"'
+        try:
+            rows = conn.execute(
+                """
+                SELECT dc.id FROM document_fts df
+                JOIN document_chunks dc ON dc.id = df.id
+                WHERE df.content MATCH ? AND dc.workspace_id = ?
+                LIMIT ?
+                """,
+                (safe_query, workspace_id, top_k * 4),
+            ).fetchall()
+            for rank, row in enumerate(rows):
+                scores[row["id"]] = scores.get(row["id"], 0.0) + 1.0 / (rrf_k + rank + 1)
+        except Exception as e:
+            logger.warning("FTS5 document search failed: %s", e)
+
+        try:
+            from chat_embedder import embed
+            query_vec = embed(query)
+            vec_bytes = struct.pack(f"{len(query_vec)}f", *query_vec)
+            vec_rows = conn.execute(
+                "SELECT chunk_id, distance FROM document_vec WHERE embedding MATCH ? AND k = ?",
+                (vec_bytes, top_k * 4),
+            ).fetchall()
+            if vec_rows:
+                vec_ids = [row["chunk_id"] for row in vec_rows]
+                placeholders = ",".join("?" * len(vec_ids))
+                allowed = {
+                    row["id"]
+                    for row in conn.execute(
+                        f"SELECT id FROM document_chunks WHERE id IN ({placeholders}) AND workspace_id = ?",
+                        (*vec_ids, workspace_id),
+                    )
+                }
+                for rank, row in enumerate(vec_rows):
+                    if row["chunk_id"] in allowed:
+                        scores[row["chunk_id"]] = scores.get(row["chunk_id"], 0.0) + 1.0 / (rrf_k + rank + 1)
+        except Exception as e:
+            logger.warning("Vector document search failed: %s", e)
+
+        if not scores:
+            return []
+
+        ids = list(scores.keys())
+        placeholders = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"""
+            SELECT dc.id, dc.document_id, dc.workspace_id, dc.chunk_index, dc.content, dc.created_at,
+                   wd.title AS document_title
+            FROM document_chunks dc
+            JOIN workspace_documents wd ON wd.id = dc.document_id
+            WHERE dc.id IN ({placeholders})
+            """,
+            ids,
+        ).fetchall()
+
+    chunks = {row["id"]: dict(row) for row in rows}
+    for chunk_id, row in chunks.items():
+        row["score"] = scores.get(chunk_id, 0.0)
+    ranked_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)[:top_k]
+    return [chunks[cid] for cid in ranked_ids if cid in chunks]
+
+
+def search_documents_for_session(
+    session_id: int,
+    query: str,
+    top_k: int = 3,
+) -> list[dict]:
+    workspace_id = get_session_workspace(session_id)
+    if workspace_id is None:
+        return []
+    return search_documents(workspace_id, query, top_k=top_k)
+
+
+def build_document_context(
+    session_id: int,
+    query: str,
+    top_k: int = 3,
+    max_chars: int = 2000,
+) -> str:
+    workspace_id = get_session_workspace(session_id)
+    if workspace_id is None:
+        return ""
+    items = search_documents(workspace_id, query, top_k=top_k)
+    if not items:
+        return ""
+
+    lines = [
+        "## ワークスペース DOCUMENTS から検索された関連情報",
+        "以下はワークスペース内の DOCUMENTS から自動検索された情報です。",
+        "回答に役立つ場合だけ自然に参照してください。",
+        "",
+    ]
+    for item in items:
+        lines.append(f"[DOCUMENT: {item.get('document_title') or 'Untitled'}]")
+        lines.append(item["content"])
+        lines.append("")
+
+    context = "\n".join(lines).strip()
+    return context[:max_chars] if max_chars > 0 else context
+
+
+def build_combined_context(session_id: int, query: str) -> str:
+    doc_context = build_document_context(session_id, query, top_k=3, max_chars=2000)
+    memory_context = build_memory_context(session_id, query, top_k=5, max_chars=1500, half_life_days=30)
+    return "\n\n".join(part for part in (doc_context, memory_context) if part)
