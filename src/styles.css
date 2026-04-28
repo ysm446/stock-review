@@ -1830,25 +1830,28 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-width: 80%;
+  max-width: 100%;
 }
 
 .chat-message.user {
   align-self: flex-end;
   align-items: flex-end;
+  max-width: 80%;
 }
 
 .chat-message.assistant {
-  align-self: flex-start;
+  align-self: stretch;
   align-items: flex-start;
+  width: 100%;
 }
 
 .chat-message-meta {
   color: var(--muted);
   font-size: 0.72rem;
-  line-height: 1;
+  line-height: 1.25;
   padding: 0 4px;
   opacity: 0.78;
+  overflow-wrap: anywhere;
 }
 
 .chat-message-bubble {
@@ -1867,18 +1870,28 @@ select:focus {
 }
 
 .chat-message.assistant .chat-message-bubble {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-bottom-left-radius: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 
-.chat-message.loading .chat-message-bubble::after {
+.chat-message-text {
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  width: 100%;
+}
+
+.chat-message.loading .chat-message-text::after {
   content: "▋";
   animation: chat-blink 1s step-end infinite;
 }
 
+.chat-message.error .chat-message-text,
 .chat-message.error .chat-message-bubble {
-  border-color: var(--danger);
   color: var(--danger);
 }
 

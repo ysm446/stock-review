@@ -38,14 +38,27 @@ async function streamChat(sessionId, messages, onToken, onDone, onError) {
     const { done, value } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
+    const events = buf.split("\n\n");
+    buf = events.pop() ?? "";
+    for (const event of events) {
+      for (const line of event.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6);
+        if (!payload) continue;
+        try {
+          const evt = JSON.parse(payload);
+          if (evt.type === "token") onToken(evt.content);
+          else if (evt.type === "done") onDone(evt);
+          else if (evt.type === "error") onError(evt.message);
+        } catch (_) {}
+      }
+    }
+  }
+  if (buf.trim()) {
+    for (const line of buf.split("\n")) {
       if (!line.startsWith("data: ")) continue;
-      const payload = line.slice(6);
-      if (!payload) continue;
       try {
-        const evt = JSON.parse(payload);
+        const evt = JSON.parse(line.slice(6));
         if (evt.type === "token") onToken(evt.content);
         else if (evt.type === "done") onDone(evt);
         else if (evt.type === "error") onError(evt.message);
@@ -77,6 +90,7 @@ let expandedWsIds    = new Set();
 let serverLoaded     = false;
 let loadingModel     = false;
 let streaming        = false;
+let currentModelName = "";
 
 // ── Helpers ──────────────────────────────────────────────
 function setModelStatus(state, label) {
@@ -92,9 +106,10 @@ function setInputEnabled(on) {
 async function refreshModelStatus() {
   const status = await api("GET", "/model/status");
   serverLoaded = Boolean(status.loaded);
+  currentModelName = serverLoaded ? (status.model_name || "") : "";
 
   if (serverLoaded) {
-    setModelStatus("is-loaded", status.model_name || "読み込み済み");
+    setModelStatus("is-loaded", currentModelName || "読み込み済み");
     if (activeSessionId !== null) setInputEnabled(true);
   } else {
     setModelStatus("", "モデルを選択");
@@ -123,6 +138,14 @@ function formatChatDate(value, withTime = true) {
     ? { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
     : { year: "numeric", month: "2-digit", day: "2-digit" };
   return new Intl.DateTimeFormat("ja-JP", options).format(date);
+}
+
+function formatMessageMeta(role, createdAt = Date.now()) {
+  const date = formatChatDate(createdAt);
+  if (role === "assistant") {
+    return `アシスタント${currentModelName ? `（${currentModelName}）` : ""}${date ? ` ${date}` : ""}`;
+  }
+  return date;
 }
 
 // ── Server readiness ──────────────────────────────────────
@@ -370,11 +393,11 @@ function appendBubble(role, content, createdAt = Date.now()) {
   wrap.className = `chat-message ${role}`;
   const meta = document.createElement("div");
   meta.className = "chat-message-meta";
-  meta.textContent = formatChatDate(createdAt);
-  const bubble = document.createElement("div");
-  bubble.className = "chat-message-bubble";
-  bubble.textContent = content;
-  wrap.append(meta, bubble);
+  meta.textContent = formatMessageMeta(role, createdAt);
+  const body = document.createElement("div");
+  body.className = role === "user" ? "chat-message-bubble" : "chat-message-text";
+  body.textContent = content;
+  wrap.append(meta, body);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   return wrap;
@@ -396,9 +419,9 @@ async function sendMessage() {
   wrap.className = "chat-message assistant loading";
   const meta = document.createElement("div");
   meta.className = "chat-message-meta";
-  meta.textContent = "生成中";
+  meta.textContent = `アシスタント${currentModelName ? `（${currentModelName}）` : ""} 生成中`;
   const bubble = document.createElement("div");
-  bubble.className = "chat-message-bubble";
+  bubble.className = "chat-message-text";
   wrap.append(meta, bubble);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -417,7 +440,7 @@ async function sendMessage() {
     },
     evt => {
       wrap.classList.remove("loading");
-      meta.textContent = formatChatDate(evt?.message?.created_at || Date.now());
+      meta.textContent = formatMessageMeta("assistant", evt?.message?.created_at || Date.now());
       chatHistory.push({ role: "assistant", content: accumulated });
       // Refresh session title in sidebar (auto-title was applied server-side)
       refreshSession(sidAtSend);
@@ -496,9 +519,11 @@ async function loadModel(modelPath, displayName) {
   try {
     await api("POST", "/model/load", { model_path: modelPath });
     serverLoaded = true;
+    currentModelName = displayName;
     setModelStatus("is-loaded", displayName);
     if (activeSessionId !== null) setInputEnabled(true);
   } catch (err) {
+    currentModelName = "";
     setModelStatus("", "読み込み失敗 — 再選択してください");
   } finally {
     loadingModel = false;

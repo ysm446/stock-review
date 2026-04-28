@@ -163,6 +163,24 @@ def get_messages(session_id: int):
     return store.list_messages(session_id)
 
 
+# ── Memory ────────────────────────────────────────────────
+
+@app.get("/memory/search")
+def memory_search(session_id: int, query: str, top_k: int = 5, half_life_days: int = 30):
+    items = store.search_memory_for_session(
+        session_id,
+        query,
+        top_k=top_k,
+        half_life_days=half_life_days,
+    )
+    return {"items": items}
+
+
+@app.get("/memory/stats")
+def memory_stats():
+    return store.memory_stats()
+
+
 # ── Chat streaming ────────────────────────────────────────
 
 class ChatMessage(BaseModel):
@@ -181,18 +199,31 @@ async def chat_stream(req: ChatRequest):
         raise HTTPException(503, "モデルが読み込まれていません")
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    user_content = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
+    memory_context = ""
+    if user_content:
+        memory_context = await asyncio.to_thread(
+            store.build_memory_context,
+            req.session_id,
+            user_content,
+            5,
+            1500,
+            30,
+        )
+    llm_messages = messages
+    if memory_context:
+        llm_messages = [{"role": "system", "content": memory_context}, *messages]
 
     # Persist user message and auto-title on first turn
-    if messages and messages[-1]["role"] == "user":
-        user_content = messages[-1]["content"]
+    if user_content:
         existing = await asyncio.to_thread(store.list_messages, req.session_id)
         is_first = len(existing) == 0
         await asyncio.to_thread(store.append_message, req.session_id, "user", user_content)
         if is_first:
             await asyncio.to_thread(store.rename_session, req.session_id, user_content[:28].strip())
 
-    async def generate():
-        body = json.dumps({"model": "local", "messages": messages, "stream": True}).encode()
+    def generate():
+        body = json.dumps({"model": "local", "messages": llm_messages, "stream": True}).encode()
         http_req = urllib_request.Request(
             f"{llama.LLAMA_BASE_URL}/v1/chat/completions",
             data=body,
@@ -224,9 +255,9 @@ async def chat_stream(req: ChatRequest):
 
         assistant_message = None
         if accumulated:
-            assistant_message = await asyncio.to_thread(
-                store.append_message, req.session_id, "assistant", accumulated
-            )
+            assistant_message = store.append_message(req.session_id, "assistant", accumulated)
+            if user_content:
+                store.save_turn_memory(req.session_id, user_content, accumulated)
 
         yield f"data: {json.dumps({'type': 'done', 'message': assistant_message})}\n\n"
 
