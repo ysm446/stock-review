@@ -6,21 +6,14 @@ from pathlib import Path
 
 import yfinance as yf
 
+from shared import FX_TICKERS
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "data"
 DB_FILE = DATA_DIR / "app.db"
 PORTFOLIO_FILE = DATA_DIR / "portfolio.json"
 STOCK_MASTER_FILE = DATA_DIR / "stock_master.json"
-
-FX_TICKERS = {
-    "USD": "USDJPY=X",
-    "EUR": "EURJPY=X",
-    "GBP": "GBPJPY=X",
-    "AUD": "AUDJPY=X",
-    "CAD": "CADJPY=X",
-    "HKD": "HKDJPY=X",
-}
 
 
 def utc_now() -> str:
@@ -354,20 +347,51 @@ def store_price_history(conn: sqlite3.Connection, ticker: str, period: str = "1y
     return inserted
 
 
-def build_portfolio_history_for_holdings(conn: sqlite3.Connection, holdings: list[dict[str, object]]) -> list[dict[str, object]]:
-    normalized_holdings = []
-    tickers = []
-    for holding in holdings:
-        ticker = str(holding.get("ticker") or "").strip()
-        shares = parse_number(holding.get("shares"))
-        if not ticker or shares <= 0:
-            continue
-        normalized_holdings.append({"ticker": ticker, "shares": shares})
-        tickers.append(ticker)
+def _build_history_from_rows(holdings: list[dict[str, object]], rows) -> list[dict[str, object]]:
+    """Compute portfolio value time series from normalized holdings and price_history rows."""
+    history_by_ticker: dict[str, dict[str, int]] = {}
+    all_dates: set[str] = set()
+    for row in rows:
+        trade_date = row["trade_date"]
+        history_by_ticker.setdefault(row["ticker"], {})[trade_date] = int(row["close_price_jpy"])
+        all_dates.add(trade_date)
 
-    if not normalized_holdings:
+    if not all_dates:
         return []
 
+    running_prices: dict[str, int] = {}
+    result = []
+    for trade_date in sorted(all_dates):
+        for h in holdings:
+            price = history_by_ticker.get(h["ticker"], {}).get(trade_date)
+            if price is not None:
+                running_prices[h["ticker"]] = price
+
+        total_value = 0
+        complete = True
+        for h in holdings:
+            price = running_prices.get(h["ticker"])
+            if price is None:
+                complete = False
+                break
+            total_value += h["shares"] * price
+
+        if complete:
+            result.append({"date": trade_date, "value": total_value})
+
+    return result
+
+
+def build_portfolio_history_for_holdings(conn: sqlite3.Connection, holdings: list[dict[str, object]]) -> list[dict[str, object]]:
+    normalized = [
+        {"ticker": str(h.get("ticker") or "").strip(), "shares": parse_number(h.get("shares"))}
+        for h in holdings
+        if str(h.get("ticker") or "").strip() and parse_number(h.get("shares")) > 0
+    ]
+    if not normalized:
+        return []
+
+    tickers = [h["ticker"] for h in normalized]
     placeholders = ",".join("?" for _ in tickers)
     rows = conn.execute(
         f"""
@@ -379,39 +403,7 @@ def build_portfolio_history_for_holdings(conn: sqlite3.Connection, holdings: lis
         tickers,
     ).fetchall()
 
-    if not rows:
-        return []
-
-    history_by_ticker = {}
-    all_dates = set()
-    for row in rows:
-        trade_date = row["trade_date"]
-        ticker = row["ticker"]
-        history_by_ticker.setdefault(ticker, {})[trade_date] = int(row["close_price_jpy"])
-        all_dates.add(trade_date)
-
-    running_prices = {}
-    result = []
-    for trade_date in sorted(all_dates):
-        for holding in normalized_holdings:
-            price = history_by_ticker.get(holding["ticker"], {}).get(trade_date)
-            if price is not None:
-                running_prices[holding["ticker"]] = price
-
-        total_value = 0
-        complete = True
-        for holding in normalized_holdings:
-            ticker = holding["ticker"]
-            price = running_prices.get(ticker)
-            if price is None:
-                complete = False
-                break
-            total_value += holding["shares"] * price
-
-        if complete:
-            result.append({"date": trade_date, "value": total_value})
-
-    return result
+    return _build_history_from_rows(normalized, rows)
 
 
 def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, object]:
@@ -466,7 +458,7 @@ def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, objec
 
 
 def build_portfolio_history(conn: sqlite3.Connection) -> list[dict[str, object]]:
-    holdings = conn.execute(
+    holding_rows = conn.execute(
         """
         SELECT ticker, shares
         FROM holdings
@@ -474,9 +466,10 @@ def build_portfolio_history(conn: sqlite3.Connection) -> list[dict[str, object]]
         ORDER BY sort_order, ticker
         """
     ).fetchall()
-    if not holdings:
+    if not holding_rows:
         return []
 
+    holdings = [{"ticker": r["ticker"], "shares": int(r["shares"])} for r in holding_rows]
     rows = conn.execute(
         """
         SELECT trade_date, ticker, close_price_jpy
@@ -486,37 +479,7 @@ def build_portfolio_history(conn: sqlite3.Connection) -> list[dict[str, object]]
         """
     ).fetchall()
 
-    history_by_ticker = {}
-    dates = set()
-    for row in rows:
-        history_by_ticker.setdefault(row["ticker"], {})[row["trade_date"]] = int(row["close_price_jpy"])
-        dates.add(row["trade_date"])
-
-    if not dates:
-        return []
-
-    running_prices = {}
-    result = []
-    for trade_date in sorted(dates):
-        for holding in holdings:
-            ticker = holding["ticker"]
-            price = history_by_ticker.get(ticker, {}).get(trade_date)
-            if price is not None:
-                running_prices[ticker] = price
-
-        total_value = 0
-        complete = True
-        for holding in holdings:
-            ticker = holding["ticker"]
-            if ticker not in running_prices:
-                complete = False
-                break
-            total_value += int(holding["shares"]) * int(running_prices[ticker])
-
-        if complete:
-            result.append({"date": trade_date, "value": total_value})
-
-    return result
+    return _build_history_from_rows(holdings, rows)
 
 
 def load_state(conn: sqlite3.Connection) -> dict[str, object]:

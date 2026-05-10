@@ -4,6 +4,8 @@ from datetime import datetime
 
 import yfinance as yf
 
+from shared import to_float
+
 MAX_FINANCIAL_SUMMARY_PERIODS = 4
 
 
@@ -38,15 +40,6 @@ ANALYST_FIELDS = {
     "targetLowPrice": "targetLowPrice",
     "recommendationKey": "recommendationKey",
 }
-
-
-def to_float(value):
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def to_int(value):

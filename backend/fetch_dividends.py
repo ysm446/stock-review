@@ -1,56 +1,13 @@
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import yfinance as yf
 
-
-FX_TICKERS = {
-    "USD": "USDJPY=X",
-    "EUR": "EURJPY=X",
-    "GBP": "GBPJPY=X",
-    "AUD": "AUDJPY=X",
-    "CAD": "CADJPY=X",
-    "HKD": "HKDJPY=X",
-}
+from shared import to_float, convert_to_jpy
 
 
-def to_float(value):
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def get_last_price(ticker: str):
-    stock = yf.Ticker(ticker)
-    info = stock.fast_info
-    price = info.get("lastPrice") or info.get("regularMarketPrice") or info.get("previousClose")
-    currency = info.get("currency")
-
-    if price is None:
-        history = stock.history(period="5d", interval="1d", auto_adjust=False)
-        if history.empty:
-            raise ValueError("No market data returned")
-        price = float(history["Close"].dropna().iloc[-1])
-
-    return float(price), (currency or "USD").upper()
-
-
-def convert_to_jpy(value: float, currency: str):
-    normalized = (currency or "JPY").upper()
-    if normalized == "JPY":
-        return float(value), 1.0
-    fx_ticker = FX_TICKERS.get(normalized)
-    if not fx_ticker:
-        raise ValueError(f"Unsupported currency: {normalized}")
-    fx_price, _ = get_last_price(fx_ticker)
-    return float(value) * float(fx_price), float(fx_price)
-
-
-def estimate_annual_dividend(ticker_symbol: str):
+def estimate_annual_dividend(ticker_symbol: str) -> dict:
     ticker = yf.Ticker(ticker_symbol)
     info = ticker.info
     currency = (info.get("currency") or "JPY").upper()
