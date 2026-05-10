@@ -463,7 +463,7 @@ def reorder_sessions(workspace_id: int, ids: list[int]) -> None:
 def list_messages(session_id: int) -> list[dict]:
     with _connect() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at",
+            "SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at, id",
             (session_id,),
         )]
 
@@ -477,6 +477,88 @@ def append_message(session_id: int, role: str, content: str) -> dict:
         )
         conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (now, session_id))
         return {"id": cur.lastrowid, "created_at": now}
+
+
+def get_message(id: int) -> dict | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, session_id, role, content, created_at FROM messages WHERE id = ?",
+            (id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_message(id: int, content: str) -> dict:
+    now = _now()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT session_id, role, created_at FROM messages WHERE id = ?",
+            (id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("Message not found")
+        conn.execute("UPDATE messages SET content = ? WHERE id = ?", (content, id))
+        conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (now, row["session_id"]))
+        return {
+            "id": id,
+            "session_id": row["session_id"],
+            "role": row["role"],
+            "content": content,
+            "created_at": row["created_at"],
+        }
+
+
+def delete_message(id: int) -> int | None:
+    now = _now()
+    with _connect() as conn:
+        row = conn.execute("SELECT session_id FROM messages WHERE id = ?", (id,)).fetchone()
+        if not row:
+            return None
+        conn.execute("DELETE FROM messages WHERE id = ?", (id,))
+        conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (now, row["session_id"]))
+        return int(row["session_id"])
+
+
+def delete_messages_from(id: int) -> int | None:
+    now = _now()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT session_id, created_at FROM messages WHERE id = ?",
+            (id,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            """
+            DELETE FROM messages
+            WHERE session_id = ?
+              AND (created_at > ? OR (created_at = ? AND id >= ?))
+            """,
+            (row["session_id"], row["created_at"], row["created_at"], id),
+        )
+        conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (now, row["session_id"]))
+        return int(row["session_id"])
+
+
+def delete_messages_after(id: int) -> int | None:
+    now = _now()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT session_id, created_at FROM messages WHERE id = ?",
+            (id,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            """
+            DELETE FROM messages
+            WHERE session_id = ?
+              AND (created_at > ? OR (created_at = ? AND id > ?))
+            """,
+            (row["session_id"], row["created_at"], row["created_at"], id),
+        )
+        conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (now, row["session_id"]))
+        return int(row["session_id"])
 
 
 # ── Memory ────────────────────────────────────────────────

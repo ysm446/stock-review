@@ -71,8 +71,19 @@ def _find_gguf_files() -> list[dict]:
 
 class LoadModelRequest(BaseModel):
     model_path: str
-    ctx_size: int = 4096
+    ctx_size: int = llama.DEFAULT_CTX_SIZE
     n_gpu_layers: int = -1
+
+
+class ModelSettingsRequest(BaseModel):
+    ctx_size: int = llama.DEFAULT_CTX_SIZE
+
+
+def _validate_ctx_size(ctx_size: int) -> int:
+    allowed = {4096, 8192, 16384, 32768}
+    if ctx_size not in allowed:
+        raise HTTPException(400, "ctx_size must be one of 4096, 8192, 16384, 32768")
+    return ctx_size
 
 
 @app.get("/models")
@@ -85,10 +96,17 @@ def model_status():
     return llama.get_status()
 
 
+@app.post("/model/settings")
+def model_settings(req: ModelSettingsRequest):
+    llama.save_context_size(_validate_ctx_size(req.ctx_size))
+    return llama.get_status()
+
+
 @app.post("/model/load")
 async def model_load(req: LoadModelRequest):
     try:
-        await asyncio.to_thread(llama.load_model, req.model_path, req.ctx_size, req.n_gpu_layers)
+        ctx_size = _validate_ctx_size(req.ctx_size)
+        await asyncio.to_thread(llama.load_model, req.model_path, ctx_size, req.n_gpu_layers)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -113,6 +131,10 @@ class ReorderBody(BaseModel):
 class DocumentBody(BaseModel):
     title: str = "Untitled"
     content: str = ""
+
+
+class MessageBody(BaseModel):
+    content: str
 
 
 @app.get("/workspaces")
@@ -218,6 +240,38 @@ def get_messages(session_id: int):
     return store.list_messages(session_id)
 
 
+@app.patch("/messages/{id}")
+def patch_message(id: int, body: MessageBody):
+    try:
+        return store.update_message(id, body.content)
+    except ValueError:
+        raise HTTPException(404, "Message not found")
+
+
+@app.delete("/messages/{id}")
+def del_message(id: int):
+    session_id = store.delete_message(id)
+    if session_id is None:
+        raise HTTPException(404, "Message not found")
+    return {"ok": True, "session_id": session_id}
+
+
+@app.delete("/messages/{id}/from")
+def del_messages_from(id: int):
+    session_id = store.delete_messages_from(id)
+    if session_id is None:
+        raise HTTPException(404, "Message not found")
+    return {"ok": True, "session_id": session_id}
+
+
+@app.delete("/messages/{id}/after")
+def del_messages_after(id: int):
+    session_id = store.delete_messages_after(id)
+    if session_id is None:
+        raise HTTPException(404, "Message not found")
+    return {"ok": True, "session_id": session_id}
+
+
 # ── Memory ────────────────────────────────────────────────
 
 @app.get("/memory/search")
@@ -251,6 +305,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     session_id: int
     messages: list[ChatMessage]
+    persist_user: bool = True
 
 
 @app.post("/chat/stream")
@@ -272,10 +327,11 @@ async def chat_stream(req: ChatRequest):
         llm_messages = [{"role": "system", "content": context}, *messages]
 
     # Persist user message and auto-title on first turn
-    if user_content:
+    user_message = None
+    if user_content and req.persist_user:
         existing = await asyncio.to_thread(store.list_messages, req.session_id)
         is_first = len(existing) == 0
-        await asyncio.to_thread(store.append_message, req.session_id, "user", user_content)
+        user_message = await asyncio.to_thread(store.append_message, req.session_id, "user", user_content)
         if is_first:
             await asyncio.to_thread(store.rename_session, req.session_id, user_content[:28].strip())
 
@@ -316,7 +372,7 @@ async def chat_stream(req: ChatRequest):
             if user_content:
                 store.save_turn_memory(req.session_id, user_content, accumulated)
 
-        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message})}\n\n"
 
     return StreamingResponse(
         generate(),

@@ -18,6 +18,7 @@ _BIN_DIR = _ROOT / "bin" / "llama-server"
 
 LLAMA_PORT = 8080
 LLAMA_BASE_URL = f"http://127.0.0.1:{LLAMA_PORT}"
+DEFAULT_CTX_SIZE = 4096
 
 
 def _find_latest_exe() -> Path:
@@ -56,11 +57,19 @@ def is_ready() -> bool:
 def get_status() -> dict:
     paths = _get_paths()
     model_path = paths.get("active_model_path", "")
+    ctx_size = int(paths.get("ctx_size") or DEFAULT_CTX_SIZE)
     return {
         "loaded": is_ready(),
         "model_path": model_path,
         "model_name": Path(model_path).name if model_path else "",
+        "ctx_size": ctx_size,
     }
+
+
+def save_context_size(ctx_size: int) -> None:
+    paths = _get_paths()
+    paths["ctx_size"] = int(ctx_size)
+    _save_paths(paths)
 
 
 def _kill_running() -> None:
@@ -93,7 +102,7 @@ def _wait_for_server(timeout: int = 90) -> None:
     raise TimeoutError("llama-server did not start within the timeout")
 
 
-def load_model(model_path: str, ctx_size: int = 4096, n_gpu_layers: int = -1) -> None:
+def load_model(model_path: str, ctx_size: int = DEFAULT_CTX_SIZE, n_gpu_layers: int = -1) -> None:
     _kill_running()
     time.sleep(1)
 
@@ -127,6 +136,7 @@ def load_model(model_path: str, ctx_size: int = 4096, n_gpu_layers: int = -1) ->
 
     paths = _get_paths()
     paths["active_model_path"] = model_path
+    paths["ctx_size"] = ctx_size
     paths["llama_server_pid"] = proc.pid
     _save_paths(paths)
 

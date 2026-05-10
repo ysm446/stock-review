@@ -15,13 +15,17 @@ async function api(method, path, body = null) {
   return res.json();
 }
 
-async function streamChat(sessionId, messages, onToken, onDone, onError) {
+async function streamChat(sessionId, messages, onToken, onDone, onError, options = {}) {
   let res;
   try {
     res = await fetch(`${API}/chat/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, messages }),
+      body: JSON.stringify({
+        session_id: sessionId,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        persist_user: options.persistUser !== false,
+      }),
     });
   } catch (e) {
     onError(e.message);
@@ -82,6 +86,8 @@ const chatNewWsBtn        = document.getElementById("chat-new-ws-btn");
 const chatTree            = document.getElementById("chat-tree");
 const chatModelModalBackdrop = document.getElementById("chat-model-modal-backdrop");
 const chatModelList          = document.getElementById("chat-model-list");
+const chatContextRange       = document.getElementById("chat-context-range");
+const chatContextValue       = document.getElementById("chat-context-value");
 const closeChatModelModal    = document.getElementById("close-chat-model-modal");
 
 // ── State ────────────────────────────────────────────────
@@ -97,12 +103,14 @@ let serverLoaded     = false;
 let loadingModel     = false;
 let streaming        = false;
 let currentModelName = "";
+let selectedCtxSize  = 4096;
 
 const CHAT_SIDEBAR_WIDTH_KEY = "stock-review.chatSidebarWidth";
 const CHAT_DOC_EXPANDED_KEY = "stock-review.chatDocumentsExpanded";
 const CHAT_SIDEBAR_DEFAULT_WIDTH = 220;
 const CHAT_SIDEBAR_MIN_WIDTH = 180;
 const CHAT_SIDEBAR_MAX_WIDTH = 440;
+const CHAT_CTX_OPTIONS = [4096, 8192, 16384, 32768];
 
 let treeDragState = null;
 
@@ -110,6 +118,18 @@ let treeDragState = null;
 function setModelStatus(state, label) {
   chatModelIndicator.className = `chat-model-indicator${state ? " " + state : ""}`;
   chatModelNameEl.textContent = label;
+}
+
+function ctxLabel(size) {
+  return `${Math.round(size / 1024)}K`;
+}
+
+function setContextControl(size) {
+  const optionIndex = CHAT_CTX_OPTIONS.indexOf(Number(size));
+  const index = optionIndex === -1 ? 0 : optionIndex;
+  selectedCtxSize = CHAT_CTX_OPTIONS[index];
+  if (chatContextRange) chatContextRange.value = String(index);
+  if (chatContextValue) chatContextValue.textContent = ctxLabel(selectedCtxSize);
 }
 
 function setInputEnabled(on) {
@@ -192,6 +212,7 @@ async function refreshModelStatus() {
   const status = await api("GET", "/model/status");
   serverLoaded = Boolean(status.loaded);
   currentModelName = serverLoaded ? (status.model_name || "") : "";
+  setContextControl(status.ctx_size || selectedCtxSize);
 
   if (serverLoaded) {
     setModelStatus("is-loaded", currentModelName || "読み込み済み");
@@ -548,6 +569,21 @@ function makeActionBtn(text, title, handler, options = {}) {
         <path d="M4 7h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         <path d="M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         <path d="M6 7l1 14h10l1-14M9 7V4h6v3" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      </svg>
+    `;
+  } else if (options.icon === "edit") {
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" aria-hidden="true">
+        <path d="M12 20h9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      </svg>
+    `;
+  } else if (options.icon === "refresh") {
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
+        <path d="M21 12a9 9 0 0 1-15.2 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M3 12A9 9 0 0 1 18.2 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M18 2v4h-4M6 22v-4h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     `;
   } else {
@@ -954,8 +990,8 @@ async function selectSession(id) {
 
   const msgs = await api("GET", `/sessions/${id}/messages`);
   for (const m of msgs) {
-    chatHistory.push({ role: m.role, content: m.content });
-    appendBubble(m.role, m.content, m.created_at);
+    chatHistory.push({ id: m.id, role: m.role, content: m.content });
+    appendBubble(m.role, m.content, m.created_at, m.id);
   }
   if (!msgs.length) clearMessages("メッセージを入力してください");
 
@@ -973,10 +1009,31 @@ async function newSessionInActiveWs() {
 }
 
 // ── Chat ──────────────────────────────────────────────────
-function appendBubble(role, content, createdAt = Date.now()) {
+function makeMessageActionBtn(icon, title, handler) {
+  const btn = makeActionBtn("", title, handler, { icon });
+  btn.classList.add("chat-message-action-btn");
+  return btn;
+}
+
+function appendMessageActions(wrap, role, messageId, content) {
+  if (!messageId) return;
+  const actions = document.createElement("div");
+  actions.className = "chat-message-actions";
+  if (role === "user") {
+    actions.appendChild(makeMessageActionBtn("edit", "編集", () => editUserMessage(messageId, content)));
+    actions.appendChild(makeMessageActionBtn("refresh", "再生成", () => regenerateFromUserMessage(messageId)));
+    actions.appendChild(makeMessageActionBtn("trash", "削除", () => deleteUserMessage(messageId)));
+  } else if (role === "assistant") {
+    actions.appendChild(makeMessageActionBtn("trash", "削除", () => deleteAssistantMessage(messageId)));
+  }
+  wrap.appendChild(actions);
+}
+
+function appendBubble(role, content, createdAt = Date.now(), messageId = null) {
   chatMessages.querySelectorAll(".chat-empty-hint").forEach(el => el.remove());
   const wrap = document.createElement("div");
   wrap.className = `chat-message ${role}`;
+  if (messageId) wrap.dataset.messageId = messageId;
   const meta = document.createElement("div");
   meta.className = "chat-message-meta";
   meta.textContent = formatMessageMeta(role, createdAt);
@@ -984,22 +1041,62 @@ function appendBubble(role, content, createdAt = Date.now()) {
   body.className = role === "user" ? "chat-message-bubble" : "chat-message-text";
   setMessageBodyContent(body, role, content);
   wrap.append(meta, body);
+  appendMessageActions(wrap, role, messageId, content);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   return wrap;
 }
 
-async function sendMessage() {
-  const text = chatInput.value.trim();
-  if (!text || !serverLoaded || streaming || activeSessionId === null) return;
+async function reloadActiveSessionMessages() {
+  if (activeSessionId === null) return;
+  chatHistory = [];
+  clearMessages();
+  const msgs = await api("GET", `/sessions/${activeSessionId}/messages`);
+  for (const m of msgs) {
+    chatHistory.push({ id: m.id, role: m.role, content: m.content });
+    appendBubble(m.role, m.content, m.created_at, m.id);
+  }
+  if (!msgs.length) clearMessages("繝｡繝・そ繝ｼ繧ｸ繧貞・蜉帙＠縺ｦ縺上□縺輔＞");
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
 
-  chatInput.value = "";
-  chatInput.style.height = "auto";
+async function deleteUserMessage(messageId) {
+  if (streaming || activeSessionId === null) return;
+  await api("DELETE", `/messages/${messageId}/from`);
+  await reloadActiveSessionMessages();
+  refreshSession(activeSessionId);
+}
+
+async function deleteAssistantMessage(messageId) {
+  if (streaming || activeSessionId === null) return;
+  await api("DELETE", `/messages/${messageId}`);
+  await reloadActiveSessionMessages();
+  refreshSession(activeSessionId);
+}
+
+async function editUserMessage(messageId, currentContent) {
+  if (streaming || activeSessionId === null) return;
+  const next = window.prompt("メッセージを編集", currentContent);
+  if (next === null) return;
+  const text = next.trim();
+  if (!text) return;
+  await api("PATCH", `/messages/${messageId}`, { content: text });
+  await api("DELETE", `/messages/${messageId}/after`);
+  await reloadActiveSessionMessages();
+  refreshSession(activeSessionId);
+}
+
+async function regenerateFromUserMessage(messageId) {
+  if (streaming || !serverLoaded || activeSessionId === null) return;
+  await api("DELETE", `/messages/${messageId}/after`);
+  await reloadActiveSessionMessages();
+
+  const targetIndex = chatHistory.findIndex(m => m.id === messageId);
+  if (targetIndex === -1 || chatHistory[targetIndex].role !== "user") return;
+  chatHistory = chatHistory.slice(0, targetIndex + 1);
+
   streaming = true;
   setInputEnabled(false);
-
-  chatHistory.push({ role: "user", content: text });
-  appendBubble("user", text);
 
   const wrap = document.createElement("div");
   wrap.className = "chat-message assistant loading";
@@ -1026,8 +1123,80 @@ async function sendMessage() {
     },
     evt => {
       wrap.classList.remove("loading");
+      const assistantId = evt?.message?.id ?? null;
       meta.textContent = formatMessageMeta("assistant", evt?.message?.created_at || Date.now());
-      chatHistory.push({ role: "assistant", content: accumulated });
+      chatHistory.push({ id: assistantId, role: "assistant", content: accumulated });
+      if (assistantId) {
+        wrap.dataset.messageId = assistantId;
+        appendMessageActions(wrap, "assistant", assistantId, accumulated);
+      }
+      refreshSession(sidAtSend);
+      streaming = false;
+      setInputEnabled(serverLoaded && activeSessionId !== null);
+      if (serverLoaded) chatInput.focus();
+    },
+    err => {
+      wrap.classList.remove("loading");
+      wrap.classList.add("error");
+      bubble.textContent = `繧ｨ繝ｩ繝ｼ: ${err}`;
+      streaming = false;
+      setInputEnabled(serverLoaded && activeSessionId !== null);
+    },
+    { persistUser: false }
+  );
+}
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  if (!text || !serverLoaded || streaming || activeSessionId === null) return;
+
+  chatInput.value = "";
+  chatInput.style.height = "auto";
+  streaming = true;
+  setInputEnabled(false);
+
+  chatHistory.push({ role: "user", content: text });
+  const userWrap = appendBubble("user", text);
+
+  const wrap = document.createElement("div");
+  wrap.className = "chat-message assistant loading";
+  const meta = document.createElement("div");
+  meta.className = "chat-message-meta";
+  meta.textContent = `アシスタント${currentModelName ? `（${currentModelName}）` : ""} 生成中`;
+  const bubble = document.createElement("div");
+  bubble.className = "chat-message-text";
+  wrap.append(meta, bubble);
+  chatMessages.appendChild(wrap);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  let accumulated = "";
+  const sidAtSend = activeSessionId;
+
+  await streamChat(
+    sidAtSend,
+    chatHistory,
+    chunk => {
+      wrap.classList.remove("loading");
+      accumulated += chunk;
+      setMessageBodyContent(bubble, "assistant", accumulated);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    },
+    evt => {
+      wrap.classList.remove("loading");
+      const userMessageId = evt?.user_message?.id ?? null;
+      const assistantId = evt?.message?.id ?? null;
+      if (userMessageId) {
+        const userMessage = chatHistory[chatHistory.length - 1];
+        userMessage.id = userMessageId;
+        userWrap.dataset.messageId = userMessageId;
+        appendMessageActions(userWrap, "user", userMessageId, text);
+      }
+      meta.textContent = formatMessageMeta("assistant", evt?.message?.created_at || Date.now());
+      chatHistory.push({ id: assistantId, role: "assistant", content: accumulated });
+      if (assistantId) {
+        wrap.dataset.messageId = assistantId;
+        appendMessageActions(wrap, "assistant", assistantId, accumulated);
+      }
       // Refresh session title in sidebar (auto-title was applied server-side)
       refreshSession(sidAtSend);
       streaming = false;
@@ -1100,10 +1269,10 @@ async function loadModel(modelPath, displayName) {
   loadingModel = true;
   serverLoaded = false;
   setInputEnabled(false);
-  setModelStatus("is-loading", `読み込み中: ${displayName}`);
+  setModelStatus("is-loading", `読み込み中: ${displayName} (${ctxLabel(selectedCtxSize)})`);
 
   try {
-    await api("POST", "/model/load", { model_path: modelPath });
+    await api("POST", "/model/load", { model_path: modelPath, ctx_size: selectedCtxSize });
     serverLoaded = true;
     currentModelName = displayName;
     setModelStatus("is-loaded", displayName);
@@ -1119,6 +1288,11 @@ async function loadModel(modelPath, displayName) {
 // ── Event listeners ───────────────────────────────────────
 chatModelBar.addEventListener("click", openModelPicker);
 closeChatModelModal.addEventListener("click", closeModelPicker);
+chatContextRange?.addEventListener("input", () => {
+  const index = Number(chatContextRange.value);
+  setContextControl(CHAT_CTX_OPTIONS[index] || CHAT_CTX_OPTIONS[0]);
+  api("POST", "/model/settings", { ctx_size: selectedCtxSize }).catch(() => {});
+});
 chatModelModalBackdrop.addEventListener("click", e => {
   if (e.target === chatModelModalBackdrop) closeModelPicker();
 });

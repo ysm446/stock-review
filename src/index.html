@@ -445,6 +445,25 @@
           <h2 id="chat-model-modal-title">モデルを選択</h2>
           <button class="icon-remove" id="close-chat-model-modal" aria-label="close">×</button>
         </div>
+        <div class="chat-context-control" aria-label="コンテキスト長">
+          <div class="chat-context-head">
+            <span>コンテキスト長</span>
+            <strong id="chat-context-value">4K</strong>
+          </div>
+          <input class="chat-context-range" id="chat-context-range" type="range" min="0" max="3" step="1" value="0" list="chat-context-ticks" />
+          <datalist id="chat-context-ticks">
+            <option value="0" label="4K"></option>
+            <option value="1" label="8K"></option>
+            <option value="2" label="16K"></option>
+            <option value="3" label="32K"></option>
+          </datalist>
+          <div class="chat-context-labels" aria-hidden="true">
+            <span>4K</span>
+            <span>8K</span>
+            <span>16K</span>
+            <span>32K</span>
+          </div>
+        </div>
         <div class="chat-model-list" id="chat-model-list"></div>
       </section>
     </div>
