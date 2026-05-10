@@ -28,7 +28,7 @@ env/
 .env.*
 
 # Claude Code
-.claude/settings.local.json
+.claude/
 
 # OS / Editor
 .DS_Store
