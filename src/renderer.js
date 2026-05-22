@@ -49,6 +49,15 @@ import {
   trendPeriodChange,
   trendRangeSelect,
   trendYAxisSelect,
+  addAnnotationButton,
+  annotationModalBackdrop,
+  annotationModalTitle,
+  annotationForm,
+  annotationDateInput,
+  annotationTextInput,
+  closeAnnotationModalButton,
+  cancelAnnotationModalButton,
+  deleteAnnotationButton,
   trendTooltip,
   trendTooltipChange,
   trendTooltipDate,
@@ -99,7 +108,8 @@ const appState = {
   holdings: [],
   watchlist: [],
   trendHistory: [],
-  dividendSummary: null
+  dividendSummary: null,
+  annotations: []
 };
 
 const stockMaster = {};
@@ -141,6 +151,7 @@ const REVIEW_LABEL_HELP = {
 let statusTimer = null;
 let trendRange = "3m";
 let trendYAxisMode = "relative";
+let editingAnnotationId = null;
 let editingHoldingIndex = null;
 let autosaveTimer = null;
 let stockMasterEntries = [];
@@ -265,6 +276,62 @@ trendYAxisSelect.addEventListener("change", (event) => {
   trendYAxisMode = event.target.value;
   hoveredTrendIndex = null;
   hideTrendTooltip();
+  drawTrendChart();
+});
+addAnnotationButton.addEventListener("click", () => {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, "0");
+  const d = String(today.getDate()).padStart(2, "0");
+  openAnnotationModal(null, `${y}-${m}-${d}`);
+});
+trendChart.addEventListener("click", (event) => {
+  if (!trendChartModel || !trendChartModel.dates || !trendChartModel.dates.length) return;
+  const rect = trendChart.getBoundingClientRect();
+  const cssX = event.clientX - rect.left;
+  const { dates: chartDates, points: chartPoints } = trendChartModel;
+  const firstTime = new Date(`${chartDates[0]}T00:00:00`).getTime();
+  const lastTime = new Date(`${chartDates[chartDates.length - 1]}T00:00:00`).getTime();
+  for (const ann of appState.annotations) {
+    const targetTime = new Date(`${ann.date}T00:00:00`).getTime();
+    if (targetTime < firstTime || targetTime > lastTime) continue;
+    let nearestIdx = 0;
+    let nearestDiff = Infinity;
+    chartDates.forEach((d, i) => {
+      const diff = Math.abs(new Date(`${d}T00:00:00`).getTime() - targetTime);
+      if (diff < nearestDiff) { nearestDiff = diff; nearestIdx = i; }
+    });
+    if (Math.abs(cssX - chartPoints[nearestIdx].x) <= 10) {
+      openAnnotationModal(ann);
+      return;
+    }
+  }
+});
+closeAnnotationModalButton.addEventListener("click", closeAnnotationModal);
+cancelAnnotationModalButton.addEventListener("click", closeAnnotationModal);
+annotationModalBackdrop.addEventListener("click", (event) => {
+  if (event.target === annotationModalBackdrop) closeAnnotationModal();
+});
+annotationForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const date = annotationDateInput.value.trim();
+  const text = annotationTextInput.value.trim();
+  if (!date || !text) return;
+  if (editingAnnotationId === null) {
+    appState.annotations.push({ id: String(Date.now()), date, text });
+  } else {
+    const idx = appState.annotations.findIndex((a) => a.id === editingAnnotationId);
+    if (idx >= 0) appState.annotations[idx] = { id: editingAnnotationId, date, text };
+  }
+  closeAnnotationModal();
+  await window.stockReviewApi.saveAnnotations(appState.annotations);
+  drawTrendChart();
+});
+deleteAnnotationButton.addEventListener("click", async () => {
+  if (editingAnnotationId === null) return;
+  appState.annotations = appState.annotations.filter((a) => a.id !== editingAnnotationId);
+  closeAnnotationModal();
+  await window.stockReviewApi.saveAnnotations(appState.annotations);
   drawTrendChart();
 });
 trendChart.addEventListener("mousemove", handleTrendChartPointerMove);
@@ -990,6 +1057,21 @@ function hideTrendTooltip() {
   trendTooltipChange.classList.remove("is-positive", "is-negative");
 }
 
+function openAnnotationModal(ann, defaultDate) {
+  editingAnnotationId = ann ? ann.id : null;
+  annotationModalTitle.textContent = ann ? "注記を編集" : "注記を追加";
+  annotationDateInput.value = ann ? ann.date : (defaultDate || "");
+  annotationTextInput.value = ann ? ann.text : "";
+  deleteAnnotationButton.classList.toggle("is-hidden", !ann);
+  annotationModalBackdrop.classList.remove("is-hidden");
+  annotationTextInput.focus();
+}
+
+function closeAnnotationModal() {
+  editingAnnotationId = null;
+  annotationModalBackdrop.classList.add("is-hidden");
+}
+
 function updateTrendTooltip(index) {
   if (!trendChartModel || index < 0 || index >= trendChartModel.points.length) {
     hideTrendTooltip();
@@ -1490,6 +1572,7 @@ function buildTrendSeriesFromHistory(range) {
       return `${date.getMonth() + 1}/${date.getDate()}`;
     }),
     values: target.map((item) => item.value),
+    dates: target.map((item) => item.date),
     labelEvery
   };
 }
@@ -1525,7 +1608,14 @@ function buildTrendSeries(totalValue, holdingsCount, range) {
     values[values.length - 2] = values[values.length - 1] * (0.965 + ((strength % 5) * 0.007));
   }
 
-  return { labels, values, labelEvery };
+  const dates = businessDates.map((d) => {
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const dy = String(d.getDate()).padStart(2, "0");
+    return `${y}-${mo}-${dy}`;
+  });
+
+  return { labels, values, dates, labelEvery };
 }
 
 function drawSmoothPath(ctx, points) {
@@ -1562,7 +1652,7 @@ function drawTrendChart() {
   const chartHeight = height - padding.top - padding.bottom;
   const totalValue = appState.holdings.map(normalizeHolding).reduce((sum, item) => sum + item.marketValue, 0);
   const holdingsCount = appState.holdings.filter((item) => String(item.ticker || "").trim()).length;
-  const { labels, values } = buildTrendSeries(totalValue, holdingsCount, trendRange);
+  const { labels, values, dates } = buildTrendSeries(totalValue, holdingsCount, trendRange);
 
   ctx.clearRect(0, 0, width, height);
 
@@ -1607,6 +1697,7 @@ function drawTrendChart() {
   trendChartModel = {
     labels,
     values,
+    dates,
     points,
     padding,
     chartWidth,
@@ -1652,6 +1743,51 @@ function drawTrendChart() {
     const label = labels[index];
     ctx.fillText(label, padding.left + xStep * index, height - 16);
   });
+
+  if (Array.isArray(dates) && dates.length && appState.annotations.length) {
+    const firstTime = new Date(`${dates[0]}T00:00:00`).getTime();
+    const lastTime = new Date(`${dates[dates.length - 1]}T00:00:00`).getTime();
+    appState.annotations.forEach((ann) => {
+      const targetTime = new Date(`${ann.date}T00:00:00`).getTime();
+      if (targetTime < firstTime || targetTime > lastTime) return;
+      let nearestIdx = 0;
+      let nearestDiff = Infinity;
+      dates.forEach((d, i) => {
+        const diff = Math.abs(new Date(`${d}T00:00:00`).getTime() - targetTime);
+        if (diff < nearestDiff) { nearestDiff = diff; nearestIdx = i; }
+      });
+      const ax = points[nearestIdx].x;
+      const topY = padding.top;
+      const bottomY = height - padding.bottom;
+
+      ctx.strokeStyle = "#f59e0b";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(ax, topY);
+      ctx.lineTo(ax, bottomY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#f59e0b";
+      ctx.save();
+      ctx.translate(ax, topY + 5);
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath();
+      ctx.rect(-4, -4, 8, 8);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.fillStyle = "#fbbf24";
+      ctx.font = "500 11px Segoe UI";
+      ctx.translate(ax + 8, topY + 14);
+      ctx.rotate(Math.PI / 2);
+      ctx.textAlign = "left";
+      ctx.fillText(ann.text, 0, 0);
+      ctx.restore();
+    });
+  }
 
   if (hoveredTrendIndex !== null && points[hoveredTrendIndex]) {
     const activePoint = points[hoveredTrendIndex];
@@ -2427,7 +2563,11 @@ async function init() {
   stockMasterEntries = Object.entries(stockMaster)
     .map(([ticker, name]) => ({ ticker, name }))
     .sort((a, b) => a.name.localeCompare(b.name, "ja"));
-  const data = await window.stockReviewApi.loadPortfolio();
+  const [data, annotations] = await Promise.all([
+    window.stockReviewApi.loadPortfolio(),
+    window.stockReviewApi.loadAnnotations()
+  ]);
+  appState.annotations = Array.isArray(annotations) ? annotations : [];
   await applyPortfolioState(data);
   const initialTicker = getReviewQuickTickers()[0];
   if (initialTicker) {

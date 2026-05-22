@@ -9,9 +9,11 @@ const {
   ensurePortfolioFile,
   ensureStockMasterFile,
   formatExportDate,
+  readAnnotations,
   readPortfolio,
   readStockMaster,
   sanitizePortfolioPayload,
+  writeAnnotations,
   writePortfolio
 } = require("./data-files");
 const {
@@ -153,6 +155,13 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   stopLlamaServer();
   if (chatServerProcess) { try { chatServerProcess.kill("SIGTERM"); } catch (_) {} }
+});
+
+// ── Annotations IPC ─────────────────────────────────────
+ipcMain.handle("annotations:load", () => readAnnotations());
+ipcMain.handle("annotations:save", (_event, data) => {
+  writeAnnotations(data);
+  return { ok: true };
 });
 
 // ── Portfolio IPC ────────────────────────────────────────

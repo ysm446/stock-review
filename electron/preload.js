@@ -10,5 +10,7 @@ contextBridge.exposeInMainWorld("stockReviewApi", {
   loadDividendSummary: (holdings) => ipcRenderer.invoke("portfolio:dividend-summary", holdings),
   loadHoldingSectors: (tickers) => ipcRenderer.invoke("portfolio:sectors", tickers),
   loadStockMaster: () => ipcRenderer.invoke("stock-master:load"),
-  fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker)
+  fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker),
+  loadAnnotations: () => ipcRenderer.invoke("annotations:load"),
+  saveAnnotations: (data) => ipcRenderer.invoke("annotations:save", data)
 });

@@ -5,6 +5,7 @@ const DATA_DIR = path.join(__dirname, "..", "data");
 const PORTFOLIO_FILE = path.join(DATA_DIR, "portfolio.json");
 const PORTFOLIO_EXAMPLE_FILE = path.join(DATA_DIR, "portfolio.example.json");
 const STOCK_MASTER_FILE = path.join(DATA_DIR, "stock_master.json");
+const ANNOTATIONS_FILE = path.join(DATA_DIR, "annotations.json");
 
 const FALLBACK_PORTFOLIO = {
   holdings: [],
@@ -88,6 +89,16 @@ function sanitizePortfolioPayload(payload) {
   return { holdings, watchlist };
 }
 
+function readAnnotations() {
+  ensureDataDirectory();
+  return readJsonFile(ANNOTATIONS_FILE, []);
+}
+
+function writeAnnotations(annotations) {
+  ensureDataDirectory();
+  writeJsonFile(ANNOTATIONS_FILE, Array.isArray(annotations) ? annotations : []);
+}
+
 function formatExportDate(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -103,8 +114,10 @@ module.exports = {
   ensurePortfolioFile,
   ensureStockMasterFile,
   formatExportDate,
+  readAnnotations,
   readPortfolio,
   readStockMaster,
   sanitizePortfolioPayload,
+  writeAnnotations,
   writePortfolio
 };

@@ -68,6 +68,7 @@
                   <option value="relative" selected>相対軸</option>
                   <option value="absolute">絶対軸（0基点）</option>
                 </select>
+                <button type="button" class="ghost-button trend-annotation-add-btn" id="add-annotation-btn">＋注記</button>
               </div>
               <div class="trend-metrics">
                 <div class="trend-metric">
@@ -469,6 +470,30 @@
           </div>
         </div>
         <div class="chat-model-list" id="chat-model-list"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop is-hidden" id="annotation-modal-backdrop">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="annotation-modal-title">
+        <div class="modal-head">
+          <h2 id="annotation-modal-title">注記を追加</h2>
+          <button class="icon-remove" id="close-annotation-modal" aria-label="close">×</button>
+        </div>
+        <form class="modal-form" id="annotation-form">
+          <label>
+            <span>日付</span>
+            <input id="annotation-date-input" name="date" type="date" required />
+          </label>
+          <label>
+            <span>メモ</span>
+            <input id="annotation-text-input" name="text" type="text" placeholder="例：キオクシア決算" required />
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="ghost-button is-danger is-hidden" id="delete-annotation-btn" style="margin-right: auto">削除</button>
+            <button type="button" class="ghost-button" id="cancel-annotation-modal">キャンセル</button>
+            <button type="submit" class="accent-button" id="submit-annotation-modal">保存</button>
+          </div>
+        </form>
       </section>
     </div>
 
