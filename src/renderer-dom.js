@@ -30,6 +30,7 @@ export const exportPortfolioButton = document.getElementById("export-portfolio")
 export const importPortfolioButton = document.getElementById("import-portfolio");
 export const refreshPricesButton = document.getElementById("refresh-prices");
 export const trendRangeSelect = document.getElementById("trend-range");
+export const trendYAxisSelect = document.getElementById("trend-yaxis");
 export const trendChart = document.getElementById("trend-chart");
 export const trendChartWrap = document.getElementById("trend-chart-wrap");
 export const trendDailyChange = document.getElementById("trend-daily-change");

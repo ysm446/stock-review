@@ -48,6 +48,7 @@ import {
   trendDailyChange,
   trendPeriodChange,
   trendRangeSelect,
+  trendYAxisSelect,
   trendTooltip,
   trendTooltipChange,
   trendTooltipDate,
@@ -139,6 +140,7 @@ const REVIEW_LABEL_HELP = {
 
 let statusTimer = null;
 let trendRange = "3m";
+let trendYAxisMode = "relative";
 let editingHoldingIndex = null;
 let autosaveTimer = null;
 let stockMasterEntries = [];
@@ -255,6 +257,12 @@ reviewTickerInput.addEventListener("keydown", (event) => {
 refreshPricesButton.addEventListener("click", refreshPrices);
 trendRangeSelect.addEventListener("change", (event) => {
   trendRange = event.target.value;
+  hoveredTrendIndex = null;
+  hideTrendTooltip();
+  drawTrendChart();
+});
+trendYAxisSelect.addEventListener("change", (event) => {
+  trendYAxisMode = event.target.value;
   hoveredTrendIndex = null;
   hideTrendTooltip();
   drawTrendChart();
@@ -1562,7 +1570,7 @@ function drawTrendChart() {
   const minValue = Math.min(...values);
   const valuePadding = Math.max((maxValue - minValue) * 0.18, maxValue * 0.03, 100000);
   const topValue = maxValue + valuePadding;
-  const bottomValue = Math.max(0, minValue - valuePadding * 0.8);
+  const bottomValue = trendYAxisMode === "absolute" ? 0 : Math.max(0, minValue - valuePadding * 0.8);
   const yTicks = 5;
   const xStep = labels.length > 1 ? chartWidth / (labels.length - 1) : 0;
 
