@@ -34,8 +34,14 @@
             </svg>
           </button>
         </nav>
-        <div class="sidebar-foot">2026</div>
       </aside>
+
+      <div class="model-topbar">
+        <button class="chat-model-bar ghost-button" id="chat-model-bar">
+          <span class="chat-model-indicator" id="chat-model-indicator"></span>
+          <span id="chat-model-name">モデルを選択</span>
+        </button>
+      </div>
 
       <main class="main-panel">
         <section class="view is-visible" id="view-portfolio">
@@ -281,18 +287,40 @@
               </article>
             </div>
 
+            <section class="stock-chat-panel" id="stock-chat-panel">
+              <div class="panel-head stock-chat-head">
+                <div>
+                  <h2>銘柄チャット</h2>
+                  <p id="stock-chat-subtitle">銘柄を表示すると会話できます</p>
+                </div>
+                <div class="stock-chat-actions">
+                  <button class="ghost-button" id="stock-chat-summarize" disabled>会話をMarkdownにまとめる</button>
+                </div>
+              </div>
+              <div class="stock-chat-shell">
+                <aside class="stock-chat-sidebar">
+                  <button class="chat-new-session-btn" id="stock-chat-new" disabled>+ 新しい会話</button>
+                  <div class="stock-chat-session-list" id="stock-chat-sessions"></div>
+                  <div class="stock-chat-note-path" id="stock-chat-note-path"></div>
+                </aside>
+                <div class="stock-chat-main">
+                  <div class="chat-messages stock-chat-messages" id="stock-chat-messages">
+                    <p class="chat-empty-hint" id="stock-chat-empty">銘柄を選択してください</p>
+                  </div>
+                  <div class="chat-footer stock-chat-footer">
+                    <textarea class="chat-input" id="stock-chat-input" placeholder="この銘柄について質問..." rows="1" disabled></textarea>
+                    <button class="accent-button" id="stock-chat-send" disabled>送信</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
           </section>
         </section>
         <section class="view" id="view-chat">
           <header class="hero">
             <div>
               <h1>チャット</h1>
-            </div>
-            <div class="hero-actions">
-              <button class="chat-model-bar ghost-button" id="chat-model-bar">
-                <span class="chat-model-indicator" id="chat-model-indicator"></span>
-                <span id="chat-model-name">モデルを選択</span>
-              </button>
             </div>
           </header>
 

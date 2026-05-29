@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import sqlite3
 import struct
 import time
@@ -9,6 +10,7 @@ import uuid
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chat.db"
+STOCKS_DIR = Path(__file__).resolve().parent.parent / "data" / "stocks"
 EMBED_DIM = 768
 
 logger = logging.getLogger(__name__)
@@ -167,6 +169,16 @@ def _ensure_documents_schema(conn: sqlite3.Connection) -> None:
         logger.warning("document_vec unavailable; vector document search disabled: %s", e)
 
 
+def _ensure_workspace_scope_schema(conn: sqlite3.Connection) -> None:
+    columns = _table_columns(conn, "workspaces")
+    if "scope" not in columns:
+        conn.execute("ALTER TABLE workspaces ADD COLUMN scope TEXT NOT NULL DEFAULT 'general'")
+    if "ticker" not in columns:
+        conn.execute("ALTER TABLE workspaces ADD COLUMN ticker TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_workspaces_scope ON workspaces(scope)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_workspaces_ticker ON workspaces(ticker)")
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.executescript("""
@@ -186,6 +198,7 @@ def init_db() -> None:
                 updated_at   INTEGER NOT NULL
             );
         """)
+        _ensure_workspace_scope_schema(conn)
         _ensure_messages_schema(conn)
         _ensure_memory_schema(conn)
         _ensure_documents_schema(conn)
@@ -207,14 +220,16 @@ def init_db() -> None:
 def list_workspaces() -> list[dict]:
     with _connect() as conn:
         return [dict(r) for r in conn.execute(
-            "SELECT * FROM workspaces ORDER BY sort_order, created_at"
+            "SELECT * FROM workspaces WHERE scope = 'general' ORDER BY sort_order, created_at"
         )]
 
 
 def create_workspace(name: str = "新しいワークスペース") -> dict:
     now = _now()
     with _connect() as conn:
-        sort_order = conn.execute("SELECT COALESCE(MIN(sort_order), 0) - 1 FROM workspaces").fetchone()[0]
+        sort_order = conn.execute(
+            "SELECT COALESCE(MIN(sort_order), 0) - 1 FROM workspaces WHERE scope = 'general'"
+        ).fetchone()[0]
         cur = conn.execute(
             "INSERT INTO workspaces (name, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?)",
             (name, sort_order, now, now),
@@ -243,6 +258,85 @@ def reorder_workspaces(ids: list[int]) -> None:
 
 
 # ── Documents ─────────────────────────────────────────────
+
+def normalize_stock_ticker(ticker: str) -> str:
+    return str(ticker or "").strip().upper()
+
+
+def _stock_dir_name(ticker: str) -> str:
+    safe = re.sub(r"[^A-Z0-9._-]+", "_", normalize_stock_ticker(ticker))
+    return safe.strip("._-") or "UNKNOWN"
+
+
+def get_or_create_stock_workspace(ticker: str, name: str | None = None) -> dict:
+    normalized = normalize_stock_ticker(ticker)
+    if not normalized:
+        raise ValueError("Ticker is required")
+
+    now = _now()
+    label = name or f"Stock: {normalized}"
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM workspaces WHERE scope = 'stock' AND ticker = ? LIMIT 1",
+            (normalized,),
+        ).fetchone()
+        if row:
+            return dict(row)
+
+        cur = conn.execute(
+            """
+            INSERT INTO workspaces (name, scope, ticker, sort_order, created_at, updated_at)
+            VALUES (?, 'stock', ?, 0, ?, ?)
+            """,
+            (label, normalized, now, now),
+        )
+        return {
+            "id": cur.lastrowid,
+            "name": label,
+            "scope": "stock",
+            "ticker": normalized,
+            "sort_order": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+
+def list_stock_sessions(ticker: str) -> list[dict]:
+    workspace = get_or_create_stock_workspace(ticker)
+    return list_sessions(int(workspace["id"]))
+
+
+def create_stock_session(ticker: str, title: str = "New chat") -> dict:
+    workspace = get_or_create_stock_workspace(ticker)
+    return create_session(int(workspace["id"]), title)
+
+
+def stock_notes_path(ticker: str) -> Path:
+    return STOCKS_DIR / _stock_dir_name(ticker) / "notes.md"
+
+
+def get_stock_notes(ticker: str) -> dict:
+    normalized = normalize_stock_ticker(ticker)
+    path = stock_notes_path(normalized)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    return {
+        "ticker": normalized,
+        "content": content,
+        "path": str(path),
+        "relative_path": str(path.relative_to(Path(__file__).resolve().parent.parent)),
+    }
+
+
+def save_stock_notes(ticker: str, content: str) -> dict:
+    normalized = normalize_stock_ticker(ticker)
+    path = stock_notes_path(normalized)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content or "", encoding="utf-8")
+    return get_stock_notes(normalized)
+
 
 def list_documents(workspace_id: int) -> list[dict]:
     with _connect() as conn:

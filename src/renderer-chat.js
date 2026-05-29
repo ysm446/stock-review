@@ -78,7 +78,7 @@ const chatModelNameEl     = document.getElementById("chat-model-name");
 const chatMessages        = document.getElementById("chat-messages");
 const chatInput           = document.getElementById("chat-input");
 const chatSendButton      = document.getElementById("chat-send");
-const chatFooter          = document.querySelector(".chat-footer");
+const chatFooter          = document.querySelector("#view-chat .chat-footer");
 const chatSidebar         = document.querySelector(".chat-sidebar");
 const chatSidebarResizer  = document.getElementById("chat-sidebar-resizer");
 const chatNewSessionBtn   = document.getElementById("chat-new-session-btn");
@@ -107,6 +107,7 @@ let selectedCtxSize  = 4096;
 
 const CHAT_SIDEBAR_WIDTH_KEY = "stock-review.chatSidebarWidth";
 const CHAT_DOC_EXPANDED_KEY = "stock-review.chatDocumentsExpanded";
+const CHAT_CTX_SIZE_KEY = "stock-review.chatContextSize";
 const CHAT_SIDEBAR_DEFAULT_WIDTH = 220;
 const CHAT_SIDEBAR_MIN_WIDTH = 180;
 const CHAT_SIDEBAR_MAX_WIDTH = 440;
@@ -130,6 +131,16 @@ function setContextControl(size) {
   selectedCtxSize = CHAT_CTX_OPTIONS[index];
   if (chatContextRange) chatContextRange.value = String(index);
   if (chatContextValue) chatContextValue.textContent = ctxLabel(selectedCtxSize);
+}
+
+function loadSavedContextSize() {
+  const saved = Number(localStorage.getItem(CHAT_CTX_SIZE_KEY));
+  return CHAT_CTX_OPTIONS.includes(saved) ? saved : selectedCtxSize;
+}
+
+function saveContextSizePreference() {
+  localStorage.setItem(CHAT_CTX_SIZE_KEY, String(selectedCtxSize));
+  return api("POST", "/model/settings", { ctx_size: selectedCtxSize });
 }
 
 function setInputEnabled(on) {
@@ -213,6 +224,7 @@ async function refreshModelStatus() {
   serverLoaded = Boolean(status.loaded);
   currentModelName = serverLoaded ? (status.model_name || "") : "";
   setContextControl(status.ctx_size || selectedCtxSize);
+  localStorage.setItem(CHAT_CTX_SIZE_KEY, String(selectedCtxSize));
 
   if (serverLoaded) {
     setModelStatus("is-loaded", currentModelName || "読み込み済み");
@@ -1288,11 +1300,13 @@ async function loadModel(modelPath, displayName) {
 // ── Event listeners ───────────────────────────────────────
 chatModelBar.addEventListener("click", openModelPicker);
 closeChatModelModal.addEventListener("click", closeModelPicker);
-chatContextRange?.addEventListener("input", () => {
+function handleContextRangeChange() {
   const index = Number(chatContextRange.value);
   setContextControl(CHAT_CTX_OPTIONS[index] || CHAT_CTX_OPTIONS[0]);
-  api("POST", "/model/settings", { ctx_size: selectedCtxSize }).catch(() => {});
-});
+  saveContextSizePreference().catch(() => {});
+}
+chatContextRange?.addEventListener("input", handleContextRangeChange);
+chatContextRange?.addEventListener("change", handleContextRangeChange);
 chatModelModalBackdrop.addEventListener("click", e => {
   if (e.target === chatModelModalBackdrop) closeModelPicker();
 });
@@ -1309,5 +1323,7 @@ chatInput.addEventListener("input", () => {
 
 // ── Init ──────────────────────────────────────────────────
 loadExpandedDocumentSections();
+setContextControl(loadSavedContextSize());
+refreshModelStatus().catch(() => {});
 initChatSidebarResize();
 loadWorkspaces();

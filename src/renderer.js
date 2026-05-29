@@ -1,4 +1,5 @@
 import "./renderer-chat.js";
+import { setStockReviewContext } from "./renderer-stock-chat.js";
 import {
   allocationChart,
   allocationLegend,
@@ -2298,9 +2299,11 @@ async function loadReviewSnapshot(rawTicker) {
     reviewSnapshot = snapshot;
     addToReviewHistory(ticker, snapshot.name || "");
     renderReviewSnapshot();
+    setStockReviewContext(ticker, snapshot);
   } catch (error) {
     reviewSnapshot = null;
     renderReviewSnapshot();
+    setStockReviewContext(ticker, null);
     setStatus(`レビュー取得エラー: ${error.message}`, "error");
   }
 }

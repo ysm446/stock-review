@@ -133,8 +133,16 @@ class DocumentBody(BaseModel):
     content: str = ""
 
 
+class NotesBody(BaseModel):
+    content: str = ""
+
+
 class MessageBody(BaseModel):
     content: str
+
+
+class SessionBody(BaseModel):
+    title: str = "New chat"
 
 
 @app.get("/workspaces")
@@ -166,6 +174,46 @@ def del_workspace(id: int):
 
 
 # ── Documents ─────────────────────────────────────────────
+
+@app.get("/stocks/{ticker}/workspace")
+def get_stock_workspace(ticker: str):
+    try:
+        workspace = store.get_or_create_stock_workspace(ticker)
+        notes = store.get_stock_notes(ticker)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {
+        "workspace": workspace,
+        "sessions": store.list_sessions(int(workspace["id"])),
+        "notes": notes,
+    }
+
+
+@app.get("/stocks/{ticker}/sessions")
+def get_stock_sessions(ticker: str):
+    try:
+        return store.list_stock_sessions(ticker)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/stocks/{ticker}/sessions", status_code=201)
+def post_stock_session(ticker: str, body: SessionBody):
+    try:
+        return store.create_stock_session(ticker, body.title)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/stocks/{ticker}/notes")
+def get_stock_notes(ticker: str):
+    return store.get_stock_notes(ticker)
+
+
+@app.patch("/stocks/{ticker}/notes")
+def patch_stock_notes(ticker: str, body: NotesBody):
+    return store.save_stock_notes(ticker, body.content)
+
 
 @app.get("/workspaces/{workspace_id}/documents")
 def get_documents(workspace_id: int):
@@ -306,6 +354,8 @@ class ChatRequest(BaseModel):
     session_id: int
     messages: list[ChatMessage]
     persist_user: bool = True
+    persist_assistant: bool = True
+    system_prompt: str | None = None
 
 
 @app.post("/chat/stream")
@@ -323,8 +373,10 @@ async def chat_stream(req: ChatRequest):
             user_content,
         )
     llm_messages = messages
+    if req.system_prompt:
+        llm_messages = [{"role": "system", "content": req.system_prompt}, *llm_messages]
     if context:
-        llm_messages = [{"role": "system", "content": context}, *messages]
+        llm_messages = [{"role": "system", "content": context}, *llm_messages]
 
     # Persist user message and auto-title on first turn
     user_message = None
@@ -367,7 +419,7 @@ async def chat_stream(req: ChatRequest):
             return
 
         assistant_message = None
-        if accumulated:
+        if accumulated and req.persist_assistant:
             assistant_message = store.append_message(req.session_id, "assistant", accumulated)
             if user_content:
                 store.save_turn_memory(req.session_id, user_content, accumulated)
