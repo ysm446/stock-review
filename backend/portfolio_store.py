@@ -642,7 +642,9 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
         conn.execute("DELETE FROM watchlist")
 
     conn.commit()
-    return load_state(conn)
+    state = load_state(conn)
+    state["trendHistory"] = build_portfolio_history_for_holdings(conn, holdings)
+    return state
 
 
 def refresh_prices(conn: sqlite3.Connection, tickers: list[str]) -> dict[str, object]:
