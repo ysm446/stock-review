@@ -217,6 +217,17 @@ button {
   font-weight: 600;
 }
 
+.holdings-group-toggle.is-hidden {
+  display: none;
+}
+
+.holdings-group-toggle.is-active,
+.allocation-group-toggle.is-active {
+  background: #303030;
+  border-color: #696969;
+  color: var(--text);
+}
+
 .status-banner {
   margin: 0 0 16px;
   padding: 9px 11px;
@@ -534,6 +545,18 @@ table {
 .holdings-table.positions-mode th:nth-child(12),
 .holdings-table.positions-mode td:nth-child(12) {
   width: 96px;
+}
+
+.holdings-table.positions-mode.grouped-mode th:nth-child(1),
+.holdings-table.positions-mode.grouped-mode td:nth-child(1),
+.holdings-table.positions-mode.grouped-mode th:nth-child(12),
+.holdings-table.positions-mode.grouped-mode td:nth-child(12) {
+  display: none;
+}
+
+.holdings-table.positions-mode.grouped-mode th:nth-child(n + 2):nth-child(-n + 11),
+.holdings-table.positions-mode.grouped-mode td:nth-child(n + 2):nth-child(-n + 11) {
+  width: 10%;
 }
 
 .holdings-table.positions-mode th:nth-child(n + 3):nth-child(-n + 11),

@@ -40,6 +40,8 @@ tmp/
 temp/
 *.log
 data/*.db
+data/*.db-shm
+data/*.db-wal
 data/llama_paths.json
 portfolio.json
 data/portfolio.json

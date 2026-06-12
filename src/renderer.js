@@ -2,6 +2,7 @@ import "./renderer-chat.js";
 import { setStockReviewContext } from "./renderer-stock-chat.js";
 import {
   allocationChart,
+  allocationGroupToggle,
   allocationLegend,
   cancelHoldingModalButton,
   cancelWatchlistModalButton,
@@ -17,6 +18,7 @@ import {
   holdingTickerInput,
   holdingTickerSuggestions,
   holdingsBody,
+  holdingsGroupToggle,
   holdingsHead,
   holdingsModeButtons,
   holdingsTable,
@@ -166,6 +168,8 @@ let reviewSnapshot = null;
 let holdingSectorMap = {};
 let holdingsDayChangeMode = "perShare";
 let holdingsTableMode = "positions";
+let holdingsGrouped = false;
+let allocationGrouped = false;
 let watchlistTableMode = "positions";
 let editingWatchlistIndex = null;
 let activeMetricHelpTrigger = null;
@@ -236,6 +240,17 @@ holdingsModeButtons.forEach((button) => {
   button.addEventListener("click", () => {
     setHoldingsTableMode(button.dataset.mode || "positions");
   });
+});
+holdingsGroupToggle?.addEventListener("click", () => {
+  holdingsGrouped = !holdingsGrouped;
+  renderHoldingsGroupToggle();
+  renderHoldingsTable();
+});
+allocationGroupToggle?.addEventListener("click", () => {
+  allocationGrouped = !allocationGrouped;
+  renderAllocationGroupToggle();
+  drawAllocationChart();
+  drawPerformanceChart();
 });
 watchlistModeButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -484,6 +499,54 @@ function normalizeHolding(raw) {
   };
 }
 
+function getHoldingsTableRows(groupedMode = holdingsGrouped) {
+  if (!groupedMode) {
+    return appState.holdings.map((holding, index) => ({
+      holding,
+      index,
+      isGrouped: false,
+      sourceCount: 1
+    }));
+  }
+
+  const grouped = new Map();
+  appState.holdings.forEach((holding, index) => {
+    const ticker = String(holding.ticker || "").trim();
+    const key = ticker ? ticker.toUpperCase() : `__empty_${index}`;
+    const normalized = normalizeHolding(holding);
+    const existing = grouped.get(key) || {
+      ticker,
+      shares: 0,
+      costBasis: 0,
+      marketValue: 0,
+      previousCloseValue: 0,
+      sourceCount: 0
+    };
+    existing.shares += normalized.shares;
+    existing.costBasis += normalized.costBasis;
+    existing.marketValue += normalized.marketValue;
+    existing.previousCloseValue += normalized.previousClose * normalized.shares;
+    existing.sourceCount += 1;
+    grouped.set(key, existing);
+  });
+
+  return [...grouped.values()].map((item) => {
+    const shares = item.shares;
+    return {
+      holding: {
+        ticker: item.ticker,
+        shares,
+        buyPrice: shares > 0 ? item.costBasis / shares : 0,
+        price: shares > 0 ? item.marketValue / shares : 0,
+        previousClose: shares > 0 ? item.previousCloseValue / shares : 0
+      },
+      index: null,
+      isGrouped: true,
+      sourceCount: item.sourceCount
+    };
+  });
+}
+
 function renderDayChangeToggle() {
   const dayChangeToggleButton = getDayChangeToggleButton();
   if (!dayChangeToggleButton) {
@@ -503,6 +566,27 @@ function renderHoldingsTableModeToggle() {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
+}
+
+function renderHoldingsGroupToggle() {
+  if (!holdingsGroupToggle) {
+    return;
+  }
+  const isPositionsMode = holdingsTableMode === "positions";
+  holdingsGroupToggle.classList.toggle("is-hidden", !isPositionsMode);
+  holdingsGroupToggle.classList.toggle("is-active", holdingsGrouped);
+  holdingsTable?.classList.toggle("grouped-mode", isPositionsMode && holdingsGrouped);
+  holdingsGroupToggle.setAttribute("aria-pressed", holdingsGrouped ? "true" : "false");
+  holdingsGroupToggle.textContent = holdingsGrouped ? "まとめ表示中" : "同一銘柄をまとめる";
+}
+
+function renderAllocationGroupToggle() {
+  if (!allocationGroupToggle) {
+    return;
+  }
+  allocationGroupToggle.classList.toggle("is-active", allocationGrouped);
+  allocationGroupToggle.setAttribute("aria-pressed", allocationGrouped ? "true" : "false");
+  allocationGroupToggle.textContent = allocationGrouped ? "まとめ表示中" : "同一銘柄をまとめる";
 }
 
 function renderHoldingsTableHead() {
@@ -565,6 +649,7 @@ function setHoldingsTableMode(mode) {
   }
   holdingsTableMode = nextMode;
   renderHoldingsTableModeToggle();
+  renderHoldingsGroupToggle();
   renderHoldingsTableHead();
   renderHoldingsTable();
   if (holdingsTableMode === "metrics") {
@@ -1824,11 +1909,12 @@ function renderHoldingsTable() {
     renderHoldingsMetricsTable();
     return;
   }
-  const totalValue = appState.holdings
-    .map(normalizeHolding)
+  const rows = getHoldingsTableRows();
+  const totalValue = rows
+    .map(({ holding }) => normalizeHolding(holding))
     .reduce((sum, item) => sum + item.marketValue, 0);
 
-  appState.holdings.forEach((holding, index) => {
+  rows.forEach(({ holding, index, isGrouped, sourceCount }) => {
     const normalized = normalizeHolding(holding);
     const fragment = holdingRowTemplate.content.cloneNode(true);
     const row = fragment.querySelector("tr");
@@ -1842,7 +1928,9 @@ function renderHoldingsTable() {
     const ticker = String(holding.ticker || "").trim();
 
     row.querySelector('[data-field="displayName"]').textContent = getDisplayName(holding.ticker);
-    row.querySelector('[data-field="ticker"]').textContent = holding.ticker || "-";
+    row.querySelector('[data-field="ticker"]').textContent = isGrouped && sourceCount > 1
+      ? `${holding.ticker || "-"} · ${sourceCount}件`
+      : holding.ticker || "-";
     row.querySelector('[data-field="shares"]').textContent = formatPlainNumber(normalized.shares);
     row.querySelector('[data-field="buyPrice"]').textContent = normalized.buyPrice > 0 ? formatCurrency(normalized.buyPrice) : "-";
     row.querySelector('[data-field="price"]').textContent = normalized.price > 0 ? formatCurrency(normalized.price) : "-";
@@ -1871,15 +1959,21 @@ function renderHoldingsTable() {
       reviewTickerInput.value = ticker;
       loadReviewSnapshot(ticker);
     });
-    attachHoldingDragEvents(row, index);
-    row.querySelector('[data-action="edit-holding"]').addEventListener("click", () => openHoldingModal(index));
-    row.querySelector('[data-action="remove-holding"]').addEventListener("click", () => {
-      appState.holdings.splice(index, 1);
-      render();
-      refreshDividendSummary();
-      refreshHoldingSectors();
-      queueAutosave();
-    });
+    if (isGrouped) {
+      row.classList.add("is-grouped-row");
+      row.querySelector(".drag-cell").textContent = "";
+      row.querySelector(".row-actions").textContent = "";
+    } else {
+      attachHoldingDragEvents(row, index);
+      row.querySelector('[data-action="edit-holding"]').addEventListener("click", () => openHoldingModal(index));
+      row.querySelector('[data-action="remove-holding"]').addEventListener("click", () => {
+        appState.holdings.splice(index, 1);
+        render();
+        refreshDividendSummary();
+        refreshHoldingSectors();
+        queueAutosave();
+      });
+    }
     holdingsBody.appendChild(fragment);
   });
 }
@@ -2314,8 +2408,8 @@ function drawAllocationChart() {
   const centerY = Math.max(154, height / 2 - 24);
   const radius = 122;
   const innerRadius = 86;
-  const holdings = appState.holdings
-    .map(normalizeHolding)
+  const holdings = getHoldingsTableRows(allocationGrouped)
+    .map(({ holding }) => normalizeHolding(holding))
     .filter((item) => item.ticker && item.marketValue > 0)
     .sort((a, b) => b.marketValue - a.marketValue);
   const totalValue = holdings.reduce((sum, item) => sum + item.marketValue, 0);
@@ -2393,8 +2487,8 @@ function drawAllocationChart() {
 }
 
 function drawPerformanceChart() {
-  const holdings = appState.holdings
-    .map(normalizeHolding)
+  const holdings = getHoldingsTableRows(allocationGrouped)
+    .map(({ holding }) => normalizeHolding(holding))
     .filter((item) => item.ticker && item.marketValue > 0)
     .sort((a, b) => b.marketValue - a.marketValue);
 
@@ -2469,6 +2563,8 @@ function drawPerformanceChart() {
 function render() {
   renderPortfolioSummary();
   renderHoldingsTableModeToggle();
+  renderHoldingsGroupToggle();
+  renderAllocationGroupToggle();
   renderHoldingsTableHead();
   renderWatchlistTableModeToggle();
   renderWatchlistTableHead();
