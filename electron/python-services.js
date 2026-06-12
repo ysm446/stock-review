@@ -11,11 +11,9 @@ const SECTOR_FETCHER = path.join(ROOT_DIR, "backend", "fetch_sectors.py");
 function getPythonCommand() {
   const candidates = [
     process.env.PYTHON,
-    process.env.CONDA_DEFAULT_ENV === "main" && process.env.CONDA_PREFIX
-      ? path.join(process.env.CONDA_PREFIX, "python.exe")
-      : null,
-    process.env.USERPROFILE ? path.join(process.env.USERPROFILE, "miniconda3", "envs", "main", "python.exe") : null,
-    "D:\\miniconda3\\conda_envs\\main\\python.exe",
+    process.platform === "win32"
+      ? path.join(ROOT_DIR, ".venv", "Scripts", "python.exe")
+      : path.join(ROOT_DIR, ".venv", "bin", "python"),
   ].filter(Boolean);
 
   for (const candidate of candidates) {
@@ -24,13 +22,6 @@ function getPythonCommand() {
         return { command: candidate, argsPrefix: [] };
       }
     } catch (_) {}
-  }
-
-  const condaExe = process.env.USERPROFILE
-    ? path.join(process.env.USERPROFILE, "miniconda3", "Scripts", "conda.exe")
-    : null;
-  if (condaExe && fs.existsSync(condaExe)) {
-    return { command: condaExe, argsPrefix: ["run", "-n", "main", "python"] };
   }
 
   return { command: "python", argsPrefix: [] };

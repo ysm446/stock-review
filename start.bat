@@ -3,18 +3,25 @@ setlocal
 
 cd /d "%~dp0"
 
-set "CONDA_BAT=%UserProfile%\miniconda3\condabin\conda.bat"
-if not exist "%CONDA_BAT%" (
-  echo Conda was not found at:
-  echo   %CONDA_BAT%
-  echo Please update start.bat to match your Conda install path.
-  pause
-  exit /b 1
+set "PYTHON_EXE=.venv\Scripts\python.exe"
+
+if not exist "%PYTHON_EXE%" (
+  echo Python virtual environment was not found. Creating .venv...
+  py -3 -m venv .venv
+  if errorlevel 1 (
+    python -m venv .venv
+    if errorlevel 1 (
+      echo Failed to create Python virtual environment.
+      pause
+      exit /b 1
+    )
+  )
 )
 
-call "%CONDA_BAT%" activate main
+echo Installing Python dependencies...
+call "%PYTHON_EXE%" -m pip install -r requirements.txt
 if errorlevel 1 (
-  echo Failed to activate Conda environment: main
+  echo Python dependency installation failed.
   pause
   exit /b 1
 )

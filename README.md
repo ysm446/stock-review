@@ -19,10 +19,11 @@ npm start
 
 ## Python環境
 
-Pythonは `conda activate main` を前提にしています。モックのバックエンドは次のどちらでも起動できます。
+Pythonはプロジェクト直下の `.venv` を前提にしています。モックのバックエンドは次のどちらでも起動できます。
 
 ```powershell
-conda activate main
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 python backend/mock_api.py
 ```
 
@@ -39,11 +40,17 @@ npm run python:backend
 - 米国株は `AAPL`
 - 日本株は `7203.T`
 
-`main` 環境に `yfinance` が無い場合は先にインストールしてください。
+`.venv` 環境に依存パッケージが無い場合は先にインストールしてください。
 
 ```powershell
-conda activate main
-pip install yfinance
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+埋め込み検索を使う場合は任意依存もインストールします。
+
+```powershell
+pip install -r requirements-optional.txt
 ```
 
 ## 銘柄マスター更新
@@ -51,7 +58,7 @@ pip install yfinance
 日本株の銘柄一覧は JPX の上場銘柄一覧から `data/stock_master.json` を再生成できます。
 
 ```powershell
-conda activate main
+.venv\Scripts\Activate.ps1
 python backend/update_stock_master.py
 ```
 
