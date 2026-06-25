@@ -2538,7 +2538,17 @@ function drawAllocationChart() {
     ctx.textAlign = lineDirection > 0 ? "left" : "right";
     const labelName = getDisplayName(holding.ticker);
     const labelText = ratio < 0.045 ? formatPercent(ratio * 100) : `${labelName} ${formatPercent(ratio * 100)}`;
-    ctx.fillText(labelText, endX + 6 * lineDirection, bendY - 2);
+    const labelMargin = 6;
+    const textWidth = ctx.measureText(labelText).width;
+    let labelX = endX + labelMargin * lineDirection;
+    if (lineDirection > 0) {
+      // 左揃え（右側ラベル）: 右端からはみ出さないようにクランプ
+      labelX = Math.min(labelX, width - labelMargin - textWidth);
+    } else {
+      // 右揃え（左側ラベル）: 左端からはみ出さないようにクランプ
+      labelX = Math.max(labelX, labelMargin + textWidth);
+    }
+    ctx.fillText(labelText, labelX, bendY - 2);
 
     const item = document.createElement("div");
     item.className = "legend-item";
