@@ -170,6 +170,18 @@ def embedding_download():
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+@app.post("/embedding/install-deps")
+def embedding_install_deps():
+    def event_stream():
+        try:
+            for event in embed_manager.install_deps():
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 # ── Workspaces ────────────────────────────────────────────
 
 class WorkspaceBody(BaseModel):

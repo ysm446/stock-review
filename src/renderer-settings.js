@@ -163,54 +163,103 @@ async function downloadVariant(variant) {
 }
 
 // ── Embedding model ───────────────────────────────────────
+let embedAvailable = false; // sentence-transformers が導入済みか
+
 async function refreshEmbeddingStatus() {
   try {
     const status = await settingsApi("GET", "/embedding/status");
     embedModelName.textContent = status.model_name;
+    embedAvailable = Boolean(status.available);
+
     const parts = [];
     if (!status.available) parts.push("sentence-transformers 未インストール");
     parts.push(status.cached ? "モデル取得済み" : "モデル未取得");
     if (!status.sqlite_vec) parts.push("sqlite-vec 未導入（ベクトル検索は無効）");
     embedStatusText.textContent = parts.join(" / ");
-    embedDownloadBtn.disabled = downloading || !status.available || status.cached;
-    embedDownloadBtn.textContent = status.cached ? "取得済み" : "ダウンロード";
+
+    if (!status.available) {
+      embedDownloadBtn.textContent = "依存をインストール";
+      embedDownloadBtn.disabled = downloading;
+    } else if (status.cached) {
+      embedDownloadBtn.textContent = "取得済み";
+      embedDownloadBtn.disabled = true;
+    } else {
+      embedDownloadBtn.textContent = "ダウンロード";
+      embedDownloadBtn.disabled = downloading;
+    }
   } catch (err) {
     embedStatusText.textContent = "バックエンドに接続できません";
     embedDownloadBtn.disabled = true;
   }
 }
 
-function setEmbedProgress(percent, text) {
+function setEmbedProgress(percent, text, indeterminate = false) {
   embedProgress.classList.remove("is-hidden");
-  embedProgressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+  embedProgress.classList.toggle("is-indeterminate", indeterminate);
+  embedProgressFill.style.width = indeterminate ? "100%" : `${Math.max(0, Math.min(100, percent))}%`;
   embedProgressText.textContent = text;
+}
+
+async function runEmbeddingDownload() {
+  let finished = false;
+  await streamPost("/embedding/download", {}, evt => {
+    if (evt.type === "progress") {
+      const detail = evt.total ? ` (${formatBytes(evt.received)} / ${formatBytes(evt.total)})` : "";
+      setEmbedProgress(evt.percent || 0, `モデルをダウンロード中…${detail}`);
+    } else if (evt.type === "done") {
+      finished = true;
+      setEmbedProgress(100, "完了: モデルを取得しました");
+    } else if (evt.type === "error") {
+      throw new Error(evt.message);
+    }
+  });
+  if (!finished) setEmbedProgress(100, "完了");
 }
 
 async function downloadEmbedding() {
   if (downloading) return;
   downloading = true;
   embedDownloadBtn.disabled = true;
-  setEmbedProgress(0, "ダウンロード中…（初回は数百MB、数分かかることがあります）");
-
+  setEmbedProgress(0, "モデルをダウンロード中…（初回は数百MB）");
   try {
-    let finished = false;
-    await streamPost("/embedding/download", {}, evt => {
-      if (evt.type === "progress") {
-        const detail = evt.total ? ` (${formatBytes(evt.received)} / ${formatBytes(evt.total)})` : "";
-        setEmbedProgress(evt.percent || 0, `ダウンロード中…${detail}`);
-      } else if (evt.type === "done") {
-        finished = true;
-        setEmbedProgress(100, "完了: モデルを取得しました");
-      } else if (evt.type === "error") {
-        throw new Error(evt.message);
-      }
-    });
-    if (!finished) setEmbedProgress(100, "完了");
+    await runEmbeddingDownload();
   } catch (err) {
     setEmbedProgress(0, `失敗: ${err.message}`);
   } finally {
     downloading = false;
     await refreshEmbeddingStatus();
+  }
+}
+
+async function installEmbeddingDeps() {
+  if (downloading) return;
+  downloading = true;
+  embedDownloadBtn.disabled = true;
+  setEmbedProgress(0, "依存をインストール中…（PyTorch を含む大容量。数分かかります）", true);
+  try {
+    await streamPost("/embedding/install-deps", {}, evt => {
+      if (evt.type === "log") {
+        if (evt.line) setEmbedProgress(0, evt.line.slice(0, 120), true);
+      } else if (evt.type === "error") {
+        throw new Error(evt.message);
+      }
+    });
+    // 依存導入に成功したら、続けてモデルを取得する。
+    setEmbedProgress(0, "依存のインストール完了。モデルを取得します…", true);
+    await runEmbeddingDownload();
+  } catch (err) {
+    setEmbedProgress(0, `失敗: ${err.message}`);
+  } finally {
+    downloading = false;
+    await refreshEmbeddingStatus();
+  }
+}
+
+function onEmbedButtonClick() {
+  if (embedAvailable) {
+    downloadEmbedding();
+  } else {
+    installEmbeddingDeps();
   }
 }
 
@@ -231,4 +280,4 @@ settingsBackdrop?.addEventListener("click", e => {
   if (e.target === settingsBackdrop) closeSettings();
 });
 llamaCheckUpdate?.addEventListener("click", checkLatestRelease);
-embedDownloadBtn?.addEventListener("click", downloadEmbedding);
+embedDownloadBtn?.addEventListener("click", onEmbedButtonClick);

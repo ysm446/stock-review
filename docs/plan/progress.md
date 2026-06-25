@@ -16,6 +16,7 @@
 - 保有割合チャートのラベル見切れを修正（テキスト幅を測りキャンバス内にクランプ）。
 - 左ナビ最下部に設定アイコンを追加し、設定ウィンドウ（タブ構成）を新設。第1タブで llama-cpp（llama-server）の最新バージョン確認と Windows ビルド（CPU/CUDA/Vulkan を毎回選択）のダウンロード・展開に対応。バイナリ保存先を `bin/llama-server/` から `runtime/llama-server/` へ移行（旧 `bin/` も後方互換で参照）。
 - 設定ウィンドウに「埋め込み」タブを追加。埋め込みモデル（ruri-v3-310m）の状態表示（sentence-transformers / sqlite-vec の有無、取得済み/未取得）と手動ダウンロード（HuggingFace 経由、進捗バー付き）に対応。`backend/embed_manager.py` 新設。
+- 埋め込み依存（sentence-transformers / sqlite-vec、PyTorch を含む大容量）が未導入のとき、設定画面のボタンが「依存をインストール」に変化。押すと `.venv` へ pip 導入（出力をストリーム表示）→ 続けてモデル取得まで自動実行。`POST /embedding/install-deps` 追加。`importlib.invalidate_caches()` で再起動なしに新規パッケージを認識。
 
 ## 未完了 / 検討中
 

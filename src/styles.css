@@ -1238,6 +1238,16 @@ select:focus {
   transition: width 120ms ease;
 }
 
+.llama-progress.is-indeterminate .llama-progress-bar span {
+  width: 100%;
+  animation: progress-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes progress-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
 .llama-progress .settings-hint {
   margin-top: 6px;
 }
