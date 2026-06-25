@@ -17,6 +17,8 @@
 - 左ナビ最下部に設定アイコンを追加し、設定ウィンドウ（タブ構成）を新設。第1タブで llama-cpp（llama-server）の最新バージョン確認と Windows ビルド（CPU/CUDA/Vulkan を毎回選択）のダウンロード・展開に対応。バイナリ保存先を `bin/llama-server/` から `runtime/llama-server/` へ移行（旧 `bin/` も後方互換で参照）。
 - 設定ウィンドウに「埋め込み」タブを追加。埋め込みモデル（ruri-v3-310m）の状態表示（sentence-transformers / sqlite-vec の有無、取得済み/未取得）と手動ダウンロード（HuggingFace 経由、進捗バー付き）に対応。`backend/embed_manager.py` 新設。
 - 埋め込み依存（sentence-transformers / sqlite-vec、PyTorch を含む大容量）が未導入のとき、設定画面のボタンが「依存をインストール」に変化。押すと `.venv` へ pip 導入（出力をストリーム表示）→ 続けてモデル取得まで自動実行。`POST /embedding/install-deps` 追加。`importlib.invalidate_caches()` で再起動なしに新規パッケージを認識。
+- 設定ウィンドウに「表示」タブを追加し、「リソースモニターを表示」チェックボックスを新設（lm-chat を参考）。ON のとき上部バー（株ステータスバー）に CPU / RAM / GPU / VRAM の使用量を1秒間隔のバーで表示。`GET /system/resources`（psutil + nvidia-ml-py、無ければ available:false / GPU 無しは gpus:[] でグレースフル）と `src/renderer-resources.js` を追加。設定は localStorage 永続化。
+- リソースモニターの依存（psutil / nvidia-ml-py）が未導入のとき、ON にすると `POST /system/install-deps` で `.venv` へ自動インストールしてから表示開始（埋め込みと同様の自動導入）。`system_resources` は遅延 import 化し、インストール後に再起動なしで認識。requirements.txt に psutil / nvidia-ml-py を追加。
 
 ## 未完了 / 検討中
 

@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
+import os
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -55,6 +58,89 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ── System resource monitor ───────────────────────────────
+
+_nvml_inited = False
+
+
+def _get_psutil():
+    try:
+        import psutil
+        return psutil
+    except Exception:
+        return None
+
+
+def _get_pynvml():
+    """Return an initialized pynvml module, or None when no NVIDIA GPU/driver."""
+    global _nvml_inited
+    try:
+        import pynvml
+    except Exception:
+        return None
+    if not _nvml_inited:
+        try:
+            pynvml.nvmlInit()
+            _nvml_inited = True
+        except Exception:
+            return None
+    return pynvml
+
+
+def _venv_python() -> str:
+    candidate = _ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    return str(candidate) if candidate.exists() else sys.executable
+
+
+@app.get("/system/resources")
+def system_resources():
+    psutil = _get_psutil()
+    if psutil is None:
+        return {"available": False, "cpu_percent": 0, "ram_used_gb": 0,
+                "ram_total_gb": 0, "ram_percent": 0, "gpus": []}
+
+    vm = psutil.virtual_memory()
+    gpus = []
+    pynvml = _get_pynvml()
+    if pynvml is not None:
+        try:
+            for i in range(pynvml.nvmlDeviceGetCount()):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                name = pynvml.nvmlDeviceGetName(handle)
+                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                gpus.append({
+                    "name": name if isinstance(name, str) else name.decode(),
+                    "gpu_percent": util.gpu,
+                    "vram_used_gb": round(mem.used / (1024 ** 3), 2),
+                    "vram_total_gb": round(mem.total / (1024 ** 3), 2),
+                    "vram_percent": round(mem.used / mem.total * 100, 1) if mem.total else 0,
+                })
+        except Exception:
+            pass
+
+    return {
+        "available": True,
+        "cpu_percent": psutil.cpu_percent(interval=None),
+        "ram_used_gb": round(vm.used / (1024 ** 3), 2),
+        "ram_total_gb": round(vm.total / (1024 ** 3), 2),
+        "ram_percent": vm.percent,
+        "gpus": gpus,
+    }
+
+
+@app.post("/system/install-deps")
+def system_install_deps():
+    """Install the resource-monitor dependencies into the venv (small, quick)."""
+    cmd = [_venv_python(), "-m", "pip", "install", "psutil", "nvidia-ml-py"]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(_ROOT))
+    importlib.invalidate_caches()
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "pip install failed").strip()
+        raise HTTPException(500, detail[-400:])
+    return {"ok": True}
 
 
 # ── Model management ──────────────────────────────────────

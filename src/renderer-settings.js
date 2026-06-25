@@ -22,6 +22,9 @@ const embedProgress           = document.getElementById("embed-progress");
 const embedProgressFill       = document.getElementById("embed-progress-fill");
 const embedProgressText       = document.getElementById("embed-progress-text");
 
+const resourceMonitorToggle   = document.getElementById("resource-monitor-toggle");
+const RESOURCE_MONITOR_KEY    = "stock-review.resourceMonitor";
+
 let downloading = false;
 
 async function settingsApi(method, path) {
@@ -281,3 +284,13 @@ settingsBackdrop?.addEventListener("click", e => {
 });
 llamaCheckUpdate?.addEventListener("click", checkLatestRelease);
 embedDownloadBtn?.addEventListener("click", onEmbedButtonClick);
+
+// ── リソースモニターの表示切り替え ─────────────────────────
+if (resourceMonitorToggle) {
+  resourceMonitorToggle.checked = localStorage.getItem(RESOURCE_MONITOR_KEY) === "1";
+  resourceMonitorToggle.addEventListener("change", () => {
+    const enabled = resourceMonitorToggle.checked;
+    localStorage.setItem(RESOURCE_MONITOR_KEY, enabled ? "1" : "0");
+    window.dispatchEvent(new CustomEvent("stock-review:resource-monitor", { detail: { enabled } }));
+  });
+}

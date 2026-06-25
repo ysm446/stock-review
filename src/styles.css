@@ -1248,6 +1248,74 @@ select:focus {
   50% { opacity: 1; }
 }
 
+.settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.settings-checkbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* 上部バーのリソースモニター */
+.resource-monitor {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.resource-monitor.is-hidden {
+  display: none;
+}
+
+.resource-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resource-meter-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  min-width: 30px;
+}
+
+.resource-meter-track {
+  width: 54px;
+  height: 6px;
+  border-radius: 999px;
+  background: #2a2a2a;
+  overflow: hidden;
+}
+
+.resource-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 300ms ease, background 300ms ease;
+}
+
+.resource-meter-value {
+  font-size: 0.7rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  min-width: 60px;
+}
+
+.resource-unavailable {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .llama-progress .settings-hint {
   margin-top: 6px;
 }
@@ -1826,6 +1894,11 @@ select:focus {
 
   .model-topbar {
     margin-left: 0;
+  }
+
+  /* 狭い画面ではモデルバーと重なるため非表示 */
+  .resource-monitor {
+    display: none !important;
   }
 
   .main-panel {

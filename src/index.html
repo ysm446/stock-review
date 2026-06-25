@@ -47,6 +47,7 @@
           <span class="chat-model-indicator" id="chat-model-indicator"></span>
           <span id="chat-model-name">モデルを選択</span>
         </button>
+        <div class="resource-monitor is-hidden" id="resource-monitor" aria-hidden="true"></div>
       </div>
 
       <main class="main-panel">
@@ -528,6 +529,7 @@
           <nav class="settings-tabs" id="settings-tabs">
             <button class="settings-tab is-active" type="button" data-tab="llama">llama-cpp</button>
             <button class="settings-tab" type="button" data-tab="embedding">埋め込み</button>
+            <button class="settings-tab" type="button" data-tab="display">表示</button>
           </nav>
           <div class="settings-panels">
             <section class="settings-panel is-active" id="settings-panel-llama" data-tab="llama">
@@ -567,6 +569,15 @@
                   <div class="llama-progress-bar"><span id="embed-progress-fill"></span></div>
                   <p class="settings-hint" id="embed-progress-text"></p>
                 </div>
+              </div>
+            </section>
+            <section class="settings-panel" id="settings-panel-display" data-tab="display">
+              <div class="settings-section">
+                <label class="settings-checkbox">
+                  <input type="checkbox" id="resource-monitor-toggle" />
+                  <span>リソースモニターを表示（上部バーに CPU / RAM / GPU / VRAM）</span>
+                </label>
+                <p class="settings-hint">使用状況を1秒ごとに更新します。GPU / VRAM は NVIDIA GPU（pynvml）が必要です。psutil / pynvml が未導入の場合は表示できません。</p>
               </div>
             </section>
           </div>
