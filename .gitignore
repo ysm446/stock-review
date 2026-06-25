@@ -39,12 +39,12 @@ desktop.ini
 tmp/
 temp/
 *.log
-data/*.db
-data/*.db-shm
-data/*.db-wal
-data/llama_paths.json
 portfolio.json
-data/portfolio.json
+
+# All of data/ is local, except the template and reference data
+data/*
+!data/portfolio.example.json
+!data/stock_master.json
 
 # Large local runtime assets
 bin/
