@@ -19,6 +19,7 @@
 - 埋め込み依存（sentence-transformers / sqlite-vec、PyTorch を含む大容量）が未導入のとき、設定画面のボタンが「依存をインストール」に変化。押すと `.venv` へ pip 導入（出力をストリーム表示）→ 続けてモデル取得まで自動実行。`POST /embedding/install-deps` 追加。`importlib.invalidate_caches()` で再起動なしに新規パッケージを認識。
 - 設定ウィンドウに「表示」タブを追加し、「リソースモニターを表示」チェックボックスを新設（lm-chat を参考）。ON のとき上部バー（株ステータスバー）に CPU / RAM / GPU / VRAM の使用量を1秒間隔のバーで表示。`GET /system/resources`（psutil + nvidia-ml-py、無ければ available:false / GPU 無しは gpus:[] でグレースフル）と `src/renderer-resources.js` を追加。設定は localStorage 永続化。
 - リソースモニターの依存（psutil / nvidia-ml-py）が未導入のとき、ON にすると `POST /system/install-deps` で `.venv` へ自動インストールしてから表示開始（埋め込みと同様の自動導入）。`system_resources` は遅延 import 化し、インストール後に再起動なしで認識。requirements.txt に psutil / nvidia-ml-py を追加。
+- チャットの入力欄が見切れる問題を修正。アプリ全体を `app-shell` でビューポート高に固定（`height:100vh; overflow:hidden`）し、`main-panel` を内部スクロール化。チャットビューは `height:100%` で main-panel いっぱいに収め、会話（メッセージ）と会話ツリーだけが内部スクロール、入力欄は常に表示。スクロールバーは外枠ではなく会話部分に付く。狭い画面（760px）はページスクロールに戻す。
 
 ## 未完了 / 検討中
 

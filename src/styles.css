@@ -64,8 +64,10 @@ button {
 }
 
 .app-shell {
-  display: block;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .model-topbar {
@@ -73,6 +75,7 @@ button {
   top: 0;
   z-index: 16;
   height: 56px;
+  flex-shrink: 0;
   margin-left: 60px;
   display: grid;
   place-items: center;
@@ -137,6 +140,9 @@ button {
 .main-panel {
   margin-left: 60px;
   padding: 20px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .view {
@@ -146,6 +152,14 @@ button {
 
 .view.is-visible {
   display: block;
+}
+
+/* チャットは main-panel の高さいっぱいに収め、会話（メッセージ）と
+   会話ツリーだけを内部スクロールさせる。入力欄は常に画面内に残る。 */
+#view-chat.is-visible {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .hero {
@@ -1863,8 +1877,20 @@ select:focus {
 }
 
 @media (max-width: 760px) {
+  /* 狭い画面はサイドバーが上に回り込むため、ビューポート固定をやめてページスクロールに戻す */
   .app-shell {
     display: block;
+    height: auto;
+    overflow: visible;
+  }
+
+  .main-panel {
+    overflow-y: visible;
+  }
+
+  #view-chat.is-visible {
+    height: auto;
+    min-height: 70vh;
   }
 
   .review-grid-layout {
