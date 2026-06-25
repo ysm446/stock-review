@@ -19,6 +19,8 @@ from urllib import request as urllib_request
 
 import chat_store as store
 import chat_llama_manager as llama
+import llama_updater
+import embed_manager
 from chat_embedder import warmup as embed_warmup
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
@@ -116,6 +118,56 @@ async def model_load(req: LoadModelRequest):
 async def model_unload():
     await asyncio.to_thread(llama.eject_model)
     return {"ok": True}
+
+
+# ── llama-server runtime (download / update) ──────────────
+
+class LlamaDownloadRequest(BaseModel):
+    asset_name: str
+
+
+@app.get("/llama/status")
+def llama_status():
+    return llama_updater.get_local_status()
+
+
+@app.get("/llama/releases/latest")
+async def llama_latest_release():
+    try:
+        return await asyncio.to_thread(llama_updater.fetch_latest_release)
+    except Exception as e:
+        raise HTTPException(502, f"リリース情報の取得に失敗しました: {e}")
+
+
+@app.post("/llama/download")
+def llama_download(req: LlamaDownloadRequest):
+    def event_stream():
+        try:
+            for event in llama_updater.download_build(req.asset_name):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── Embedding model (status / download) ───────────────────
+
+@app.get("/embedding/status")
+def embedding_status():
+    return embed_manager.get_status()
+
+
+@app.post("/embedding/download")
+def embedding_download():
+    def event_stream():
+        try:
+            for event in embed_manager.download():
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ── Workspaces ────────────────────────────────────────────

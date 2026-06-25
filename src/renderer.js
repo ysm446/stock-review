@@ -1,4 +1,5 @@
 import "./renderer-chat.js";
+import "./renderer-settings.js";
 import { setStockReviewContext } from "./renderer-stock-chat.js";
 import {
   allocationChart,

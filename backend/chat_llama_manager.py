@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
 _PATHS_FILE = _ROOT / "data" / "llama_paths.json"
-_BIN_DIR = _ROOT / "bin" / "llama-server"
+# Downloaded llama-server builds live under runtime/; bin/ is the legacy location.
+_RUNTIME_DIR = _ROOT / "runtime" / "llama-server"
+_LEGACY_BIN_DIR = _ROOT / "bin" / "llama-server"
 
 LLAMA_PORT = 8080
 LLAMA_BASE_URL = f"http://127.0.0.1:{LLAMA_PORT}"
@@ -22,13 +24,19 @@ DEFAULT_CTX_SIZE = 4096
 
 
 def _find_latest_exe() -> Path:
-    builds = sorted(
-        [d for d in _BIN_DIR.iterdir() if d.is_dir()],
+    builds = [
+        child
+        for base in (_RUNTIME_DIR, _LEGACY_BIN_DIR)
+        if base.exists()
+        for child in base.iterdir()
+        if child.is_dir() and (child / "llama-server.exe").exists()
+    ]
+    builds.sort(
         key=lambda d: int(m.group(1)) if (m := re.search(r"b(\d+)", d.name)) else 0,
         reverse=True,
     )
     if not builds:
-        raise RuntimeError("No llama-server builds found in bin/llama-server/")
+        raise RuntimeError("No llama-server builds found in runtime/llama-server/")
     return builds[0] / "llama-server.exe"
 
 

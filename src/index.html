@@ -34,6 +34,12 @@
             </svg>
           </button>
         </nav>
+        <button class="nav-button sidebar-settings-button" id="settings-button" title="設定" aria-label="設定">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
       </aside>
 
       <div class="model-topbar">
@@ -509,6 +515,62 @@
           </div>
         </div>
         <div class="chat-model-list" id="chat-model-list"></div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop is-hidden" id="settings-modal-backdrop">
+      <section class="modal-card settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <div class="modal-head">
+          <h2 id="settings-modal-title">設定</h2>
+          <button class="icon-remove" id="close-settings-modal" aria-label="close">×</button>
+        </div>
+        <div class="settings-body">
+          <nav class="settings-tabs" id="settings-tabs">
+            <button class="settings-tab is-active" type="button" data-tab="llama">llama-cpp</button>
+            <button class="settings-tab" type="button" data-tab="embedding">埋め込み</button>
+          </nav>
+          <div class="settings-panels">
+            <section class="settings-panel is-active" id="settings-panel-llama" data-tab="llama">
+              <div class="settings-section">
+                <div class="settings-row">
+                  <div>
+                    <p class="settings-label">インストール済みビルド</p>
+                    <p class="settings-value" id="llama-current-build">確認中…</p>
+                  </div>
+                  <button class="ghost-button" id="llama-check-update" type="button">最新を確認</button>
+                </div>
+                <p class="settings-hint" id="llama-latest-info"></p>
+              </div>
+              <div class="settings-section">
+                <p class="settings-label">ダウンロードするビルド（Windows x64）</p>
+                <div class="llama-variant-list" id="llama-variant-list">
+                  <p class="settings-hint">「最新を確認」を押すと選択肢が表示されます。</p>
+                </div>
+                <div class="llama-progress is-hidden" id="llama-progress">
+                  <div class="llama-progress-bar"><span id="llama-progress-fill"></span></div>
+                  <p class="settings-hint" id="llama-progress-text"></p>
+                </div>
+              </div>
+            </section>
+            <section class="settings-panel" id="settings-panel-embedding" data-tab="embedding">
+              <div class="settings-section">
+                <div class="settings-row">
+                  <div>
+                    <p class="settings-label">埋め込みモデル</p>
+                    <p class="settings-value" id="embed-model-name">cl-nagoya/ruri-v3-310m</p>
+                  </div>
+                  <button class="ghost-button" id="embed-download" type="button">ダウンロード</button>
+                </div>
+                <p class="settings-hint" id="embed-status-text">確認中…</p>
+                <p class="settings-hint">チャットのドキュメント検索・メモリ検索（ベクトル検索）に使用します。初回は数百MBのダウンロードがあります。</p>
+                <div class="llama-progress is-hidden" id="embed-progress">
+                  <div class="llama-progress-bar"><span id="embed-progress-fill"></span></div>
+                  <p class="settings-hint" id="embed-progress-text"></p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
       </section>
     </div>
 

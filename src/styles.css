@@ -130,6 +130,10 @@ button {
   stroke-linejoin: round;
 }
 
+.sidebar-settings-button {
+  margin-top: auto;
+}
+
 .main-panel {
   margin-left: 60px;
   padding: 20px;
@@ -1094,6 +1098,148 @@ select:focus {
 .modal-head h2 {
   margin: 0;
   font-size: 1rem;
+}
+
+.settings-modal {
+  width: min(100%, 560px);
+}
+
+.settings-body {
+  display: flex;
+  min-height: 320px;
+}
+
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 140px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--line);
+}
+
+.settings-tab {
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.settings-tab:hover,
+.settings-tab.is-active {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.settings-panels {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.settings-panel {
+  display: none;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-panel.is-active {
+  display: flex;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-label {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.settings-value {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.llama-variant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.llama-variant-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #2a2a2a;
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.llama-variant-item:hover:not(:disabled) {
+  border-color: #696969;
+  background: #303030;
+}
+
+.llama-variant-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.llama-variant-size {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.llama-progress.is-hidden {
+  display: none;
+}
+
+.llama-progress-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #2a2a2a;
+  overflow: hidden;
+}
+
+.llama-progress-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #4ade80;
+  transition: width 120ms ease;
+}
+
+.llama-progress .settings-hint {
+  margin-top: 6px;
 }
 
 .modal-form {

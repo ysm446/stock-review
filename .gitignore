@@ -48,4 +48,5 @@ data/portfolio.json
 
 # Large local runtime assets
 bin/
+runtime/
 models/
