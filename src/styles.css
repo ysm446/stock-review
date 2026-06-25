@@ -217,6 +217,33 @@ button {
   font-weight: 600;
 }
 
+.chart-color-scheme {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-color-scheme-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.chart-color-select {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #2a2a2a;
+  color: var(--text);
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.chart-color-select:focus {
+  outline: none;
+  border-color: #696969;
+}
+
 .holdings-group-toggle.is-hidden {
   display: none;
 }

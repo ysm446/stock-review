@@ -2,6 +2,7 @@ import "./renderer-chat.js";
 import { setStockReviewContext } from "./renderer-stock-chat.js";
 import {
   allocationChart,
+  allocationColorScheme,
   allocationGroupToggle,
   allocationLegend,
   cancelHoldingModalButton,
@@ -131,6 +132,10 @@ const CHART_COLORS = CHART_COLOR_HUES.flatMap((hue) =>
   )
 );
 
+// セクター別配色のキーカラー（業種ごとに割り当てる基準の色相）
+const SECTOR_COLOR_HUES = [210, 160, 30, 280, 350, 110, 50, 190, 320, 0];
+const SECTOR_FALLBACK_HUE = null; // セクター不明はグレースケール
+
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
   "PBR": "株価が1株純資産の何倍かを示す指標です。",
@@ -170,6 +175,7 @@ let holdingsDayChangeMode = "perShare";
 let holdingsTableMode = "positions";
 let holdingsGrouped = false;
 let allocationGrouped = false;
+let allocationColorMode = "default";
 let watchlistTableMode = "positions";
 let editingWatchlistIndex = null;
 let activeMetricHelpTrigger = null;
@@ -251,6 +257,13 @@ allocationGroupToggle?.addEventListener("click", () => {
   renderAllocationGroupToggle();
   drawAllocationChart();
   drawPerformanceChart();
+});
+allocationColorScheme?.addEventListener("change", () => {
+  allocationColorMode = allocationColorScheme.value || "default";
+  if (allocationColorMode === "sector") {
+    refreshHoldingSectors();
+  }
+  drawAllocationChart();
 });
 watchlistModeButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -1114,8 +1127,54 @@ async function refreshHoldingSectors() {
   drawAllocationChart();
 }
 
-function getAllocationColor(index) {
-  return CHART_COLORS[index % CHART_COLORS.length];
+function getHoldingSector(ticker) {
+  const info = holdingSectorMap[String(ticker || "").trim()];
+  const sector = info && typeof info === "object" ? info.sector : info;
+  return String(sector || "").trim();
+}
+
+// 保有銘柄リスト（描画順）に対応した色の配列を、現在の配色モードに従って生成する。
+function buildAllocationColors(holdings) {
+  if (allocationColorMode === "sector") {
+    return buildSectorColors(holdings);
+  }
+  return holdings.map((_, index) => CHART_COLORS[index % CHART_COLORS.length]);
+}
+
+// セクターごとにキーとなる色相を割り当て、同一セクター内は明度・彩度のグラデーションで区別する。
+function buildSectorColors(holdings) {
+  const sectorHue = new Map();
+  const sectorTotal = new Map();
+  let hueCursor = 0;
+
+  holdings.forEach((holding) => {
+    const sector = getHoldingSector(holding.ticker);
+    const key = sector || "__unknown";
+    if (!sectorHue.has(key)) {
+      sectorHue.set(key, sector ? SECTOR_COLOR_HUES[hueCursor++ % SECTOR_COLOR_HUES.length] : SECTOR_FALLBACK_HUE);
+    }
+    sectorTotal.set(key, (sectorTotal.get(key) || 0) + 1);
+  });
+
+  const sectorSeen = new Map();
+  return holdings.map((holding) => {
+    const sector = getHoldingSector(holding.ticker);
+    const key = sector || "__unknown";
+    const hue = sectorHue.get(key);
+    const count = sectorTotal.get(key) || 1;
+    const pos = sectorSeen.get(key) || 0;
+    sectorSeen.set(key, pos + 1);
+    const t = count > 1 ? pos / (count - 1) : 0;
+
+    if (hue === null) {
+      // セクター不明: グレーのグラデーション
+      const lightness = 58 - t * 26;
+      return `hsl(220, 8%, ${lightness}%)`;
+    }
+    const lightness = 62 - t * 30;
+    const saturation = 58 + t * 22;
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  });
 }
 
 function prepareHiDPICanvas(canvas) {
@@ -1395,10 +1454,21 @@ function attachWatchlistDragEvents(row, index) {
   });
 }
 
+function countUniqueTickers(holdings) {
+  const tickers = new Set();
+  holdings.forEach((item) => {
+    const ticker = String(item.ticker || "").trim().toUpperCase();
+    if (ticker) {
+      tickers.add(ticker);
+    }
+  });
+  return tickers.size;
+}
+
 function calculateStats() {
   const holdings = appState.holdings.map(normalizeHolding);
   const totalValue = holdings.reduce((sum, item) => sum + item.marketValue, 0);
-  const totalPositions = holdings.filter((item) => item.ticker).length;
+  const totalPositions = countUniqueTickers(holdings);
 
   return [
     {
@@ -1420,7 +1490,7 @@ function buildTopStats() {
   const totalCost = holdings.reduce((sum, item) => sum + item.costBasis, 0);
   const totalProfit = totalValue - totalCost;
   const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
-  const totalPositions = holdings.filter((item) => item.ticker).length;
+  const totalPositions = countUniqueTickers(holdings);
   const totalAnnualDividend = parseNumericInput(appState.dividendSummary?.totalAnnualDividendJpy);
 
   return [
@@ -2430,11 +2500,12 @@ function drawAllocationChart() {
     return;
   }
 
+  const colors = buildAllocationColors(holdings);
   let angle = 0;
   holdings.forEach((holding, index) => {
     const ratio = holding.marketValue / totalValue;
     const slice = ratio * Math.PI * 2;
-    const color = getAllocationColor(index);
+    const color = colors[index];
     const endAngle = angle - slice;
 
     ctx.beginPath();

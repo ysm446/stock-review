@@ -22,6 +22,7 @@ export const reviewFinancialBody = document.getElementById("review-financial-bod
 export const reviewAnalystGrid = document.getElementById("review-analyst-grid");
 export const reviewNewsList = document.getElementById("review-news-list");
 export const allocationGroupToggle = document.getElementById("allocation-group-toggle");
+export const allocationColorScheme = document.getElementById("allocation-color-scheme");
 export const allocationLegend = document.getElementById("allocation-legend");
 export const allocationChart = document.getElementById("allocation-chart");
 export const performanceChart = document.getElementById("performance-chart");
