@@ -2477,9 +2477,9 @@ async function loadReviewSnapshot(rawTicker) {
 function drawAllocationChart() {
   const { ctx, width, height } = prepareHiDPICanvas(allocationChart);
   const centerX = width / 2;
-  const centerY = Math.max(154, height / 2 - 24);
-  const radius = 122;
-  const innerRadius = 86;
+  const centerY = height / 2;
+  const radius = Math.min(210, Math.max(92, Math.min(width * 0.24, height * 0.34)));
+  const innerRadius = radius * 0.7;
   const holdings = getHoldingsTableRows(allocationGrouped)
     .map(({ holding }) => normalizeHolding(holding))
     .filter((item) => item.ticker && item.marketValue > 0)
