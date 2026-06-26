@@ -137,6 +137,9 @@ const CHART_COLORS = CHART_COLOR_HUES.flatMap((hue) =>
 // セクター別配色のキーカラー（業種ごとに割り当てる基準の色相）
 const SECTOR_COLOR_HUES = [210, 160, 30, 280, 350, 110, 50, 190, 320, 0];
 const SECTOR_FALLBACK_HUE = null; // セクター不明はグレースケール
+const HOLDINGS_GROUPED_KEY = "stock-review.holdingsGrouped";
+const ALLOCATION_GROUPED_KEY = "stock-review.allocationGrouped";
+const ALLOCATION_COLOR_MODE_KEY = "stock-review.allocationColorMode";
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -158,6 +161,45 @@ const REVIEW_LABEL_HELP = {
   "推奨": "アナリストの総合評価です。buy なら買い寄りです。"
 };
 
+function readStoredBool(key, fallback = false) {
+  try {
+    const value = localStorage.getItem(key);
+    if (value === "1") return true;
+    if (value === "0") return false;
+  } catch (_error) {
+    // localStorage が使えない環境ではデフォルト値で続行する。
+  }
+  return fallback;
+}
+
+function writeStoredBool(key, value) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch (_error) {
+    // 表示設定なので保存失敗時も操作自体は継続する。
+  }
+}
+
+function readStoredChoice(key, allowedValues, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    if (allowedValues.includes(value)) {
+      return value;
+    }
+  } catch (_error) {
+    // localStorage が使えない環境ではデフォルト値で続行する。
+  }
+  return fallback;
+}
+
+function writeStoredChoice(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_error) {
+    // 表示設定なので保存失敗時も操作自体は継続する。
+  }
+}
+
 let statusTimer = null;
 let trendRange = "3m";
 let trendYAxisMode = "relative";
@@ -175,9 +217,9 @@ let reviewSnapshot = null;
 let holdingSectorMap = {};
 let holdingsDayChangeMode = "perShare";
 let holdingsTableMode = "positions";
-let holdingsGrouped = false;
-let allocationGrouped = false;
-let allocationColorMode = "default";
+let holdingsGrouped = readStoredBool(HOLDINGS_GROUPED_KEY, false);
+let allocationGrouped = readStoredBool(ALLOCATION_GROUPED_KEY, false);
+let allocationColorMode = readStoredChoice(ALLOCATION_COLOR_MODE_KEY, ["default", "sector"], "default");
 let watchlistTableMode = "positions";
 let editingWatchlistIndex = null;
 let activeMetricHelpTrigger = null;
@@ -251,17 +293,22 @@ holdingsModeButtons.forEach((button) => {
 });
 holdingsGroupToggle?.addEventListener("click", () => {
   holdingsGrouped = !holdingsGrouped;
+  writeStoredBool(HOLDINGS_GROUPED_KEY, holdingsGrouped);
   renderHoldingsGroupToggle();
   renderHoldingsTable();
 });
 allocationGroupToggle?.addEventListener("click", () => {
   allocationGrouped = !allocationGrouped;
+  writeStoredBool(ALLOCATION_GROUPED_KEY, allocationGrouped);
   renderAllocationGroupToggle();
   drawAllocationChart();
   drawPerformanceChart();
 });
 allocationColorScheme?.addEventListener("change", () => {
-  allocationColorMode = allocationColorScheme.value || "default";
+  allocationColorMode = ["default", "sector"].includes(allocationColorScheme.value)
+    ? allocationColorScheme.value
+    : "default";
+  writeStoredChoice(ALLOCATION_COLOR_MODE_KEY, allocationColorMode);
   if (allocationColorMode === "sector") {
     refreshHoldingSectors();
   }
@@ -602,6 +649,13 @@ function renderAllocationGroupToggle() {
   allocationGroupToggle.classList.toggle("is-active", allocationGrouped);
   allocationGroupToggle.setAttribute("aria-pressed", allocationGrouped ? "true" : "false");
   allocationGroupToggle.textContent = allocationGrouped ? "まとめ表示中" : "同一銘柄をまとめる";
+}
+
+function renderAllocationColorScheme() {
+  if (!allocationColorScheme) {
+    return;
+  }
+  allocationColorScheme.value = allocationColorMode;
 }
 
 function renderHoldingsTableHead() {
@@ -2648,6 +2702,7 @@ function render() {
   renderHoldingsTableModeToggle();
   renderHoldingsGroupToggle();
   renderAllocationGroupToggle();
+  renderAllocationColorScheme();
   renderHoldingsTableHead();
   renderWatchlistTableModeToggle();
   renderWatchlistTableHead();
