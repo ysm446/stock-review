@@ -111,6 +111,12 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_price_history_date
             ON price_history(trade_date);
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT ''
+        );
         """
     )
     columns = {
@@ -193,6 +199,12 @@ def migrate_legacy_json(conn: sqlite3.Connection) -> None:
             """
             INSERT INTO holdings (ticker, shares, buy_price, note, sort_order, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                shares = excluded.shares,
+                buy_price = excluded.buy_price,
+                note = excluded.note,
+                sort_order = excluded.sort_order,
+                updated_at = excluded.updated_at
             """,
             (
                 ticker,
@@ -239,6 +251,12 @@ def migrate_legacy_json(conn: sqlite3.Connection) -> None:
             """
             INSERT INTO watchlist (ticker, rating, thesis, risk, sort_order, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker) DO UPDATE SET
+                rating = excluded.rating,
+                thesis = excluded.thesis,
+                risk = excluded.risk,
+                sort_order = excluded.sort_order,
+                updated_at = excluded.updated_at
             """,
             (
                 ticker,
@@ -251,6 +269,34 @@ def migrate_legacy_json(conn: sqlite3.Connection) -> None:
         )
 
     conn.commit()
+
+
+def get_setting(conn: sqlite3.Connection, key: str, fallback: str = "") -> str:
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if row is None:
+        return fallback
+    return row["value"]
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        """,
+        (key, value, utc_now()),
+    )
+
+
+def get_cash_jpy(conn: sqlite3.Connection) -> int:
+    return parse_number(get_setting(conn, "cash_jpy", "0"))
+
+
+def set_cash_jpy(conn: sqlite3.Connection, value) -> None:
+    set_setting(conn, "cash_jpy", str(parse_number(value)))
 
 
 def initialize() -> sqlite3.Connection:
@@ -526,6 +572,7 @@ def load_state(conn: sqlite3.Connection) -> dict[str, object]:
     return {
         "holdings": holdings,
         "watchlist": watchlist,
+        "cashJpy": get_cash_jpy(conn),
         "trendHistory": build_portfolio_history(conn),
     }
 
@@ -534,6 +581,9 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
     holdings = payload.get("holdings", [])
     watchlist = payload.get("watchlist", [])
     now = utc_now()
+
+    if "cash" in payload or "cashJpy" in payload:
+        set_cash_jpy(conn, payload.get("cash", payload.get("cashJpy")))
 
     incoming_holding_tickers = []
     for index, holding in enumerate(holdings):

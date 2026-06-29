@@ -1,6 +1,7 @@
 export const views = document.querySelectorAll(".view");
 export const navButtons = document.querySelectorAll(".nav-button");
 export const statsGrid = document.getElementById("stats-grid");
+export const cashInput = document.getElementById("cash-input");
 export const holdingsTable = document.querySelector(".holdings-table");
 export const holdingsHead = document.getElementById("holdings-head");
 export const holdingsBody = document.getElementById("holdings-body");

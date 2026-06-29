@@ -47,6 +47,7 @@ import {
   reviewTickerSuggestions,
   reviewValuationGrid,
   statsGrid,
+  cashInput,
   submitHoldingModalButton,
   submitWatchlistModalButton,
   trendChart,
@@ -113,6 +114,7 @@ import {
 const appState = {
   holdings: [],
   watchlist: [],
+  cashJpy: 0,
   trendHistory: [],
   dividendSummary: null,
   annotations: []
@@ -137,9 +139,15 @@ const CHART_COLORS = CHART_COLOR_HUES.flatMap((hue) =>
 // セクター別配色のキーカラー（業種ごとに割り当てる基準の色相）
 const SECTOR_COLOR_HUES = [210, 160, 30, 280, 350, 110, 50, 190, 320, 0];
 const SECTOR_FALLBACK_HUE = null; // セクター不明はグレースケール
+
+// 配分チャートの現金スライス（保有銘柄とは別枠で表示する）
+const CASH_TICKER = "__CASH__";
+const CASH_SLICE_COLOR = "hsl(150, 32%, 50%)";
 const HOLDINGS_GROUPED_KEY = "stock-review.holdingsGrouped";
 const ALLOCATION_GROUPED_KEY = "stock-review.allocationGrouped";
 const ALLOCATION_COLOR_MODE_KEY = "stock-review.allocationColorMode";
+const TREND_RANGE_KEY = "stock-review.trendRange";
+const TREND_YAXIS_MODE_KEY = "stock-review.trendYAxisMode";
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -201,8 +209,8 @@ function writeStoredChoice(key, value) {
 }
 
 let statusTimer = null;
-let trendRange = "3m";
-let trendYAxisMode = "relative";
+let trendRange = readStoredChoice(TREND_RANGE_KEY, ["1m", "3m", "6m", "1y"], "3m");
+let trendYAxisMode = readStoredChoice(TREND_YAXIS_MODE_KEY, ["relative", "absolute"], "relative");
 let editingAnnotationId = null;
 let editingHoldingIndex = null;
 let autosaveTimer = null;
@@ -344,14 +352,31 @@ reviewTickerInput.addEventListener("keydown", (event) => {
 });
 
 refreshPricesButton.addEventListener("click", refreshPrices);
+if (cashInput) {
+  cashInput.addEventListener("blur", commitCashInput);
+  cashInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      cashInput.blur();
+    }
+  });
+}
+if (trendRangeSelect) {
+  trendRangeSelect.value = trendRange;
+}
+if (trendYAxisSelect) {
+  trendYAxisSelect.value = trendYAxisMode;
+}
 trendRangeSelect.addEventListener("change", (event) => {
   trendRange = event.target.value;
+  writeStoredChoice(TREND_RANGE_KEY, trendRange);
   hoveredTrendIndex = null;
   hideTrendTooltip();
   drawTrendChart();
 });
 trendYAxisSelect.addEventListener("change", (event) => {
   trendYAxisMode = event.target.value;
+  writeStoredChoice(TREND_YAXIS_MODE_KEY, trendYAxisMode);
   hoveredTrendIndex = null;
   hideTrendTooltip();
   drawTrendChart();
@@ -1066,7 +1091,8 @@ function setStatus(message, tone = "neutral") {
 async function persistPortfolio({ silent = false } = {}) {
   const result = await window.stockReviewApi.savePortfolio({
     holdings: appState.holdings,
-    watchlist: appState.watchlist
+    watchlist: appState.watchlist,
+    cash: appState.cashJpy
   });
   appState.trendHistory = Array.isArray(result?.trendHistory) ? result.trendHistory : [];
   renderPortfolioSummary();
@@ -1075,11 +1101,34 @@ async function persistPortfolio({ silent = false } = {}) {
   }
 }
 
+function renderCashInput() {
+  if (!cashInput) {
+    return;
+  }
+  const value = parseNumericInput(appState.cashJpy);
+  cashInput.value = value > 0 ? formatPlainNumber(value) : "";
+}
+
+function commitCashInput() {
+  if (!cashInput) {
+    return;
+  }
+  const next = Math.max(0, parseWholeNumber(cashInput.value));
+  const changed = next !== parseNumericInput(appState.cashJpy);
+  appState.cashJpy = next;
+  renderCashInput();
+  if (changed) {
+    persistPortfolio();
+  }
+}
+
 async function applyPortfolioState(data) {
   appState.holdings = Array.isArray(data?.holdings) ? data.holdings : [];
   appState.watchlist = Array.isArray(data?.watchlist) ? data.watchlist : [];
+  appState.cashJpy = parseNumericInput(data?.cashJpy ?? data?.cash);
   appState.trendHistory = Array.isArray(data?.trendHistory) ? data.trendHistory : [];
   render();
+  renderCashInput();
   if (holdingsTableMode === "metrics") {
     await ensureHoldingMetricsLoaded();
   }
@@ -1548,9 +1597,17 @@ function buildTopStats() {
   const totalProfitRate = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
   const totalPositions = countUniqueTickers(holdings);
   const totalAnnualDividend = parseNumericInput(appState.dividendSummary?.totalAnnualDividendJpy);
+  const cash = Math.max(0, parseNumericInput(appState.cashJpy));
+  const totalAssets = totalValue + cash;
 
   return [
-    { label: "総評価額", value: formatCurrency(totalValue), sub: "" },
+    { label: "保有資産評価", value: formatCurrency(totalAssets), sub: "株式＋現金", tone: "accent" },
+    { label: "株式評価額", value: formatCurrency(totalValue), sub: "" },
+    {
+      label: "現金",
+      value: formatCurrency(cash),
+      sub: totalAssets > 0 ? `${formatPercent((cash / totalAssets) * 100)}` : "買付余力"
+    },
     { label: "総取得金額", value: formatCurrency(totalCost), sub: "" },
     {
       label: "総損益",
@@ -2538,12 +2595,17 @@ function drawAllocationChart() {
     .map(({ holding }) => normalizeHolding(holding))
     .filter((item) => item.ticker && item.marketValue > 0)
     .sort((a, b) => b.marketValue - a.marketValue);
-  const totalValue = holdings.reduce((sum, item) => sum + item.marketValue, 0);
+  const cash = Math.max(0, parseNumericInput(appState.cashJpy));
+  const slices = cash > 0
+    ? [...holdings, { ticker: CASH_TICKER, marketValue: cash, isCash: true }]
+    : holdings;
+  const totalValue = slices.reduce((sum, item) => sum + item.marketValue, 0);
+  const sliceLabel = (item) => (item.isCash ? "現金" : getDisplayName(item.ticker));
 
   ctx.clearRect(0, 0, width, height);
   allocationLegend.innerHTML = "";
 
-  if (!holdings.length || totalValue === 0) {
+  if (!slices.length || totalValue === 0) {
     ctx.fillStyle = "rgba(55, 65, 81, 0.9)";
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
@@ -2556,9 +2618,14 @@ function drawAllocationChart() {
     return;
   }
 
-  const colors = buildAllocationColors(holdings);
+  const colors = buildAllocationColors(slices);
+  slices.forEach((slice, index) => {
+    if (slice.isCash) {
+      colors[index] = CASH_SLICE_COLOR;
+    }
+  });
   let angle = 0;
-  holdings.forEach((holding, index) => {
+  slices.forEach((holding, index) => {
     const ratio = holding.marketValue / totalValue;
     const slice = ratio * Math.PI * 2;
     const color = colors[index];
@@ -2592,7 +2659,7 @@ function drawAllocationChart() {
     ctx.fillStyle = "#f3f4f6";
     ctx.font = "600 11px Segoe UI";
     ctx.textAlign = lineDirection > 0 ? "left" : "right";
-    const labelName = getDisplayName(holding.ticker);
+    const labelName = sliceLabel(holding);
     const labelText = ratio < 0.045 ? formatPercent(ratio * 100) : `${labelName} ${formatPercent(ratio * 100)}`;
     const labelMargin = 6;
     const textWidth = ctx.measureText(labelText).width;
@@ -2610,7 +2677,7 @@ function drawAllocationChart() {
     item.className = "legend-item";
     item.innerHTML = `
       <span class="legend-swatch" style="background:${color}"></span>
-      <span class="legend-name">${getDisplayName(holding.ticker)}</span>
+      <span class="legend-name">${sliceLabel(holding)}</span>
     `;
     allocationLegend.appendChild(item);
 
