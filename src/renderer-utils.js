@@ -1,6 +1,8 @@
 export function parseNumericInput(value) {
+  // NFKC で全角数字・全角記号（１２３，．－）を半角化してから解釈する。
   const normalized = String(value ?? "")
     .trim()
+    .normalize("NFKC")
     .replaceAll(",", "");
   if (!normalized) {
     return 0;
@@ -39,6 +41,15 @@ export function formatPlainNumber(value) {
   return new Intl.NumberFormat("ja-JP", {
     maximumFractionDigits: 0
   }).format(value);
+}
+
+export function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 export function normalizeSearchText(value) {
@@ -110,7 +121,7 @@ export function formatPriceWithDate(value, currency, dateLabel = "", compact = f
   if (formattedValue === "-" || !normalizedDateLabel) {
     return formattedValue;
   }
-  return `${formattedValue} <span class="metric-date-note">(${normalizedDateLabel})</span>`;
+  return `${formattedValue} <span class="metric-date-note">(${escapeHtml(normalizedDateLabel)})</span>`;
 }
 
 export function normalizeYieldPercentValue(value) {

@@ -90,12 +90,12 @@ import {
   buildPositiveMetricToneStyle,
   buildYieldToneStyle,
   clamp,
+  escapeHtml,
   formatCurrency,
   formatMaybeCurrency,
   formatMaybeMultiple,
   formatMaybeNumber,
   formatMaybePercent,
-  formatMaybeYieldPercent,
   formatNormalizedPercent,
   formatPercent,
   formatPlainNumber,
@@ -105,7 +105,6 @@ import {
   formatStatementNumber,
   getMetricToneHelpText,
   normalizeSearchText,
-  normalizeYieldPercentValue,
   parseNumericInput,
   parseWholeNumber,
   toFiniteNumber
@@ -863,7 +862,7 @@ function renderTickerSuggestions(keyword) {
     item.type = "button";
     item.className = "search-option";
     item.innerHTML = `
-      <span class="search-option-name">${name}</span>
+      <span class="search-option-name">${escapeHtml(name)}</span>
       <span class="search-option-code">${ticker}</span>
     `;
     item.addEventListener("mousedown", (event) => {
@@ -901,7 +900,7 @@ function renderWatchlistTickerSuggestions(keyword) {
     item.type = "button";
     item.className = "search-option";
     item.innerHTML = `
-      <span class="search-option-name">${name}</span>
+      <span class="search-option-name">${escapeHtml(name)}</span>
       <span class="search-option-code">${ticker}</span>
     `;
     item.addEventListener("mousedown", (event) => {
@@ -950,7 +949,7 @@ function renderReviewTickerSuggestions(keyword) {
     item.type = "button";
     item.className = "search-option";
     item.innerHTML = `
-      <span class="search-option-name">${name}</span>
+      <span class="search-option-name">${escapeHtml(name)}</span>
       <span class="search-option-code">${ticker}</span>
     `;
     item.addEventListener("mousedown", (event) => {
@@ -964,23 +963,24 @@ function renderReviewTickerSuggestions(keyword) {
 
 
 function getDisplayDividendYieldPercent(snapshot) {
+  // 返り値はパーセント値（0.9 = 0.9%）。桁推測のヒューリスティックは使わない。
   const overview = snapshot?.overview || {};
   const valuation = snapshot?.valuation || {};
   const currentPrice = toFiniteNumber(overview.currentPrice);
   const dividendRate = toFiniteNumber(valuation.dividendRate);
   const trailingDividendRate = toFiniteNumber(valuation.trailingAnnualDividendRate);
-  const rawYield = normalizeYieldPercentValue(valuation.dividendYield);
 
   if (currentPrice && currentPrice > 0) {
     if (dividendRate && dividendRate > 0) {
-      return dividendRate / currentPrice;
+      return (dividendRate / currentPrice) * 100;
     }
     if (trailingDividendRate && trailingDividendRate > 0) {
-      return trailingDividendRate / currentPrice;
+      return (trailingDividendRate / currentPrice) * 100;
     }
   }
 
-  return rawYield === null ? null : rawYield / 100;
+  // yfinance 1.x の dividendYield はパーセント値で返る（0.44 = 0.44%）
+  return toFiniteNumber(valuation.dividendYield);
 }
 
 
@@ -1751,40 +1751,20 @@ function saveWatchlistFromModal() {
 function getRangeConfig(range) {
   switch (range) {
     case "3m":
-      return { days: 92, labelEvery: 14, volatility: 0.028, drift: 0.1 };
+      return { days: 92, labelEvery: 14 };
     case "6m":
-      return { days: 184, labelEvery: 28, volatility: 0.036, drift: 0.16 };
+      return { days: 184, labelEvery: 28 };
     case "1y":
-      return { days: 366, labelEvery: 56, volatility: 0.05, drift: 0.24 };
+      return { days: 366, labelEvery: 56 };
     case "1m":
     default:
-      return { days: 32, labelEvery: 4, volatility: 0.022, drift: 0.06 };
+      return { days: 32, labelEvery: 4 };
   }
 }
 
 function isWeekend(date) {
   const day = date.getDay();
   return day === 0 || day === 6;
-}
-
-function shiftToPreviousBusinessDay(date) {
-  const current = new Date(date);
-  while (isWeekend(current)) {
-    current.setDate(current.getDate() - 1);
-  }
-  return current;
-}
-
-function getRecentBusinessDates(count, anchorDate = new Date()) {
-  const dates = [];
-  const cursor = shiftToPreviousBusinessDay(anchorDate);
-  while (dates.length < count) {
-    if (!isWeekend(cursor)) {
-      dates.push(new Date(cursor));
-    }
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return dates.reverse();
 }
 
 function buildXAxisTickIndexes(length, targetTicks = 8) {
@@ -1846,47 +1826,6 @@ function buildTrendSeriesFromHistory(range) {
   };
 }
 
-function buildTrendSeries(totalValue, holdingsCount, range) {
-  const historicalSeries = buildTrendSeriesFromHistory(range);
-  if (historicalSeries) {
-    return historicalSeries;
-  }
-
-  const safeTotal = totalValue > 0 ? totalValue : 12000000;
-  const { days, labelEvery, volatility, drift } = getRangeConfig(range);
-  const points = days;
-  const businessDates = getRecentBusinessDates(points);
-  const labels = [];
-  const values = [];
-  const base = safeTotal * (1 - drift);
-  const strength = Math.max(1, holdingsCount);
-
-  for (let index = 0; index < points; index += 1) {
-    const progress = points === 1 ? 1 : index / (points - 1);
-    const waveA = Math.sin(progress * Math.PI * 2.4 + strength * 0.33) * volatility * 0.7;
-    const waveB = Math.cos(progress * Math.PI * 5.3 + strength * 0.18) * volatility * 0.42;
-    const bias = (progress - 0.5) * drift * 0.65;
-    const value = index === points - 1 ? safeTotal : base * (1 + bias + waveA + waveB);
-    values.push(Math.max(value, safeTotal * 0.55));
-
-    const date = businessDates[index];
-    labels.push(`${date.getMonth() + 1}/${date.getDate()}`);
-  }
-
-  if (values.length >= 2) {
-    values[values.length - 2] = values[values.length - 1] * (0.965 + ((strength % 5) * 0.007));
-  }
-
-  const dates = businessDates.map((d) => {
-    const y = d.getFullYear();
-    const mo = String(d.getMonth() + 1).padStart(2, "0");
-    const dy = String(d.getDate()).padStart(2, "0");
-    return `${y}-${mo}-${dy}`;
-  });
-
-  return { labels, values, dates, labelEvery };
-}
-
 function drawSmoothPath(ctx, points) {
   if (!points.length) {
     return;
@@ -1919,11 +1858,28 @@ function drawTrendChart() {
   const padding = { top: 24, right: 18, bottom: 34, left: 66 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
-  const totalValue = appState.holdings.map(normalizeHolding).reduce((sum, item) => sum + item.marketValue, 0);
-  const holdingsCount = appState.holdings.filter((item) => String(item.ticker || "").trim()).length;
-  const { labels, values, dates } = buildTrendSeries(totalValue, holdingsCount, trendRange);
+  const series = buildTrendSeriesFromHistory(trendRange);
 
   ctx.clearRect(0, 0, width, height);
+
+  // 履歴が足りないときはダミー系列を描かず、空状態を明示する。
+  if (!series) {
+    trendChartModel = null;
+    hoveredTrendIndex = null;
+    ctx.font = "500 14px Segoe UI";
+    ctx.fillStyle = "#6b7280";
+    ctx.textAlign = "center";
+    ctx.fillText("評価額の履歴がまだありません", width / 2, height / 2 - 10);
+    ctx.font = "400 12px Segoe UI";
+    ctx.fillText("「価格を更新」すると履歴が蓄積されます", width / 2, height / 2 + 12);
+    trendDailyChange.textContent = "-";
+    trendPeriodChange.textContent = "-";
+    trendDailyChange.classList.remove("is-negative", "is-positive");
+    trendPeriodChange.classList.remove("is-negative", "is-positive");
+    return;
+  }
+
+  const { labels, values, dates } = series;
 
   const maxValue = Math.max(...values);
   const minValue = Math.min(...values);
@@ -2191,7 +2147,7 @@ function renderHoldingsMetricsTable() {
     const pbrStyle = loading ? "" : buildMetricToneStyle(valuation.priceToBook, [0.8, 1.5, 5]);
     const roeStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnEquity, [5, 10, 15]);
     const roaStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnAssets, [2, 5, 8]);
-    const dividendYieldStyle = loading ? "" : buildYieldToneStyle(normalizeYieldPercentValue(getDisplayDividendYieldPercent(snapshot)));
+    const dividendYieldStyle = loading ? "" : buildYieldToneStyle(getDisplayDividendYieldPercent(snapshot));
     const row = document.createElement("tr");
 
     row.innerHTML = `
@@ -2209,7 +2165,7 @@ function renderHoldingsMetricsTable() {
       <td class="computed-cell cell-number metric-tone-cell" style="${pbrStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.priceToBook)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${roeStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnEquity, 1)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${roaStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnAssets, 1)}</td>
-      <td class="computed-cell cell-number metric-tone-cell" style="${dividendYieldStyle}">${loading ? "読込中..." : formatMaybeYieldPercent(getDisplayDividendYieldPercent(snapshot), 1)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${dividendYieldStyle}">${loading ? "読込中..." : formatNormalizedPercent(getDisplayDividendYieldPercent(snapshot), 1)}</td>
     `;
 
     row.querySelector('[data-action="open-review"]').addEventListener("click", () => {
@@ -2306,7 +2262,7 @@ function renderWatchlistMetricsTable() {
     const pbrStyle = loading ? "" : buildMetricToneStyle(valuation.priceToBook, [0.8, 1.5, 5]);
     const roeStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnEquity, [5, 10, 15]);
     const roaStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnAssets, [2, 5, 8]);
-    const dividendYieldStyle = loading ? "" : buildYieldToneStyle(normalizeYieldPercentValue(getDisplayDividendYieldPercent(snapshot)));
+    const dividendYieldStyle = loading ? "" : buildYieldToneStyle(getDisplayDividendYieldPercent(snapshot));
     const row = document.createElement("tr");
 
     row.innerHTML = `
@@ -2324,7 +2280,7 @@ function renderWatchlistMetricsTable() {
       <td class="computed-cell cell-number metric-tone-cell" style="${pbrStyle}">${loading ? "読込中..." : formatMaybeMultiple(valuation.priceToBook)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${roeStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnEquity, 1)}</td>
       <td class="computed-cell cell-number metric-tone-cell" style="${roaStyle}">${loading ? "読込中..." : formatMaybePercent(profitability.returnOnAssets, 1)}</td>
-      <td class="computed-cell cell-number metric-tone-cell" style="${dividendYieldStyle}">${loading ? "読込中..." : formatMaybeYieldPercent(getDisplayDividendYieldPercent(snapshot), 1)}</td>
+      <td class="computed-cell cell-number metric-tone-cell" style="${dividendYieldStyle}">${loading ? "読込中..." : formatNormalizedPercent(getDisplayDividendYieldPercent(snapshot), 1)}</td>
     `;
 
     row.querySelector('[data-action="open-review"]').addEventListener("click", () => {
@@ -2434,9 +2390,24 @@ function renderReviewNews(newsItems) {
   }
 
   newsItems.forEach((item) => {
+    // タイトル・リンク・配信元は外部（Yahoo）由来の文字列のため、
+    // innerHTML には流さず DOM API で構築し、リンクは http(s) のみ許可する。
     const li = document.createElement("li");
-    const publisher = item.publisher ? `<span class="review-news-meta">${item.publisher}</span>` : "";
-    li.innerHTML = `<a href="${item.link}" target="_blank" rel="noreferrer">${item.title}</a>${publisher}`;
+    const link = String(item.link || "");
+    const anchor = document.createElement("a");
+    if (/^https?:\/\//i.test(link)) {
+      anchor.href = link;
+    }
+    anchor.target = "_blank";
+    anchor.rel = "noreferrer";
+    anchor.textContent = String(item.title || "");
+    li.appendChild(anchor);
+    if (item.publisher) {
+      const meta = document.createElement("span");
+      meta.className = "review-news-meta";
+      meta.textContent = String(item.publisher);
+      li.appendChild(meta);
+    }
     reviewNewsList.appendChild(li);
   });
 }
@@ -2459,8 +2430,8 @@ function renderReviewSnapshot() {
   reviewSymbol.textContent = `${stockMaster[ticker] || name || ticker} (${ticker})`;
 
   renderReviewKeyValueGrid(reviewOverviewGrid, [
-    { label: "セクター", value: overview.sector || "-" },
-    { label: "業種", value: overview.industry || "-" },
+    { label: "セクター", value: escapeHtml(overview.sector || "-") },
+    { label: "業種", value: escapeHtml(overview.industry || "-") },
     { label: "現在値", value: formatMaybeCurrency(overview.currentPrice, currency) },
     { label: "時価総額", value: formatMaybeCurrency(overview.marketCap, currency, true) },
     { label: "52週高値", value: formatPriceWithDate(overview.fiftyTwoWeekHigh, currency, overview.fiftyTwoWeekHighDate) },
@@ -2471,7 +2442,7 @@ function renderReviewSnapshot() {
     { label: "PER", value: formatMaybeMultiple(valuation.trailingPE), style: buildMetricToneStyle(valuation.trailingPE, [8, 15, 40]) },
     { label: "PBR", value: formatMaybeMultiple(valuation.priceToBook), style: buildMetricToneStyle(valuation.priceToBook, [0.8, 1.5, 5]) },
     { label: "EV/EBITDA", value: formatMaybeMultiple(valuation.enterpriseToEbitda) },
-    { label: "配当利回り", value: formatMaybeYieldPercent(getDisplayDividendYieldPercent(reviewSnapshot), 1) }
+    { label: "配当利回り", value: formatNormalizedPercent(getDisplayDividendYieldPercent(reviewSnapshot), 1) }
   ]);
 
   renderReviewKeyValueGrid(reviewProfitabilityGrid, [
@@ -2486,7 +2457,7 @@ function renderReviewSnapshot() {
     { label: "目標株価(平均)", value: formatMaybeCurrency(analyst.targetMeanPrice, currency) },
     { label: "目標株価(高値)", value: formatMaybeCurrency(analyst.targetHighPrice, currency) },
     { label: "目標株価(安値)", value: formatMaybeCurrency(analyst.targetLowPrice, currency) },
-    { label: "推奨", value: analyst.recommendationKey || "-" }
+    { label: "推奨", value: escapeHtml(analyst.recommendationKey || "-") }
   ]);
 
   renderReviewFinancials(financialSummary || []);
@@ -2527,7 +2498,7 @@ function renderReviewHistoryDropdown() {
     btn.type = "button";
     btn.className = "search-option";
     const displayName = getDisplayName(ticker) || name || ticker;
-    btn.innerHTML = `<span class="search-option-name">${displayName}</span><span class="search-option-code">${ticker}</span>`;
+    btn.innerHTML = `<span class="search-option-name">${escapeHtml(displayName)}</span><span class="search-option-code">${escapeHtml(ticker)}</span>`;
     btn.addEventListener("click", () => {
       hideReviewHistoryDropdown();
       loadReviewSnapshot(ticker);

@@ -1,4 +1,4 @@
-const API = "http://127.0.0.1:8001";
+import { apiFetch } from "./chat-api.js";
 
 // ── HTTP helpers ─────────────────────────────────────────
 async function api(method, path, body = null) {
@@ -7,7 +7,7 @@ async function api(method, path, body = null) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(`${API}${path}`, opts);
+  const res = await apiFetch(path, opts);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${method} ${path} → ${res.status}${text ? ": " + text : ""}`);
@@ -18,7 +18,7 @@ async function api(method, path, body = null) {
 async function streamChat(sessionId, messages, onToken, onDone, onError, options = {}) {
   let res;
   try {
-    res = await fetch(`${API}/chat/stream`, {
+    res = await apiFetch("/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -369,7 +369,7 @@ async function waitForServer(maxMs = 20000) {
   const deadline = Date.now() + maxMs;
   while (Date.now() < deadline) {
     try {
-      const r = await fetch(`${API}/health`);
+      const r = await apiFetch("/health");
       if (r.ok) return true;
     } catch (_) {}
     await new Promise(r => setTimeout(r, 1000));
@@ -1068,7 +1068,7 @@ async function reloadActiveSessionMessages() {
     chatHistory.push({ id: m.id, role: m.role, content: m.content });
     appendBubble(m.role, m.content, m.created_at, m.id);
   }
-  if (!msgs.length) clearMessages("繝｡繝・そ繝ｼ繧ｸ繧貞・蜉帙＠縺ｦ縺上□縺輔＞");
+  if (!msgs.length) clearMessages("メッセージを入力してください");
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
@@ -1150,7 +1150,7 @@ async function regenerateFromUserMessage(messageId) {
     err => {
       wrap.classList.remove("loading");
       wrap.classList.add("error");
-      bubble.textContent = `繧ｨ繝ｩ繝ｼ: ${err}`;
+      bubble.textContent = `エラー: ${err}`;
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
     },

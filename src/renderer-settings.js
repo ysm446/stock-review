@@ -1,7 +1,7 @@
 // 設定ウィンドウ。現状は llama-cpp（llama-server）のバージョン確認とダウンロード。
 // GitHub への通信は CSP の都合でレンダラから直接できないため、すべて
 // バックエンド（chat_server, :8001）経由で行う。
-const SETTINGS_API = "http://127.0.0.1:8001";
+import { apiFetch } from "./chat-api.js";
 
 const settingsButton          = document.getElementById("settings-button");
 const settingsBackdrop        = document.getElementById("settings-modal-backdrop");
@@ -28,7 +28,7 @@ const RESOURCE_MONITOR_KEY    = "stock-review.resourceMonitor";
 let downloading = false;
 
 async function settingsApi(method, path) {
-  const res = await fetch(`${SETTINGS_API}${path}`, { method });
+  const res = await apiFetch(path, { method });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${res.status}${text ? ": " + text : ""}`);
@@ -38,7 +38,7 @@ async function settingsApi(method, path) {
 
 // SSE 形式の進捗ストリームを読み取り、各イベントを onEvent に渡す。
 async function streamPost(path, body, onEvent) {
-  const res = await fetch(`${SETTINGS_API}${path}`, {
+  const res = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

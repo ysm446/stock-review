@@ -1383,6 +1383,12 @@ select:focus {
   gap: 8px;
 }
 
+.modal-form .field-note {
+  font-size: 11px;
+  color: var(--muted, #9ca3af);
+  line-height: 1.4;
+}
+
 .search-select {
   position: relative;
 }

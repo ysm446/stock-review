@@ -56,6 +56,10 @@ function runPythonJson(scriptPath, args = [], payload = null, errorLabel = "Pyth
       reject(new Error(`Python process failed to start: ${error.message}`));
     });
 
+    // spawn 失敗や早期終了時、stdin への書き込みが EPIPE を投げて
+    // メインプロセスごと落ちるのを防ぐ。
+    child.stdin.on("error", () => {});
+
     child.on("close", (code) => {
       if (code !== 0) {
         reject(new Error(stderr.trim() || `${errorLabel} exited with code ${code}`));

@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld("stockReviewApi", {
   loadStockMaster: () => ipcRenderer.invoke("stock-master:load"),
   fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker),
   loadAnnotations: () => ipcRenderer.invoke("annotations:load"),
-  saveAnnotations: (data) => ipcRenderer.invoke("annotations:save", data)
+  saveAnnotations: (data) => ipcRenderer.invoke("annotations:save", data),
+  getChatApiToken: () => ipcRenderer.invoke("chat:api-token")
 });

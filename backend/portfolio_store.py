@@ -1,3 +1,4 @@
+import bisect
 import json
 import sqlite3
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 
 import yfinance as yf
 
-from shared import FX_TICKERS
+from shared import FX_TICKERS, convert_to_jpy, get_yf_price, normalize_price_currency
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -54,6 +55,10 @@ def connect_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # save / refresh / history は別プロセスとして並行実行されるため、
+    # WAL とロック待ちで "database is locked" による保存の取りこぼしを防ぐ。
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
     return conn
 
 
@@ -69,7 +74,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS holdings (
-            ticker TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker TEXT NOT NULL,
             shares INTEGER NOT NULL DEFAULT 0,
             buy_price INTEGER NOT NULL DEFAULT 0,
             note TEXT NOT NULL DEFAULT '',
@@ -77,6 +83,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL,
             FOREIGN KEY (ticker) REFERENCES stocks(ticker) ON DELETE CASCADE
         );
+
+        CREATE INDEX IF NOT EXISTS idx_holdings_ticker
+            ON holdings(ticker);
 
         CREATE TABLE IF NOT EXISTS watchlist (
             ticker TEXT PRIMARY KEY,
@@ -119,6 +128,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    _migrate_holdings_to_lots(conn)
     columns = {
         row["name"]
         for row in conn.execute("PRAGMA table_info(latest_quotes)").fetchall()
@@ -134,6 +144,40 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     if "sort_order" not in watchlist_columns:
         conn.execute("ALTER TABLE watchlist ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
     conn.commit()
+
+
+def _migrate_holdings_to_lots(conn: sqlite3.Connection) -> None:
+    """旧スキーマ（ticker PRIMARY KEY）の holdings をロット単位（id 主キー）へ移行する。
+
+    旧スキーマでは同一銘柄の複数ロットが1行に潰れて保存されていたため、
+    ロットを行として保持できる形に作り直す。
+    """
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(holdings)").fetchall()}
+    if "id" in columns:
+        return
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE holdings_lots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker TEXT NOT NULL,
+                shares INTEGER NOT NULL DEFAULT 0,
+                buy_price INTEGER NOT NULL DEFAULT 0,
+                note TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (ticker) REFERENCES stocks(ticker) ON DELETE CASCADE
+            );
+            INSERT INTO holdings_lots (ticker, shares, buy_price, note, sort_order, updated_at)
+                SELECT ticker, shares, buy_price, note, sort_order, updated_at FROM holdings;
+            DROP TABLE holdings;
+            ALTER TABLE holdings_lots RENAME TO holdings;
+            CREATE INDEX IF NOT EXISTS idx_holdings_ticker ON holdings(ticker);
+            """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def seed_stocks_from_master(conn: sqlite3.Connection) -> None:
@@ -199,12 +243,6 @@ def migrate_legacy_json(conn: sqlite3.Connection) -> None:
             """
             INSERT INTO holdings (ticker, shares, buy_price, note, sort_order, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(ticker) DO UPDATE SET
-                shares = excluded.shares,
-                buy_price = excluded.buy_price,
-                note = excluded.note,
-                sort_order = excluded.sort_order,
-                updated_at = excluded.updated_at
             """,
             (
                 ticker,
@@ -328,35 +366,14 @@ def get_fx_history(currency: str, period: str = "1y") -> dict[str, float]:
     return fx_map
 
 
-def get_latest_quote(ticker: str) -> dict[str, object]:
-    stock = yf.Ticker(ticker)
-    info = stock.fast_info
-    price = info.get("lastPrice") or info.get("regularMarketPrice") or info.get("previousClose")
-    previous_close = info.get("previousClose")
-    currency = (info.get("currency") or "USD").upper()
-    if price is None or previous_close is None:
-        history = stock.history(period="5d", interval="1d", auto_adjust=False)
-        if history.empty:
-            raise ValueError("No market data returned")
-        closes = history["Close"].dropna()
-        if price is None:
-            price = float(closes.iloc[-1])
-        if previous_close is None:
-            previous_close = float(closes.iloc[-2]) if len(closes) >= 2 else float(closes.iloc[-1])
-    return {"price": float(price), "previous_close": float(previous_close), "currency": currency}
-
-
-def convert_price_to_jpy(price: float, currency: str, fx_map: dict[str, float] | None = None, trade_date: str | None = None):
-    normalized = (currency or "JPY").upper()
-    if normalized == "JPY":
-        return float(price), 1.0
-    if fx_map and trade_date and trade_date in fx_map:
-        fx_rate = fx_map[trade_date]
-        return float(price) * float(fx_rate), float(fx_rate)
-
-    latest_fx = get_latest_quote(FX_TICKERS[normalized])
-    fx_rate = float(latest_fx["price"])
-    return float(price) * fx_rate, fx_rate
+def _fx_rate_for_date(fx_map: dict[str, float], sorted_dates: list[str], trade_date: str) -> float:
+    """trade_date のレートを返す。無い日は直近過去のレートで埋める（当日のスポットレートは使わない）。"""
+    if trade_date in fx_map:
+        return float(fx_map[trade_date])
+    pos = bisect.bisect_right(sorted_dates, trade_date)
+    if pos > 0:
+        return float(fx_map[sorted_dates[pos - 1]])
+    return float(fx_map[sorted_dates[0]])
 
 
 def store_price_history(conn: sqlite3.Connection, ticker: str, period: str = "1y") -> int:
@@ -369,23 +386,31 @@ def store_price_history(conn: sqlite3.Connection, ticker: str, period: str = "1y
     if history.empty:
         raise ValueError("No historical data returned")
 
-    info = stock.fast_info
-    currency = (info.get("currency") or "JPY").upper()
+    raw_currency = stock.fast_info.get("currency")
+    if not raw_currency:
+        # 通貨を推測して換算すると履歴が桁ごと壊れるため、明示的にエラーにする。
+        raise ValueError(f"{normalized}: currency unavailable from Yahoo")
+    _, currency = normalize_price_currency(None, raw_currency)
     fx_map = get_fx_history(currency, period=period) if currency != "JPY" else {}
+    fx_dates = sorted(fx_map)
     inserted = 0
 
     for index, row in history.iterrows():
-        close_price = row.get("Close")
-        if close_price is None:
+        raw_close = row.get("Close")
+        if raw_close is None:
             continue
+        close_price, _ = normalize_price_currency(float(raw_close), raw_currency)
         trade_date = index.date().isoformat()
-        price_jpy, _ = convert_price_to_jpy(float(close_price), currency, fx_map, trade_date)
+        if currency == "JPY":
+            price_jpy = close_price
+        else:
+            price_jpy = close_price * _fx_rate_for_date(fx_map, fx_dates, trade_date)
         conn.execute(
             """
             INSERT OR REPLACE INTO price_history (ticker, trade_date, close_price_jpy, source_close, currency)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (normalized, trade_date, int(round(price_jpy)), float(close_price), currency),
+            (normalized, trade_date, int(round(price_jpy)), close_price, currency),
         )
         inserted += 1
 
@@ -457,9 +482,16 @@ def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, objec
     if not normalized:
         raise ValueError("Ticker is empty")
     ensure_stock(conn, normalized)
-    latest = get_latest_quote(normalized)
-    price_jpy, fx_rate = convert_price_to_jpy(latest["price"], latest["currency"])
-    previous_close_jpy, _ = convert_price_to_jpy(latest["previous_close"], latest["currency"])
+    price, previous_close, currency = get_yf_price(normalized, require_currency=True)
+    if currency == "JPY":
+        fx_rate = 1.0
+    else:
+        fx_ticker = FX_TICKERS.get(currency)
+        if not fx_ticker:
+            raise ValueError(f"Unsupported currency: {currency}")
+        fx_rate, _, _ = get_yf_price(fx_ticker)
+    price_jpy = price * fx_rate
+    previous_close_jpy = previous_close * fx_rate
     now = utc_now()
     quote_date = today_iso()
     conn.execute(
@@ -482,20 +514,20 @@ def store_latest_quote(conn: sqlite3.Connection, ticker: str) -> dict[str, objec
         (
             normalized,
             int(round(price_jpy)),
-            float(latest["price"]),
-            latest["currency"],
+            float(price),
+            currency,
             float(fx_rate),
             int(round(previous_close_jpy)),
-            float(latest["previous_close"]),
+            float(previous_close),
             quote_date,
             now,
         ),
     )
     conn.commit()
     return {
-        "price": float(latest["price"]),
-        "previous_close": float(latest["previous_close"]),
-        "currency": latest["currency"],
+        "price": float(price),
+        "previous_close": float(previous_close),
+        "currency": currency,
         "price_jpy": float(price_jpy),
         "previous_close_jpy": float(previous_close_jpy),
         "fx_rate_jpy": float(fx_rate),
@@ -585,23 +617,17 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
     if "cash" in payload or "cashJpy" in payload:
         set_cash_jpy(conn, payload.get("cash", payload.get("cashJpy")))
 
-    incoming_holding_tickers = []
+    # 保存は全量置き換え。同一銘柄の複数ロットを行単位で保持する。
+    conn.execute("DELETE FROM holdings")
     for index, holding in enumerate(holdings):
         ticker = str(holding.get("ticker") or "").strip()
         if not ticker:
             continue
-        incoming_holding_tickers.append(ticker)
         ensure_stock(conn, ticker)
         conn.execute(
             """
             INSERT INTO holdings (ticker, shares, buy_price, note, sort_order, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(ticker) DO UPDATE SET
-                shares = excluded.shares,
-                buy_price = excluded.buy_price,
-                note = excluded.note,
-                sort_order = excluded.sort_order,
-                updated_at = excluded.updated_at
             """,
             (
                 ticker,
@@ -644,15 +670,6 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
                     now,
                 ),
             )
-
-    if incoming_holding_tickers:
-        placeholders = ",".join("?" for _ in incoming_holding_tickers)
-        conn.execute(
-            f"DELETE FROM holdings WHERE ticker NOT IN ({placeholders})",
-            incoming_holding_tickers,
-        )
-    else:
-        conn.execute("DELETE FROM holdings")
 
     incoming_watchlist_tickers = []
     for index, item in enumerate(watchlist):

@@ -9,6 +9,8 @@ import time
 import uuid
 from pathlib import Path
 
+from shared import atomic_write_text
+
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chat.db"
 STOCKS_DIR = Path(__file__).resolve().parent.parent / "data" / "stocks"
 EMBED_DIM = 768
@@ -334,7 +336,7 @@ def save_stock_notes(ticker: str, content: str) -> dict:
     normalized = normalize_stock_ticker(ticker)
     path = stock_notes_path(normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content or "", encoding="utf-8")
+    atomic_write_text(path, content or "")
     return get_stock_notes(normalized)
 
 

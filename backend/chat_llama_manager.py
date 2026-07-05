@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from urllib import request as urllib_request
 
+from shared import atomic_write_text
+
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -51,7 +53,7 @@ def _get_paths() -> dict:
 
 def _save_paths(paths: dict) -> None:
     _PATHS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _PATHS_FILE.write_text(json.dumps(paths, indent=2, ensure_ascii=False), "utf-8")
+    atomic_write_text(_PATHS_FILE, json.dumps(paths, indent=2, ensure_ascii=False))
 
 
 def is_ready() -> bool:

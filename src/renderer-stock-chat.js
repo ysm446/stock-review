@@ -1,4 +1,4 @@
-const API = "http://127.0.0.1:8001";
+import { apiFetch } from "./chat-api.js";
 
 const panel = document.getElementById("stock-chat-panel");
 const subtitle = document.getElementById("stock-chat-subtitle");
@@ -23,7 +23,7 @@ async function api(method, path, body = null) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(`${API}${path}`, opts);
+  const res = await apiFetch(path, opts);
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${method} ${path} -> ${res.status}${text ? `: ${text}` : ""}`);
@@ -34,7 +34,7 @@ async function api(method, path, body = null) {
 async function streamChat(sessionId, messages, options, onToken, onDone, onError) {
   let res;
   try {
-    res = await fetch(`${API}/chat/stream`, {
+    res = await apiFetch("/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

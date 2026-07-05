@@ -1,7 +1,8 @@
 // 上部バーのリソースモニター。設定の「表示」タブで ON のとき、
 // CPU / RAM / GPU / VRAM の使用量を 1 秒ごとにバーで表示する。
 // 値はバックエンド（chat_server, :8001）の /system/resources から取得。
-const RESOURCE_API = "http://127.0.0.1:8001";
+import { apiFetch } from "./chat-api.js";
+
 export const RESOURCE_MONITOR_KEY = "stock-review.resourceMonitor";
 
 const monitor = document.getElementById("resource-monitor");
@@ -33,7 +34,7 @@ function gb(used, total) {
 async function poll() {
   if (!monitor) return;
   try {
-    const res = await fetch(`${RESOURCE_API}/system/resources`);
+    const res = await apiFetch("/system/resources");
     if (!res.ok) throw new Error();
     const r = await res.json();
     if (!r.available) {
@@ -63,7 +64,7 @@ function startPolling() {
 async function ensureDepsAndStart() {
   let data;
   try {
-    const res = await fetch(`${RESOURCE_API}/system/resources`);
+    const res = await apiFetch("/system/resources");
     if (!res.ok) throw new Error();
     data = await res.json();
   } catch {
@@ -76,7 +77,7 @@ async function ensureDepsAndStart() {
     installing = true;
     monitor.innerHTML = '<span class="resource-unavailable">準備中…（psutil を導入）</span>';
     try {
-      const res = await fetch(`${RESOURCE_API}/system/install-deps`, { method: "POST" });
+      const res = await apiFetch("/system/install-deps", { method: "POST" });
       if (!res.ok) throw new Error();
     } catch {
       monitor.innerHTML = '<span class="resource-unavailable">導入に失敗しました</span>';

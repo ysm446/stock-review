@@ -1,8 +1,17 @@
 # Progress
 
-最終更新: 2026-06-29
+最終更新: 2026-07-05
 
 ## 完了済み
+
+- **2026-07-05: プロジェクト全体レビューを実施し、フェーズ1（正確性・データ損失）とフェーズ2（セキュリティ）+ F12 スクリーンショットを完了**（詳細は `docs/changelog.md` 2026-07-05 参照）。
+  - `holdings` をロット単位スキーマへ移行（`id INTEGER PRIMARY KEY AUTOINCREMENT`、既存 DB は起動時自動移行）。save は全量置き換え（DELETE→INSERT）。配当集計もロット合算に修正。
+  - 通貨換算を `shared.py` に一本化（`portfolio_store.py` の重複 `get_latest_quote`/`convert_price_to_jpy` を削除）。GBp 等の補助単位は `normalize_price_currency` で正規化。通貨欠損時は推測せずエラー。FX 欠損日は直近過去レートで補完（`_fx_rate_for_date`、bisect）。
+  - `app.db` を WAL + busy_timeout=10000 に。JSON/notes の書き込みはアトミック化（`shared.atomic_write_text` / data-files.js の tmp+rename+.bak）。
+  - トレンドチャートの合成データ生成（buildTrendSeries のサイン波フォールバック）を削除し空状態表示に。
+  - チャットサーバーにトークン認証（`STOCK_REVIEW_API_TOKEN` 環境変数、Electron main が生成し IPC `chat:api-token` で renderer に渡す）。renderer の :8001 アクセスは `src/chat-api.js` の `apiFetch` に統一。CORS は `allow_origins=["null"]`。
+  - XSS エスケープ（`escapeHtml` を renderer-utils に追加）、`setWindowOpenHandler`/`will-navigate` ガード、Electron 43 へ更新。
+  - F12 スクリーンショット（`before-input-event` → `capturePage` → `data/screenshots/`）、ウィンドウを `useContentSize: true` の 1920x1080 に。
 
 - 評価額推移チャートの「期間」「軸」プルダウンの選択を localStorage で永続化（`trendRange` / `trendYAxisMode`）。再起動後も前回の選択を維持。
 - 現金残高がアプリ再起動後に 0 に戻る不具合を修正。`portfolio.json` には `cash` キーで保存されるが、フロントの読み込み（`applyPortfolioState`）が `cashJpy` のみを参照していたため。`cashJpy ?? cash` の両対応にした。あわせて、同一銘柄の複数ロット保有環境でレガシー JSON → DB 初回移行が重複ティッカーで落ちる不具合も upsert 化で修正。
@@ -31,11 +40,18 @@
 
 ## 未完了 / 検討中
 
+- **フェーズ4: LLM チャット再設計（Ornith 移行）** — plan.md のロードマップ参照。news-picker の chat_agent / ddgs / 役割ベースモデル管理を移植。
+- **フェーズ5: ダッシュボード統合** — renderer.js（約2,900行）の分割を前提に portfolio ビューを高さ固定グリッド化。
+- 外貨建て銘柄の買値の通貨対応（現状は「円で入力」ルール。買値通貨を保持して換算するのが本修正）。
+- 株数・買値の小数対応（`parse_number`/`parseWholeNumber` が整数に丸めるため、米国株の端株・小数の平均取得単価が失われる）。
+- レビューで指摘された残課題: 起動時のポート 8001 衝突検出と孤児プロセス掃除、`GET /documents/search` のルート順修正、FTS5 クエリへの `ORDER BY rank` 追加、チャット2系統（renderer-chat / renderer-stock-chat）の重複解消（フェーズ4で対応予定）、削除操作の確認ダイアログ、styles.css の重複セレクタ整理。
 - グラフ配色パターンの追加（損益ヒートマップ / 単色グラデーション / パステル など）。
 - セクター別の集計・内訳表示。
 - 現金の拡張（外貨建て現金の円換算対応、資産推移トレンドへの現金反映、LLM チャットへの現金・総資産の引き渡し）。
 
 ## 注意点
 
-- 保有テーブルの `holdings` は ticker が PRIMARY KEY のため、DB 上は同一銘柄が1行に統合される。重複保有はフロント側の表示ロジックで扱う。
+- `holdings` テーブルはロット単位（2026-07-05 移行済み）。同一銘柄の複数行が正であり、DB を直接触るときは ticker でユニークと仮定しないこと。
+- 通貨が取得できない銘柄の価格更新はエラーになる（推測換算はしない方針）。エラーは refresh の `errors` に載る。
+- 1920x1080 コンテンツサイズは 100% スケーリング前提。125% スケーリングのモニタでは論理作業領域（約1536x864）を超えるため、必要ならウィンドウは小さくなるが `capturePage` は物理ピクセルで撮れる。
 - セクター情報は `yfinance` 由来で取得失敗・空のことがある。セクター別配色では不明銘柄をグレースケールにフォールバックしている。

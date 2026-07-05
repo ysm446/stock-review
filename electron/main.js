@@ -1,4 +1,5 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -29,12 +30,22 @@ const {
 // ── Chat server (Python FastAPI) ─────────────────────────
 let chatServerProcess = null;
 const LLAMA_PATHS_FILE = path.join(__dirname, "..", "data", "llama_paths.json");
+// 外部サイトのブラウザ経由アクセスを防ぐ API トークン（起動ごとに生成）
+const CHAT_API_TOKEN = crypto.randomBytes(24).toString("hex");
 
 function startChatServer() {
   const script = path.join(__dirname, "..", "backend", "chat_server.py");
-  chatServerProcess = spawnPython(script);
+  chatServerProcess = spawnPython(script, [], {
+    env: {
+      ...process.env,
+      PYTHONIOENCODING: "utf-8",
+      STOCK_REVIEW_API_TOKEN: CHAT_API_TOKEN
+    }
+  });
   chatServerProcess.on("error", err => console.error("Chat server error:", err));
-  chatServerProcess.stderr.on("data", chunk => console.error("Chat server:", chunk.toString()));
+  chatServerProcess.stdin.on("error", () => {});
+  chatServerProcess.stdout.on("data", chunk => console.log("Chat server:", chunk.toString().trimEnd()));
+  chatServerProcess.stderr.on("data", chunk => console.error("Chat server:", chunk.toString().trimEnd()));
   chatServerProcess.on("exit", code => {
     if (code !== null && code !== 0) console.error(`Chat server exited with code ${code}`);
   });
@@ -82,10 +93,27 @@ function getMainWindow() {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
 }
 
+function captureScreenshot(win) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.capturePage().then(image => {
+    const dir = path.join(DATA_DIR, "screenshots");
+    fs.mkdirSync(dir, { recursive: true });
+    const now = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const filePath = path.join(dir, `${stamp}.png`);
+    fs.writeFileSync(filePath, image.toPNG());
+    console.log(`Screenshot saved: ${filePath}`);
+  }).catch(error => console.error("Screenshot failed:", error));
+}
+
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1480,
-    height: 980,
+    // コンテンツ領域を 1920x1080 に固定基準とする（スクリーンショットも同サイズになる）。
+    // useContentSize でウィンドウ枠を除いた内側のサイズを指定する。
+    width: 1920,
+    height: 1080,
+    useContentSize: true,
     minWidth: 1180,
     minHeight: 780,
     backgroundColor: "#07111f",
@@ -98,6 +126,31 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+
+  // F12 → コンテンツ領域のスクリーンショットを data/screenshots/ に保存
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type === "keyDown" && input.key === "F12") {
+      event.preventDefault();
+      captureScreenshot(win);
+    }
+  });
+
+  // 外部ページへの遷移・新規ウィンドウを禁止し、リンクは既定ブラウザで開く
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith("file://")) {
+      event.preventDefault();
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        shell.openExternal(url);
+      }
+    }
+  });
+
   win.loadFile(path.join(__dirname, "..", "src", "index.html"));
 }
 
@@ -156,6 +209,9 @@ app.on("will-quit", () => {
   stopLlamaServer();
   if (chatServerProcess) { try { chatServerProcess.kill("SIGTERM"); } catch (_) {} }
 });
+
+// ── Chat API token IPC ──────────────────────────────────
+ipcMain.handle("chat:api-token", () => CHAT_API_TOKEN);
 
 // ── Annotations IPC ─────────────────────────────────────
 ipcMain.handle("annotations:load", () => readAnnotations());

@@ -14,9 +14,9 @@ from pathlib import Path
 # Make backend/ importable when run as `python backend/chat_server.py`
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from urllib import request as urllib_request
 
@@ -45,12 +45,26 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+# Electron renderer は file:// 起点のため Origin は "null"。それ以外のオリジン
+# （ブラウザ上の任意のサイト等）にはレスポンスを読ませない。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["null"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Electron main が起動時に生成するトークン。CORS だけでは外部サイトからの
+# 書き込み系リクエスト自体は止められないため、全リクエストで検証する。
+API_TOKEN = os.environ.get("STOCK_REVIEW_API_TOKEN", "")
+
+
+@app.middleware("http")
+async def _require_api_token(request: Request, call_next):
+    if API_TOKEN and request.method != "OPTIONS" and request.url.path != "/health":
+        if request.headers.get("x-api-token") != API_TOKEN:
+            return JSONResponse({"detail": "unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 # ── Health ────────────────────────────────────────────────

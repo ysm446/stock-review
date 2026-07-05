@@ -10,6 +10,6 @@
     "stock-master:update": ".venv\\Scripts\\python.exe backend/update_stock_master.py"
   },
   "devDependencies": {
-    "electron": "^35.1.5"
+    "electron": "^43.0.0"
   }
 }

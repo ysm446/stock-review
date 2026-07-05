@@ -5,6 +5,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
+from shared import atomic_write_text
+
 
 JPX_URLS = [
     "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls",
@@ -62,7 +64,7 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     master = build_stock_master()
-    output_path.write_text(json.dumps(master, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(output_path, json.dumps(master, ensure_ascii=False, indent=2))
 
     print(f"Updated {output_path}")
     print(f"Entries: {len(master)}")
