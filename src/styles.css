@@ -299,43 +299,32 @@ button {
   margin: 0 0 16px;
 }
 
-.cash-editor {
+/* 現金カード: 値をその場で編集できる */
+.stat-cash-field {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 16px;
+  align-items: baseline;
+  gap: 2px;
 }
 
-.cash-editor-label {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.cash-editor-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 6px 10px;
-}
-
-.cash-editor-input {
-  width: 140px;
+.stat-cash-input {
+  flex: 1;
+  min-width: 0;
   border: 0;
+  border-bottom: 1px dashed #4a4a4a;
   background: transparent;
-  color: var(--text);
-  font-size: 0.95rem;
-  font-weight: 600;
-  text-align: right;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  padding: 0 0 1px;
   outline: none;
 }
 
-.cash-editor-unit {
-  color: var(--muted);
-  font-size: 0.82rem;
+.stat-cash-input:hover {
+  border-bottom-color: #6a6a6a;
+}
+
+.stat-cash-input:focus {
+  border-bottom-color: #9a9a9a;
 }
 
 .stat-card,
@@ -423,6 +412,33 @@ button {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* 保有割合: ヘッダー（タイトル・配色・まとめる）を grid で確実に1行に収める */
+.allocation-panel .panel-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.allocation-panel .panel-head h2 {
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.allocation-panel .panel-actions {
+  display: contents;
+}
+
+.allocation-panel .chart-color-select,
+.allocation-panel .allocation-group-toggle {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  width: max-content;
 }
 
 .dashboard-tables {
@@ -1697,7 +1713,7 @@ select:focus {
 }
 
 .review-financial-panel {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .review-notes-panel {
@@ -1770,6 +1786,42 @@ select:focus {
   flex-direction: column;
   gap: 10px;
   background: var(--panel-soft);
+}
+
+.stock-chat-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.stock-chat-sidebar-title {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.stock-chat-new-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.stock-chat-new-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #5c5c5c;
+}
+
+.stock-chat-new-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .stock-chat-session-list {

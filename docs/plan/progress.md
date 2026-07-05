@@ -4,6 +4,7 @@
 
 ## 完了済み
 
+- **2026-07-05: フェーズ5のフィードバック反映を完了**（現金カードの直接編集化・現金入力欄の廃止、保有割合ヘッダーの1行化とドーナツ見切れ修正（半径を `height/2 - 34` 基準に）、財務サマリーの幅正常化、銘柄チャットの新規会話を＋アイコン化）。デバッグ知見: `.panel-actions` 内の select が flex で伸長しボタンを押し出していたため、保有割合ヘッダーは grid + `display: contents` で構成。
 - **2026-07-05: フェーズ5（ダッシュボード UI 整理）を完了**。
   - ポートフォリオ: `#view-portfolio.is-visible` を高さ固定 flex 化し、`.dashboard-charts`（トレンド 1.5fr / 保有割合 1fr / 銘柄別損益 0.9fr、高さ330px）+ `.dashboard-tables`（保有 1.75fr / ウォッチ 1fr、内部スクロール）に再構成。チャートは CSS サイズ追従（`prepareHiDPICanvas`）。1500px 未満はページスクロールへフォールバック。
   - レビュー: 最新ニュースパネルを削除（`renderReviewNews` / `reviewNewsList` / 関連 CSS も削除）。`.review-main-grid` で左=指標グリッド（内部スクロール）/ 右=銘柄チャット全高の2カラム。

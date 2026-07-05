@@ -46,7 +46,6 @@ import {
   reviewTickerSuggestions,
   reviewValuationGrid,
   statsGrid,
-  cashInput,
   submitHoldingModalButton,
   submitWatchlistModalButton,
   trendChart,
@@ -357,15 +356,6 @@ reviewTickerInput.addEventListener("keydown", (event) => {
 });
 
 refreshPricesButton.addEventListener("click", refreshPrices);
-if (cashInput) {
-  cashInput.addEventListener("blur", commitCashInput);
-  cashInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      cashInput.blur();
-    }
-  });
-}
 if (trendRangeSelect) {
   trendRangeSelect.value = trendRange;
 }
@@ -678,7 +668,7 @@ function renderAllocationGroupToggle() {
   }
   allocationGroupToggle.classList.toggle("is-active", allocationGrouped);
   allocationGroupToggle.setAttribute("aria-pressed", allocationGrouped ? "true" : "false");
-  allocationGroupToggle.textContent = allocationGrouped ? "まとめ表示中" : "同一銘柄をまとめる";
+  allocationGroupToggle.textContent = allocationGrouped ? "まとめ中" : "まとめる";
 }
 
 function renderAllocationColorScheme() {
@@ -1107,24 +1097,31 @@ async function persistPortfolio({ silent = false } = {}) {
   }
 }
 
+function getCashInput() {
+  return document.getElementById("cash-input");
+}
+
 function renderCashInput() {
-  if (!cashInput) {
+  const input = getCashInput();
+  if (!input) {
     return;
   }
   const value = parseNumericInput(appState.cashJpy);
-  cashInput.value = value > 0 ? formatPlainNumber(value) : "";
+  input.value = value > 0 ? formatPlainNumber(value) : "";
 }
 
 function commitCashInput() {
-  if (!cashInput) {
+  const input = getCashInput();
+  if (!input) {
     return;
   }
-  const next = Math.max(0, parseWholeNumber(cashInput.value));
+  const next = Math.max(0, parseWholeNumber(input.value));
   const changed = next !== parseNumericInput(appState.cashJpy);
   appState.cashJpy = next;
   renderCashInput();
   if (changed) {
     persistPortfolio();
+    renderPortfolioSummary();
   }
 }
 
@@ -1610,9 +1607,10 @@ function buildTopStats() {
     { label: "保有資産評価", value: formatCurrency(totalAssets), sub: "株式＋現金", tone: "accent" },
     { label: "株式評価額", value: formatCurrency(totalValue), sub: "" },
     {
-      label: "現金",
+      label: "現金（買付余力）",
       value: formatCurrency(cash),
-      sub: totalAssets > 0 ? `${formatPercent((cash / totalAssets) * 100)}` : "買付余力"
+      sub: totalAssets > 0 ? `資産比率 ${formatPercent((cash / totalAssets) * 100)}` : "クリックして入力",
+      isCash: true
     },
     { label: "総取得金額", value: formatCurrency(totalCost), sub: "" },
     {
@@ -1639,11 +1637,31 @@ function renderStats() {
     if (stat.tone) {
       card.classList.add(`stat-card-${stat.tone}`);
     }
-    card.innerHTML = `
-      <div class="stat-label">${stat.label}</div>
-      <div class="stat-value">${stat.value}</div>
-      <div class="stat-sub">${stat.sub}</div>
-    `;
+    if (stat.isCash) {
+      // 現金カードはその場で編集できる（専用の入力欄は持たない）
+      card.classList.add("stat-card-cash");
+      card.innerHTML = `
+        <div class="stat-label">${stat.label}</div>
+        <div class="stat-value stat-cash-field"><span>¥</span><input type="text" id="cash-input" class="stat-cash-input" inputmode="numeric" autocomplete="off" placeholder="0" /></div>
+        <div class="stat-sub">${stat.sub}</div>
+      `;
+      const input = card.querySelector("#cash-input");
+      const cashValue = Math.max(0, parseNumericInput(appState.cashJpy));
+      input.value = cashValue > 0 ? formatPlainNumber(cashValue) : "";
+      input.addEventListener("blur", commitCashInput);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          input.blur();
+        }
+      });
+    } else {
+      card.innerHTML = `
+        <div class="stat-label">${stat.label}</div>
+        <div class="stat-value">${stat.value}</div>
+        <div class="stat-sub">${stat.sub}</div>
+      `;
+    }
     statsGrid.appendChild(card);
   }
 }
@@ -2531,7 +2549,8 @@ function drawAllocationChart() {
   const { ctx, width, height } = prepareHiDPICanvas(allocationChart);
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = Math.min(210, Math.max(92, Math.min(width * 0.24, height * 0.34)));
+  // ラベル引き出し線とテキストの分（約34px）を確保し、キャンバス内に収める
+  const radius = Math.min(210, Math.max(60, Math.min(width * 0.24, height / 2 - 34)));
   const innerRadius = radius * 0.7;
   const holdings = getHoldingsTableRows(allocationGrouped)
     .map(({ holding }) => normalizeHolding(holding))
@@ -2627,9 +2646,9 @@ function drawAllocationChart() {
   });
 
   ctx.fillStyle = "#f9fafb";
-  ctx.font = "700 18px Segoe UI";
+  ctx.font = radius < 110 ? "700 14px Segoe UI" : "700 18px Segoe UI";
   ctx.textAlign = "center";
-  ctx.fillText("保有割合", centerX, centerY + 6);
+  ctx.fillText("保有割合", centerX, centerY + 5);
 }
 
 function drawPerformanceChart() {

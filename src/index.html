@@ -65,14 +65,6 @@
 
           <p class="status-banner is-hidden" id="price-status"></p>
 
-          <div class="cash-editor" id="cash-editor">
-            <label class="cash-editor-label" for="cash-input">現金（買付余力）</label>
-            <div class="cash-editor-field">
-              <input type="text" id="cash-input" class="cash-editor-input" inputmode="numeric" placeholder="0" autocomplete="off" />
-              <span class="cash-editor-unit">円</span>
-            </div>
-          </div>
-
           <section class="stats-grid" id="stats-grid"></section>
 
           <div class="dashboard-charts">
@@ -120,8 +112,8 @@
                 </div>
                 <div class="panel-actions">
                   <select id="allocation-color-scheme" class="chart-color-select" title="配色">
-                    <option value="default">デフォルト</option>
-                    <option value="sector">セクター別</option>
+                    <option value="default">標準色</option>
+                    <option value="sector">セクター色</option>
                   </select>
                   <button class="ghost-button allocation-group-toggle" id="allocation-group-toggle" type="button" aria-pressed="false">まとめる</button>
                 </div>
@@ -317,7 +309,14 @@
               </div>
               <div class="stock-chat-shell">
                 <aside class="stock-chat-sidebar">
-                  <button class="chat-new-session-btn" id="stock-chat-new" disabled>+ 新しい会話</button>
+                  <div class="stock-chat-sidebar-head">
+                    <span class="stock-chat-sidebar-title">会話</span>
+                    <button class="stock-chat-new-btn" id="stock-chat-new" title="新しい会話" aria-label="新しい会話" disabled>
+                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+                        <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                      </svg>
+                    </button>
+                  </div>
                   <div class="stock-chat-session-list" id="stock-chat-sessions"></div>
                   <div class="stock-chat-note-path" id="stock-chat-note-path"></div>
                 </aside>
