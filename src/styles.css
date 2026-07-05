@@ -1382,7 +1382,7 @@ select:focus {
 
 .resource-meter-track {
   width: 54px;
-  height: 6px;
+  height: 4px;
   border-radius: 999px;
   background: #2a2a2a;
   overflow: hidden;
