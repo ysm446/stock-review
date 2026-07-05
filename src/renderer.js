@@ -39,7 +39,6 @@ import {
   reviewFinancialBody,
   reviewHistoryButton,
   reviewHistoryDropdown,
-  reviewNewsList,
   reviewOverviewGrid,
   reviewProfitabilityGrid,
   reviewSymbol,
@@ -236,6 +235,13 @@ const holdingMetricsLoading = new Set();
 function activateView(view) {
   navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
   views.forEach((panel) => panel.classList.toggle("is-visible", panel.id === `view-${view}`));
+  if (view === "portfolio") {
+    // 非表示中に描画されたキャンバスはサイズ 0 で潰れているため、表示後に再描画する
+    requestAnimationFrame(() => {
+      drawTrendChart();
+      drawAllocationChart();
+    });
+  }
 }
 
 function getDayChangeToggleButton() {
@@ -2379,39 +2385,6 @@ function renderReviewFinancials(rows) {
   });
 }
 
-function renderReviewNews(newsItems) {
-  reviewNewsList.innerHTML = "";
-  if (!newsItems.length) {
-    const item = document.createElement("li");
-    item.className = "review-news-empty";
-    item.textContent = "ニュースは取得できませんでした。";
-    reviewNewsList.appendChild(item);
-    return;
-  }
-
-  newsItems.forEach((item) => {
-    // タイトル・リンク・配信元は外部（Yahoo）由来の文字列のため、
-    // innerHTML には流さず DOM API で構築し、リンクは http(s) のみ許可する。
-    const li = document.createElement("li");
-    const link = String(item.link || "");
-    const anchor = document.createElement("a");
-    if (/^https?:\/\//i.test(link)) {
-      anchor.href = link;
-    }
-    anchor.target = "_blank";
-    anchor.rel = "noreferrer";
-    anchor.textContent = String(item.title || "");
-    li.appendChild(anchor);
-    if (item.publisher) {
-      const meta = document.createElement("span");
-      meta.className = "review-news-meta";
-      meta.textContent = String(item.publisher);
-      li.appendChild(meta);
-    }
-    reviewNewsList.appendChild(li);
-  });
-}
-
 function renderReviewSnapshot() {
   renderReviewChips();
 
@@ -2422,11 +2395,10 @@ function renderReviewSnapshot() {
     renderReviewKeyValueGrid(reviewProfitabilityGrid, []);
     renderReviewKeyValueGrid(reviewAnalystGrid, []);
     renderReviewFinancials([]);
-    renderReviewNews([]);
     return;
   }
 
-  const { ticker, name, currency, overview, valuation, profitability, analyst, financialSummary, news } = reviewSnapshot;
+  const { ticker, name, currency, overview, valuation, profitability, analyst, financialSummary } = reviewSnapshot;
   reviewSymbol.textContent = `${stockMaster[ticker] || name || ticker} (${ticker})`;
 
   renderReviewKeyValueGrid(reviewOverviewGrid, [
@@ -2461,7 +2433,6 @@ function renderReviewSnapshot() {
   ]);
 
   renderReviewFinancials(financialSummary || []);
-  renderReviewNews(news || []);
 }
 
 const REVIEW_HISTORY_KEY = "review-history";

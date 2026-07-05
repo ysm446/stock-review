@@ -75,77 +75,74 @@
 
           <section class="stats-grid" id="stats-grid"></section>
 
-          <section class="panel trend-panel">
-            <div class="trend-head">
-              <div class="trend-title-group">
-                <h2>評価額推移</h2>
-                <select id="trend-range" class="trend-select">
-                  <option value="1m">1ヶ月</option>
-                  <option value="3m" selected>3ヶ月</option>
-                  <option value="6m">6ヶ月</option>
-                  <option value="1y">1年</option>
-                </select>
-                <select id="trend-yaxis" class="trend-select">
-                  <option value="relative" selected>相対軸</option>
-                  <option value="absolute">絶対軸（0基点）</option>
-                </select>
-                <button type="button" class="ghost-button trend-annotation-add-btn" id="add-annotation-btn">＋注記</button>
-              </div>
-              <div class="trend-metrics">
-                <div class="trend-metric">
-                  <span class="trend-metric-label">前日比</span>
-                  <strong class="trend-metric-value" id="trend-daily-change">-</strong>
+          <div class="dashboard-charts">
+            <section class="panel trend-panel">
+              <div class="trend-head">
+                <div class="trend-title-group">
+                  <h2>評価額推移</h2>
+                  <select id="trend-range" class="trend-select">
+                    <option value="1m">1ヶ月</option>
+                    <option value="3m" selected>3ヶ月</option>
+                    <option value="6m">6ヶ月</option>
+                    <option value="1y">1年</option>
+                  </select>
+                  <select id="trend-yaxis" class="trend-select">
+                    <option value="relative" selected>相対軸</option>
+                    <option value="absolute">絶対軸（0基点）</option>
+                  </select>
+                  <button type="button" class="ghost-button trend-annotation-add-btn" id="add-annotation-btn">＋注記</button>
                 </div>
-                <div class="trend-metric">
-                  <span class="trend-metric-label">期間変動</span>
-                  <strong class="trend-metric-value" id="trend-period-change">-</strong>
+                <div class="trend-metrics">
+                  <div class="trend-metric">
+                    <span class="trend-metric-label">前日比</span>
+                    <strong class="trend-metric-value" id="trend-daily-change">-</strong>
+                  </div>
+                  <div class="trend-metric">
+                    <span class="trend-metric-label">期間変動</span>
+                    <strong class="trend-metric-value" id="trend-period-change">-</strong>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="trend-chart-wrap" id="trend-chart-wrap">
-              <canvas id="trend-chart" width="1440" height="320"></canvas>
-              <div class="trend-tooltip is-hidden" id="trend-tooltip">
-                <div class="trend-tooltip-date" id="trend-tooltip-date">-</div>
-                <div class="trend-tooltip-value" id="trend-tooltip-value">-</div>
-                <div class="trend-tooltip-change" id="trend-tooltip-change">-</div>
+              <div class="trend-chart-wrap" id="trend-chart-wrap">
+                <canvas id="trend-chart" width="1440" height="320"></canvas>
+                <div class="trend-tooltip is-hidden" id="trend-tooltip">
+                  <div class="trend-tooltip-date" id="trend-tooltip-date">-</div>
+                  <div class="trend-tooltip-value" id="trend-tooltip-value">-</div>
+                  <div class="trend-tooltip-change" id="trend-tooltip-change">-</div>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section class="panel panel-chart panel-chart-wide">
-            <div class="panel-head">
-              <div>
-                <p class="panel-kicker">Allocation</p>
-                <h2>保有割合チャート</h2>
-              </div>
-              <div class="panel-actions">
-                <label class="chart-color-scheme">
-                  <span class="chart-color-scheme-label">配色</span>
-                  <select id="allocation-color-scheme" class="chart-color-select">
+            <section class="panel panel-chart allocation-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>保有割合</h2>
+                </div>
+                <div class="panel-actions">
+                  <select id="allocation-color-scheme" class="chart-color-select" title="配色">
                     <option value="default">デフォルト</option>
                     <option value="sector">セクター別</option>
                   </select>
-                </label>
-                <button class="ghost-button allocation-group-toggle" id="allocation-group-toggle" type="button" aria-pressed="false">同一銘柄をまとめる</button>
+                  <button class="ghost-button allocation-group-toggle" id="allocation-group-toggle" type="button" aria-pressed="false">まとめる</button>
+                </div>
               </div>
-            </div>
-
-            <div class="allocation-grid">
               <div class="chart-stack">
                 <canvas id="allocation-chart" width="620" height="430"></canvas>
                 <div class="legend" id="allocation-legend"></div>
               </div>
+            </section>
 
-              <div class="performance-panel">
-                <div class="performance-head">
-                  <h3>銘柄別損益</h3>
+            <section class="panel panel-chart performance-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>銘柄別損益</h2>
                 </div>
-                <div class="performance-chart" id="performance-chart"></div>
               </div>
-            </div>
-          </section>
+              <div class="performance-chart" id="performance-chart"></div>
+            </section>
+          </div>
 
-          <section class="content-grid">
+          <section class="content-grid dashboard-tables">
             <article class="panel panel-table">
               <div class="panel-head">
                 <div>
@@ -248,6 +245,8 @@
           <section class="review-dashboard">
             <div class="review-chip-row" id="review-chip-row"></div>
 
+            <div class="review-main-grid">
+            <div class="review-metrics-col">
             <div class="review-grid-layout">
               <article class="panel review-panel review-overview-panel">
                 <div class="review-symbol" id="review-symbol">-</div>
@@ -303,14 +302,7 @@
                 <div class="review-kv-grid" id="review-analyst-grid"></div>
               </article>
 
-              <article class="panel review-panel review-news-panel">
-                <div class="panel-head">
-                  <div>
-                    <h2>最新ニュース</h2>
-                  </div>
-                </div>
-                <ul class="review-news-list" id="review-news-list"></ul>
-              </article>
+            </div>
             </div>
 
             <section class="stock-chat-panel" id="stock-chat-panel">
@@ -340,6 +332,7 @@
                 </div>
               </div>
             </section>
+            </div>
 
           </section>
         </section>

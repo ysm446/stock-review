@@ -4,6 +4,12 @@
 
 ## 完了済み
 
+- **2026-07-05: フェーズ5（ダッシュボード UI 整理）を完了**。
+  - ポートフォリオ: `#view-portfolio.is-visible` を高さ固定 flex 化し、`.dashboard-charts`（トレンド 1.5fr / 保有割合 1fr / 銘柄別損益 0.9fr、高さ330px）+ `.dashboard-tables`（保有 1.75fr / ウォッチ 1fr、内部スクロール）に再構成。チャートは CSS サイズ追従（`prepareHiDPICanvas`）。1500px 未満はページスクロールへフォールバック。
+  - レビュー: 最新ニュースパネルを削除（`renderReviewNews` / `reviewNewsList` / 関連 CSS も削除）。`.review-main-grid` で左=指標グリッド（内部スクロール）/ 右=銘柄チャット全高の2カラム。
+  - 銘柄チャット: 会話削除ボタン（確認付き、`DELETE /sessions/{id}`）、Markdown 描画（`src/chat-markdown.js` に共通化、renderer-chat からも移行）。
+  - `activateView("portfolio")` でチャート再描画（非表示中描画のサイズ潰れ対策）。
+  - 検証: `STOCK_REVIEW_AUTOSHOT=1` での実起動スクリーンショット（portfolio / review）で 1920x1080 に収まることを目視確認。**注意: この環境から Electron を起動するときは `env -u ELECTRON_RUN_AS_NODE` が必要**。
 - **2026-07-05: フェーズ4第2弾（役割ベースモデル管理）を完了**。
   - `chat_llama_manager.py` を役割ベースに全面書き換え: standard（:8091、常駐・要約用・フォールバック）/ deep（:8092、チャット優先・手動ロード/アンロード）。設定と PID は `llama_paths.json` の `roles` キーに保存。旧 :8080 構成からの自動移行あり。
   - **重要**: news-picker が同一マシンで 8081/8082 を使用しているため 8091/8092 を採用（検証中に実際に衝突を検出。ポート割り当てはメモリ `port-allocation-same-machine` 参照）。
@@ -55,7 +61,8 @@
 
 ## 未完了 / 検討中
 
-- **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化、銘柄別チャットの Markdown 描画対応、エージェントの出典リンクのクリック対応確認、要約への json_schema 構造化出力の導入検討。
+- **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化（Markdown は共通化済み）、エージェントの出典リンクのクリック対応確認、要約への json_schema 構造化出力の導入検討。
+- **UI 微調整候補**: 保有割合ドーナツの小さいスライスのラベル重なり、レビュー左カラムのパネル密度調整、銘柄チャットの会話リネーム。
 - **フェーズ5: ダッシュボード統合** — renderer.js（約2,900行）の分割を前提に portfolio ビューを高さ固定グリッド化。
 - 外貨建て銘柄の買値の通貨対応（現状は「円で入力」ルール。買値通貨を保持して換算するのが本修正）。
 - 株数・買値の小数対応（`parse_number`/`parseWholeNumber` が整数に丸めるため、米国株の端株・小数の平均取得単価が失われる）。

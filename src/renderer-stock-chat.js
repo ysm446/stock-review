@@ -1,4 +1,5 @@
 import { apiFetch, createActivityRenderer } from "./chat-api.js";
+import { renderMarkdown } from "./chat-markdown.js";
 
 const panel = document.getElementById("stock-chat-panel");
 const subtitle = document.getElementById("stock-chat-subtitle");
@@ -123,8 +124,12 @@ function appendMessage(role, content, createdAt = Date.now()) {
 
   const body = document.createElement("div");
   body.className = role === "user" ? "chat-message-bubble" : "chat-message-text";
-  body.textContent = content;
-  body.style.whiteSpace = "pre-wrap";
+  if (role === "assistant") {
+    body.innerHTML = renderMarkdown(content);
+  } else {
+    body.textContent = content;
+    body.style.whiteSpace = "pre-wrap";
+  }
 
   wrap.append(meta, body);
   messagesEl.appendChild(wrap);
@@ -143,18 +148,31 @@ function renderSessions() {
   }
 
   sessions.forEach((session) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `stock-chat-session${session.id === activeSessionId ? " is-active" : ""}`;
+    const item = document.createElement("div");
+    item.className = `stock-chat-session${session.id === activeSessionId ? " is-active" : ""}`;
+    item.setAttribute("role", "button");
+    item.tabIndex = 0;
     const title = document.createElement("span");
     title.className = "stock-chat-session-title";
     title.textContent = session.title || "新しい会話";
     const date = document.createElement("span");
     date.className = "stock-chat-session-date";
     date.textContent = formatDate(session.updated_at || session.created_at);
-    button.append(title, date);
-    button.addEventListener("click", () => selectSession(session.id));
-    sessionList.appendChild(button);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "stock-chat-session-delete";
+    del.textContent = "×";
+    del.title = "会話を削除";
+    del.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteSession(session);
+    });
+    item.append(title, date, del);
+    item.addEventListener("click", () => selectSession(session.id));
+    item.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") selectSession(session.id);
+    });
+    sessionList.appendChild(item);
   });
 }
 
@@ -248,6 +266,25 @@ async function refreshSessions() {
   renderSessions();
 }
 
+async function deleteSession(session) {
+  if (streaming) return;
+  const label = session.title || "新しい会話";
+  if (!window.confirm(`会話「${label}」を削除しますか？`)) return;
+  try {
+    await api("DELETE", `/sessions/${session.id}`);
+  } catch (error) {
+    window.alert(`削除に失敗しました: ${error.message}`);
+    return;
+  }
+  if (activeSessionId === session.id) {
+    activeSessionId = null;
+    history = [];
+    clearMessages("会話を選択するか、新しい会話を作成してください");
+  }
+  await refreshSessions();
+  setEnabled(true);
+}
+
 async function sendMessage() {
   const text = inputEl.value.trim();
   if (!text || !activeSessionId || streaming) return;
@@ -278,7 +315,7 @@ async function sendMessage() {
         },
         onTextReset: () => {
           accumulated = "";
-          assistant.body.textContent = "";
+          assistant.body.innerHTML = "";
         },
         onUpdate: () => {
           assistant.wrap.classList.remove("loading");
@@ -289,7 +326,7 @@ async function sendMessage() {
     (chunk) => {
       assistant.wrap.classList.remove("loading");
       accumulated += chunk;
-      assistant.body.textContent = accumulated;
+      assistant.body.innerHTML = renderMarkdown(accumulated);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
     async (event) => {
@@ -342,7 +379,7 @@ async function summarizeToMarkdown() {
     (chunk) => {
       assistant.wrap.classList.remove("loading");
       markdown += chunk;
-      assistant.body.textContent = markdown;
+      assistant.body.innerHTML = renderMarkdown(markdown);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
     async () => {

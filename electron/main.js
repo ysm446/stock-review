@@ -102,15 +102,15 @@ function getMainWindow() {
   return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
 }
 
-function captureScreenshot(win) {
-  if (!win || win.isDestroyed()) return;
-  win.webContents.capturePage().then(image => {
+function captureScreenshot(win, suffix = "") {
+  if (!win || win.isDestroyed()) return Promise.resolve();
+  return win.webContents.capturePage().then(image => {
     const dir = path.join(DATA_DIR, "screenshots");
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date();
     const pad = n => String(n).padStart(2, "0");
     const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const filePath = path.join(dir, `${stamp}.png`);
+    const filePath = path.join(dir, `${stamp}${suffix}.png`);
     fs.writeFileSync(filePath, image.toPNG());
     console.log(`Screenshot saved: ${filePath}`);
   }).catch(error => console.error("Screenshot failed:", error));
@@ -159,6 +159,24 @@ function createWindow() {
       }
     }
   });
+
+  // 開発用: STOCK_REVIEW_AUTOSHOT=1 で起動すると、各ビューのスクリーンショットを
+  // data/screenshots/ に保存して自動終了する（レイアウト検証用）
+  if (process.env.STOCK_REVIEW_AUTOSHOT) {
+    win.webContents.once("did-finish-load", () => {
+      const clickNav = view => win.webContents.executeJavaScript(
+        `document.querySelector('.nav-button[data-view="${view}"]')?.click()`
+      );
+      setTimeout(async () => {
+        await captureScreenshot(win, "-portfolio");
+        await clickNav("review");
+        setTimeout(async () => {
+          await captureScreenshot(win, "-review");
+          setTimeout(() => app.quit(), 500);
+        }, 2000);
+      }, 6000);
+    });
+  }
 
   win.loadFile(path.join(__dirname, "..", "src", "index.html"));
 }
