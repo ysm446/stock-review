@@ -273,6 +273,9 @@ async function sendMessage() {
       systemPrompt: buildStockSystemPrompt(),
       endpoint: "/chat/agent-stream",
       onActivity: createActivityRenderer(activity, {
+        onModel: evt => {
+          if (evt.name) assistant.meta.textContent = evt.name;
+        },
         onTextReset: () => {
           accumulated = "";
           assistant.body.textContent = "";

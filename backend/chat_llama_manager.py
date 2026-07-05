@@ -1,4 +1,12 @@
-"""llama-server lifecycle management (based on lm-chat's llama_manager.py)."""
+"""llama-server の役割ベース管理（news-picker の llama_manager パターンを移植）。
+
+- standard（:8081）: 常駐向けの軽量モデル。ノート要約などの背景処理と、
+  deep が落ちているときのチャットのフォールバック先。
+- deep（:8082）: チャット用の高性能モデル。VRAM 節約のため手動でロード/アンロードする。
+
+設定と PID は data/llama_paths.json に保存する:
+  {"roles": {"standard": {"model_path": ..., "ctx_size": ..., "pid": ...}, "deep": {...}}}
+"""
 from __future__ import annotations
 
 import json
@@ -20,9 +28,17 @@ _PATHS_FILE = _ROOT / "data" / "llama_paths.json"
 _RUNTIME_DIR = _ROOT / "runtime" / "llama-server"
 _LEGACY_BIN_DIR = _ROOT / "bin" / "llama-server"
 
-LLAMA_PORT = 8080
-LLAMA_BASE_URL = f"http://127.0.0.1:{LLAMA_PORT}"
-DEFAULT_CTX_SIZE = 4096
+# 注意: news-picker が同一マシンで 8081/8082 を使うため、衝突しないポートを選ぶこと
+ROLES: dict[str, dict] = {
+    "standard": {"port": 8091, "default_ctx": 16384, "label": "常駐"},
+    "deep": {"port": 8092, "default_ctx": 32768, "label": "深堀り"},
+}
+
+CTX_OPTIONS = (4096, 8192, 16384, 32768, 65536)
+
+
+def role_base_url(role: str) -> str:
+    return f"http://127.0.0.1:{ROLES[role]['port']}"
 
 
 def _find_latest_exe() -> Path:
@@ -56,35 +72,34 @@ def _save_paths(paths: dict) -> None:
     atomic_write_text(_PATHS_FILE, json.dumps(paths, indent=2, ensure_ascii=False))
 
 
-def is_ready() -> bool:
-    try:
-        with urllib_request.urlopen(f"{LLAMA_BASE_URL}/health", timeout=2) as resp:
-            return resp.status == 200
-    except Exception:
-        return False
+def _role_state(paths: dict, role: str) -> dict:
+    return paths.setdefault("roles", {}).setdefault(role, {})
 
 
-def get_status() -> dict:
+def migrate_legacy_state() -> None:
+    """旧・単一サーバー構成（:8080、active_model_path/llama_server_pid）からの移行。
+
+    旧キーが残っていれば、稼働中の旧サーバーを止め、選択されていたモデルを
+    deep（チャット役割）に引き継ぐ。
+    """
     paths = _get_paths()
-    model_path = paths.get("active_model_path", "")
-    ctx_size = int(paths.get("ctx_size") or DEFAULT_CTX_SIZE)
-    return {
-        "loaded": is_ready(),
-        "model_path": model_path,
-        "model_name": Path(model_path).name if model_path else "",
-        "ctx_size": ctx_size,
-    }
-
-
-def save_context_size(ctx_size: int) -> None:
-    paths = _get_paths()
-    paths["ctx_size"] = int(ctx_size)
+    if "llama_server_pid" not in paths and "active_model_path" not in paths:
+        return
+    legacy_pid = paths.pop("llama_server_pid", None)
+    legacy_model = paths.pop("active_model_path", "")
+    legacy_ctx = paths.pop("ctx_size", None)
+    if legacy_pid:
+        _kill_pid(legacy_pid)
+    deep = _role_state(paths, "deep")
+    if legacy_model and not deep.get("model_path"):
+        deep["model_path"] = legacy_model
+        if legacy_ctx:
+            deep["ctx_size"] = int(legacy_ctx)
     _save_paths(paths)
+    logger.info("Migrated legacy llama state (model → deep role)")
 
 
-def _kill_running() -> None:
-    paths = _get_paths()
-    pid = paths.get("llama_server_pid")
+def _kill_pid(pid) -> None:
     if not pid:
         return
     if sys.platform == "win32":
@@ -99,39 +114,110 @@ def _kill_running() -> None:
             os.kill(int(pid), 9)
         except OSError:
             pass
-    paths["llama_server_pid"] = None
+
+
+def is_ready(role: str) -> bool:
+    try:
+        with urllib_request.urlopen(f"{role_base_url(role)}/health", timeout=2) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def chat_base_url() -> str | None:
+    """チャットに使うサーバー。deep 優先、落ちていれば standard にフォールバック。"""
+    if is_ready("deep"):
+        return role_base_url("deep")
+    if is_ready("standard"):
+        return role_base_url("standard")
+    return None
+
+
+def chat_role() -> str | None:
+    if is_ready("deep"):
+        return "deep"
+    if is_ready("standard"):
+        return "standard"
+    return None
+
+
+def get_roles_status() -> dict:
+    paths = _get_paths()
+    roles = {}
+    for role, config in ROLES.items():
+        state = (paths.get("roles") or {}).get(role, {})
+        model_path = state.get("model_path", "")
+        roles[role] = {
+            "role": role,
+            "label": config["label"],
+            "port": config["port"],
+            "ready": is_ready(role),
+            "model_path": model_path,
+            "model_name": Path(model_path).name if model_path else "",
+            "ctx_size": int(state.get("ctx_size") or config["default_ctx"]),
+        }
+    active = chat_role()
+    return {
+        "roles": roles,
+        "chat_role": active,
+        "chat_model_name": roles[active]["model_name"] if active else "",
+    }
+
+
+def save_role_settings(role: str, model_path: str | None = None, ctx_size: int | None = None) -> None:
+    paths = _get_paths()
+    state = _role_state(paths, role)
+    if model_path is not None:
+        state["model_path"] = model_path
+    if ctx_size is not None:
+        state["ctx_size"] = int(ctx_size)
     _save_paths(paths)
 
 
-def _wait_for_server(timeout: int = 90) -> None:
+def _wait_for_server(role: str, timeout: int = 120) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if is_ready():
+        if is_ready(role):
             return
         time.sleep(1.5)
-    raise TimeoutError("llama-server did not start within the timeout")
+    raise TimeoutError(f"llama-server ({role}) did not start within the timeout")
 
 
-def load_model(model_path: str, ctx_size: int = DEFAULT_CTX_SIZE, n_gpu_layers: int = -1) -> None:
-    _kill_running()
+def start(role: str, model_path: str | None = None, ctx_size: int | None = None,
+          n_gpu_layers: int = -1) -> None:
+    """役割のサーバーを起動する。既に起動済みで同じモデルなら何もしない。"""
+    if role not in ROLES:
+        raise ValueError(f"Unknown role: {role}")
+
+    paths = _get_paths()
+    state = _role_state(paths, role)
+    target_path = model_path or state.get("model_path", "")
+    if not target_path:
+        raise ValueError("モデルが設定されていません")
+    target_ctx = int(ctx_size or state.get("ctx_size") or ROLES[role]["default_ctx"])
+
+    if is_ready(role) and state.get("model_path") == target_path and int(state.get("ctx_size") or 0) == target_ctx:
+        logger.info("llama-server (%s) already running: %s", role, Path(target_path).name)
+        return
+
+    stop(role)
     time.sleep(1)
 
     exe = _find_latest_exe()
-    model_p = Path(model_path)
+    model_p = Path(target_path)
     if not model_p.exists():
-        raise ValueError(f"Model file not found: {model_path}")
+        raise ValueError(f"Model file not found: {target_path}")
 
     mmproj_candidates = [f for f in model_p.parent.glob("*.gguf") if "mmproj" in f.name.lower()]
 
     cmd = [
         str(exe),
-        "--model", model_path,
+        "--model", str(model_p),
         "--host", "127.0.0.1",
-        "--port", str(LLAMA_PORT),
-        "--ctx-size", str(ctx_size),
+        "--port", str(ROLES[role]["port"]),
+        "--ctx-size", str(target_ctx),
         "--n-gpu-layers", str(n_gpu_layers),
         # チャットテンプレートによるツールコール解析と reasoning_content の分離に必須
-        # （Ornith 等の reasoning + tool-calling モデルはこれが無いと機能しない）
         "--jinja",
         "--alias", model_p.stem,
     ]
@@ -142,26 +228,47 @@ def load_model(model_path: str, ctx_size: int = DEFAULT_CTX_SIZE, n_gpu_layers: 
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
 
-    logger.info("Starting llama-server: %s", model_p.name)
+    logger.info("Starting llama-server (%s): %s", role, model_p.name)
     proc = subprocess.Popen(cmd, cwd=exe.parent, **kwargs)
     time.sleep(1)
     if proc.poll() is not None:
         raise RuntimeError("llama-server exited immediately after launch")
 
     paths = _get_paths()
-    paths["active_model_path"] = model_path
-    paths["ctx_size"] = ctx_size
-    paths["llama_server_pid"] = proc.pid
+    state = _role_state(paths, role)
+    state["model_path"] = str(model_p)
+    state["ctx_size"] = target_ctx
+    state["pid"] = proc.pid
     _save_paths(paths)
 
-    _wait_for_server()
-    logger.info("llama-server ready (model: %s)", model_p.name)
+    _wait_for_server(role)
+    logger.info("llama-server (%s) ready: %s", role, model_p.name)
 
 
-def eject_model() -> None:
-    logger.info("Ejecting model...")
-    _kill_running()
+def stop(role: str) -> None:
     paths = _get_paths()
-    paths["active_model_path"] = ""
-    paths["llama_server_pid"] = None
-    _save_paths(paths)
+    state = _role_state(paths, role)
+    pid = state.get("pid")
+    if pid:
+        _kill_pid(pid)
+        state["pid"] = None
+        _save_paths(paths)
+
+
+def stop_all() -> None:
+    for role in ROLES:
+        try:
+            stop(role)
+        except Exception:
+            pass
+
+
+def ensure_standard() -> None:
+    """standard が設定済みなら起動する（バックエンド起動時の自動起動用）。失敗しても落とさない。"""
+    try:
+        paths = _get_paths()
+        state = (paths.get("roles") or {}).get("standard", {})
+        if state.get("model_path"):
+            start("standard")
+    except Exception as e:
+        logger.warning("ensure_standard failed: %s", e)

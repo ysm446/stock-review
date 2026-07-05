@@ -87,8 +87,6 @@ const chatNewWsBtn        = document.getElementById("chat-new-ws-btn");
 const chatTree            = document.getElementById("chat-tree");
 const chatModelModalBackdrop = document.getElementById("chat-model-modal-backdrop");
 const chatModelList          = document.getElementById("chat-model-list");
-const chatContextRange       = document.getElementById("chat-context-range");
-const chatContextValue       = document.getElementById("chat-context-value");
 const closeChatModelModal    = document.getElementById("close-chat-model-modal");
 
 // ── State ────────────────────────────────────────────────
@@ -104,15 +102,15 @@ let serverLoaded     = false;
 let loadingModel     = false;
 let streaming        = false;
 let currentModelName = "";
-let selectedCtxSize  = 4096;
+let rolesStatus      = null;   // GET /llama/roles の結果
 
 const CHAT_SIDEBAR_WIDTH_KEY = "stock-review.chatSidebarWidth";
 const CHAT_DOC_EXPANDED_KEY = "stock-review.chatDocumentsExpanded";
-const CHAT_CTX_SIZE_KEY = "stock-review.chatContextSize";
 const CHAT_SIDEBAR_DEFAULT_WIDTH = 220;
 const CHAT_SIDEBAR_MIN_WIDTH = 180;
 const CHAT_SIDEBAR_MAX_WIDTH = 440;
-const CHAT_CTX_OPTIONS = [4096, 8192, 16384, 32768];
+const ROLE_CTX_OPTIONS = [4096, 8192, 16384, 32768, 65536];
+const ROLE_ORDER = ["deep", "standard"];
 
 let treeDragState = null;
 
@@ -124,24 +122,6 @@ function setModelStatus(state, label) {
 
 function ctxLabel(size) {
   return `${Math.round(size / 1024)}K`;
-}
-
-function setContextControl(size) {
-  const optionIndex = CHAT_CTX_OPTIONS.indexOf(Number(size));
-  const index = optionIndex === -1 ? 0 : optionIndex;
-  selectedCtxSize = CHAT_CTX_OPTIONS[index];
-  if (chatContextRange) chatContextRange.value = String(index);
-  if (chatContextValue) chatContextValue.textContent = ctxLabel(selectedCtxSize);
-}
-
-function loadSavedContextSize() {
-  const saved = Number(localStorage.getItem(CHAT_CTX_SIZE_KEY));
-  return CHAT_CTX_OPTIONS.includes(saved) ? saved : selectedCtxSize;
-}
-
-function saveContextSizePreference() {
-  localStorage.setItem(CHAT_CTX_SIZE_KEY, String(selectedCtxSize));
-  return api("POST", "/model/settings", { ctx_size: selectedCtxSize });
 }
 
 function setInputEnabled(on) {
@@ -221,18 +201,18 @@ function initChatSidebarResize() {
 }
 
 async function refreshModelStatus() {
-  const status = await api("GET", "/model/status");
-  serverLoaded = Boolean(status.loaded);
-  currentModelName = serverLoaded ? (status.model_name || "") : "";
-  setContextControl(status.ctx_size || selectedCtxSize);
-  localStorage.setItem(CHAT_CTX_SIZE_KEY, String(selectedCtxSize));
+  const status = await api("GET", "/llama/roles");
+  rolesStatus = status;
+  serverLoaded = Boolean(status.chat_role);
+  currentModelName = status.chat_model_name || "";
 
   if (serverLoaded) {
-    setModelStatus("is-loaded", currentModelName || "読み込み済み");
-    if (activeSessionId !== null) setInputEnabled(true);
+    const roleLabel = status.roles?.[status.chat_role]?.label || status.chat_role;
+    setModelStatus("is-loaded", `${roleLabel}: ${currentModelName || "読み込み済み"}`);
+    if (activeSessionId !== null && !streaming) setInputEnabled(true);
   } else {
-    setModelStatus("", "モデルを選択");
-    setInputEnabled(false);
+    setModelStatus("", "モデルを設定");
+    if (!streaming) setInputEnabled(false);
   }
 
   return status;
@@ -1161,6 +1141,9 @@ async function regenerateFromUserMessage(messageId) {
       persistUser: false,
       endpoint: "/chat/agent-stream",
       onActivity: createActivityRenderer(activity, {
+        onModel: evt => {
+          if (evt.name) meta.textContent = `アシスタント（${evt.name}） 生成中`;
+        },
         onTextReset: () => {
           accumulated = "";
           setMessageBodyContent(bubble, "assistant", "");
@@ -1244,6 +1227,9 @@ async function sendMessage() {
     {
       endpoint: "/chat/agent-stream",
       onActivity: createActivityRenderer(activity, {
+        onModel: evt => {
+          if (evt.name) meta.textContent = `アシスタント（${evt.name}） 生成中`;
+        },
         onTextReset: () => {
           accumulated = "";
           setMessageBodyContent(bubble, "assistant", "");
@@ -1269,12 +1255,14 @@ async function refreshSession(sessionId) {
   }
 }
 
-// ── Model picker ──────────────────────────────────────────
+// ── Model picker（役割ベース: deep=チャット優先 / standard=常駐・フォールバック） ──
 async function openModelPicker() {
-  if (loadingModel) return;
-  chatModelList.innerHTML = "";
   chatModelModalBackdrop.classList.remove("is-hidden");
+  await renderModelModal();
+}
 
+async function renderModelModal() {
+  chatModelList.innerHTML = "";
   let models;
   let status;
   try {
@@ -1290,54 +1278,104 @@ async function openModelPicker() {
     return;
   }
 
+  for (const roleKey of ROLE_ORDER) {
+    const role = status.roles?.[roleKey];
+    if (!role) continue;
+    chatModelList.appendChild(buildRoleCard(roleKey, role, models));
+  }
+}
+
+function buildRoleCard(roleKey, role, models) {
+  const card = document.createElement("div");
+  card.className = "chat-role-card";
+
+  const head = document.createElement("div");
+  head.className = "chat-role-head";
+  const title = document.createElement("strong");
+  title.textContent = `${role.label}モデル`;
+  const state = document.createElement("span");
+  state.className = `chat-role-state${role.ready ? " is-ready" : ""}`;
+  state.textContent = role.ready ? `稼働中 (:${role.port})` : "停止中";
+  head.append(title, state);
+
+  const modelSelect = document.createElement("select");
+  modelSelect.className = "chat-role-select";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "モデルを選択...";
+  modelSelect.appendChild(placeholder);
   models.forEach(({ name, path, relative_path }) => {
-    const btn = document.createElement("button");
-    btn.className = `chat-model-item${path === status.model_path ? " is-active" : ""}`;
-    btn.type = "button";
-    btn.innerHTML = `<div>
-      <div class="chat-model-item-name">${name}</div>
-      <div class="chat-model-item-path">${relative_path}</div>
-    </div>`;
-    btn.addEventListener("click", () => loadModel(path, name));
-    chatModelList.appendChild(btn);
+    const option = document.createElement("option");
+    option.value = path;
+    option.textContent = relative_path || name;
+    if (path === role.model_path) option.selected = true;
+    modelSelect.appendChild(option);
   });
+
+  const ctxSelect = document.createElement("select");
+  ctxSelect.className = "chat-role-select chat-role-ctx";
+  ROLE_CTX_OPTIONS.forEach(size => {
+    const option = document.createElement("option");
+    option.value = String(size);
+    option.textContent = `ctx ${ctxLabel(size)}`;
+    if (size === role.ctx_size) option.selected = true;
+    ctxSelect.appendChild(option);
+  });
+
+  const saveSettings = () => {
+    api("PUT", `/llama/${roleKey}/settings`, {
+      model_path: modelSelect.value || null,
+      ctx_size: Number(ctxSelect.value) || null,
+    }).catch(() => {});
+  };
+  modelSelect.addEventListener("change", saveSettings);
+  ctxSelect.addEventListener("change", saveSettings);
+
+  const actionBtn = document.createElement("button");
+  actionBtn.type = "button";
+  actionBtn.className = "accent-button chat-role-action";
+  actionBtn.textContent = role.ready ? "停止" : "起動";
+  actionBtn.addEventListener("click", async () => {
+    if (loadingModel) return;
+    loadingModel = true;
+    actionBtn.disabled = true;
+    try {
+      if (role.ready) {
+        await api("POST", `/llama/${roleKey}/stop`);
+      } else {
+        if (!modelSelect.value) {
+          actionBtn.disabled = false;
+          loadingModel = false;
+          return;
+        }
+        actionBtn.textContent = "起動中...";
+        await api("POST", `/llama/${roleKey}/start`, {
+          model_path: modelSelect.value,
+          ctx_size: Number(ctxSelect.value) || null,
+        });
+      }
+    } catch (err) {
+      window.alert(`${role.label}モデルの操作に失敗しました: ${err.message}`);
+    } finally {
+      loadingModel = false;
+      await renderModelModal();
+    }
+  });
+
+  const controls = document.createElement("div");
+  controls.className = "chat-role-controls";
+  controls.append(modelSelect, ctxSelect, actionBtn);
+  card.append(head, controls);
+  return card;
 }
 
 function closeModelPicker() {
   chatModelModalBackdrop.classList.add("is-hidden");
 }
 
-async function loadModel(modelPath, displayName) {
-  closeModelPicker();
-  loadingModel = true;
-  serverLoaded = false;
-  setInputEnabled(false);
-  setModelStatus("is-loading", `読み込み中: ${displayName} (${ctxLabel(selectedCtxSize)})`);
-
-  try {
-    await api("POST", "/model/load", { model_path: modelPath, ctx_size: selectedCtxSize });
-    serverLoaded = true;
-    currentModelName = displayName;
-    setModelStatus("is-loaded", displayName);
-    if (activeSessionId !== null) setInputEnabled(true);
-  } catch (err) {
-    currentModelName = "";
-    setModelStatus("", "読み込み失敗 — 再選択してください");
-  } finally {
-    loadingModel = false;
-  }
-}
-
 // ── Event listeners ───────────────────────────────────────
 chatModelBar.addEventListener("click", openModelPicker);
 closeChatModelModal.addEventListener("click", closeModelPicker);
-function handleContextRangeChange() {
-  const index = Number(chatContextRange.value);
-  setContextControl(CHAT_CTX_OPTIONS[index] || CHAT_CTX_OPTIONS[0]);
-  saveContextSizePreference().catch(() => {});
-}
-chatContextRange?.addEventListener("input", handleContextRangeChange);
-chatContextRange?.addEventListener("change", handleContextRangeChange);
 chatModelModalBackdrop.addEventListener("click", e => {
   if (e.target === chatModelModalBackdrop) closeModelPicker();
 });
@@ -1354,7 +1392,12 @@ chatInput.addEventListener("input", () => {
 
 // ── Init ──────────────────────────────────────────────────
 loadExpandedDocumentSections();
-setContextControl(loadSavedContextSize());
 refreshModelStatus().catch(() => {});
 initChatSidebarResize();
 loadWorkspaces();
+
+// standard の自動起動（バックエンド起動後にバックグラウンドで走る）を拾うため、
+// ストリーミング中を除いて定期的に役割ステータスを更新する。
+setInterval(() => {
+  if (!streaming && !loadingModel) refreshModelStatus().catch(() => {});
+}, 10000);

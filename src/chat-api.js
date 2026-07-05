@@ -31,11 +31,13 @@ const TOOL_LABELS = {
 
 // エージェントの活動イベント（tool_call / tool_result / thinking / turn_reset）を
 // メッセージ内の活動領域に描画するハンドラーを作る。renderer-chat / renderer-stock-chat 共用。
-export function createActivityRenderer(activityEl, { onTextReset, onUpdate } = {}) {
+export function createActivityRenderer(activityEl, { onTextReset, onUpdate, onModel } = {}) {
   let lastToolLine = null;
   return (evt) => {
     if (!evt || !activityEl) return;
-    if (evt.type === "tool_call") {
+    if (evt.type === "model") {
+      if (onModel) onModel(evt);
+    } else if (evt.type === "tool_call") {
       const line = document.createElement("div");
       line.className = "chat-activity-line";
       const label = TOOL_LABELS[evt.name] || evt.name;

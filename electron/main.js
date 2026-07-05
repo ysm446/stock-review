@@ -61,8 +61,19 @@ function stopLlamaServer() {
     console.warn("Failed to read llama server state:", error);
   }
 
-  const pid = Number(paths.llama_server_pid);
-  if (Number.isInteger(pid) && pid > 0) {
+  // 役割ベース（roles.standard / roles.deep）と旧形式（llama_server_pid）の両方の PID を止める
+  const pids = [];
+  if (paths.roles && typeof paths.roles === "object") {
+    for (const role of Object.values(paths.roles)) {
+      const pid = Number(role?.pid);
+      if (Number.isInteger(pid) && pid > 0) pids.push(pid);
+      if (role && typeof role === "object") role.pid = null;
+    }
+  }
+  const legacyPid = Number(paths.llama_server_pid);
+  if (Number.isInteger(legacyPid) && legacyPid > 0) pids.push(legacyPid);
+
+  for (const pid of pids) {
     try {
       if (process.platform === "win32") {
         spawnSync("taskkill", ["/F", "/T", "/PID", String(pid)], {
@@ -78,12 +89,10 @@ function stopLlamaServer() {
   }
 
   try {
+    delete paths.llama_server_pid;
+    delete paths.active_model_path;
     fs.mkdirSync(path.dirname(LLAMA_PATHS_FILE), { recursive: true });
-    fs.writeFileSync(
-      LLAMA_PATHS_FILE,
-      JSON.stringify({ active_model_path: "", llama_server_pid: null }, null, 2),
-      "utf8"
-    );
+    fs.writeFileSync(LLAMA_PATHS_FILE, JSON.stringify(paths, null, 2), "utf8");
   } catch (error) {
     console.warn("Failed to clear llama server state:", error);
   }

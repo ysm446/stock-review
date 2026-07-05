@@ -4,6 +4,14 @@
 
 ## 完了済み
 
+- **2026-07-05: フェーズ4第2弾（役割ベースモデル管理）を完了**。
+  - `chat_llama_manager.py` を役割ベースに全面書き換え: standard（:8091、常駐・要約用・フォールバック）/ deep（:8092、チャット優先・手動ロード/アンロード）。設定と PID は `llama_paths.json` の `roles` キーに保存。旧 :8080 構成からの自動移行あり。
+  - **重要**: news-picker が同一マシンで 8081/8082 を使用しているため 8091/8092 を採用（検証中に実際に衝突を検出。ポート割り当てはメモリ `port-allocation-same-machine` 参照）。
+  - API: `GET /llama/roles` / `POST /llama/{role}/start|stop` / `PUT /llama/{role}/settings`。旧 `/model/*` は廃止。
+  - `/chat/agent-stream` は deep→standard フォールバックで model イベントを先頭に送出。`/chat/stream`（要約用）は standard 優先 + `enable_thinking:false`（実測 0.5 秒で応答）。
+  - バックエンド起動時に standard を自動起動（`ensure_standard`、バックグラウンド実行）。Electron 終了時は roles 配下の全 PID を停止。
+  - フロント: モデルモーダルを役割カード UI に刷新（モデル/ctx 選択 + 起動/停止）。ステータスバーは「深堀り: モデル名」形式、10秒間隔で自動更新。回答メタに実際に使われたモデル名を表示。
+  - E2E 検証済み: 設定保存 → 再起動 → standard 自動起動 → deep 停止時のフォールバックでエージェント動作（model イベント + news_search + 出典付き回答）、要約 0.5 秒。
 - **2026-07-05: フェーズ4第1弾（エージェンティックチャット + Web検索、Ornith 対応）を完了**。
   - 新規モジュール: `backend/search_web.py`（ddgs）、`backend/llm_client.py`（OpenAI 互換ストリーム、reasoning_content 分離、ツールコール断片の index 連結復元）、`backend/chat_agent.py`（MAX_TOOL_STEPS=8 のツールループ）。
   - `POST /chat/agent-stream` 追加。system メッセージは1つに結合（Qwen3 系は複数 system で 400）。既存 `/chat/stream` は要約用にそのまま残置。
@@ -47,8 +55,7 @@
 
 ## 未完了 / 検討中
 
-- **フェーズ4第2弾: 役割ベースモデル管理** — standard（9B、:8081 常駐、要約・背景処理用）/ deep（35B、:8082、ロード/アンロード）の2ポート化と、モデル選択モーダルの役割別 UI 化。銘柄ノート要約（現状 `/chat/stream`）を standard + `enable_thinking:false` + json_schema に移行。
-- **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化、銘柄別チャットの Markdown 描画対応、エージェントの出典リンクのクリック対応確認。
+- **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化、銘柄別チャットの Markdown 描画対応、エージェントの出典リンクのクリック対応確認、要約への json_schema 構造化出力の導入検討。
 - **フェーズ5: ダッシュボード統合** — renderer.js（約2,900行）の分割を前提に portfolio ビューを高さ固定グリッド化。
 - 外貨建て銘柄の買値の通貨対応（現状は「円で入力」ルール。買値通貨を保持して換算するのが本修正）。
 - 株数・買値の小数対応（`parse_number`/`parseWholeNumber` が整数に丸めるため、米国株の端株・小数の平均取得単価が失われる）。

@@ -18,11 +18,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from urllib import request as urllib_request
 
 import chat_store as store
 import chat_llama_manager as llama
 import chat_agent
+import llm_client
 import llama_updater
 import embed_manager
 from chat_embedder import warmup as embed_warmup
@@ -37,10 +37,14 @@ MODELS_DIR = _ROOT / "models"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     store.init_db()
-    asyncio.get_event_loop().run_in_executor(None, embed_warmup)
+    llama.migrate_legacy_state()
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, embed_warmup)
+    # standard（常駐モデル）が設定済みなら自動起動（時間がかかるためバックグラウンドで）
+    loop.run_in_executor(None, llama.ensure_standard)
     yield
     try:
-        llama.eject_model()
+        llama.stop_all()
     except Exception:
         pass
 
@@ -172,20 +176,28 @@ def _find_gguf_files() -> list[dict]:
     return results
 
 
-class LoadModelRequest(BaseModel):
-    model_path: str
-    ctx_size: int = llama.DEFAULT_CTX_SIZE
+class RoleStartRequest(BaseModel):
+    model_path: str | None = None
+    ctx_size: int | None = None
     n_gpu_layers: int = -1
 
 
-class ModelSettingsRequest(BaseModel):
-    ctx_size: int = llama.DEFAULT_CTX_SIZE
+class RoleSettingsRequest(BaseModel):
+    model_path: str | None = None
+    ctx_size: int | None = None
 
 
-def _validate_ctx_size(ctx_size: int) -> int:
-    allowed = {4096, 8192, 16384, 32768}
-    if ctx_size not in allowed:
-        raise HTTPException(400, "ctx_size must be one of 4096, 8192, 16384, 32768")
+def _validate_role(role: str) -> str:
+    if role not in llama.ROLES:
+        raise HTTPException(404, f"Unknown role: {role}")
+    return role
+
+
+def _validate_ctx_size(ctx_size: int | None) -> int | None:
+    if ctx_size is None:
+        return None
+    if ctx_size not in llama.CTX_OPTIONS:
+        raise HTTPException(400, f"ctx_size must be one of {sorted(llama.CTX_OPTIONS)}")
     return ctx_size
 
 
@@ -194,31 +206,37 @@ def get_models():
     return _find_gguf_files()
 
 
-@app.get("/model/status")
-def model_status():
-    return llama.get_status()
+@app.get("/llama/roles")
+def llama_roles():
+    return llama.get_roles_status()
 
 
-@app.post("/model/settings")
-def model_settings(req: ModelSettingsRequest):
-    llama.save_context_size(_validate_ctx_size(req.ctx_size))
-    return llama.get_status()
-
-
-@app.post("/model/load")
-async def model_load(req: LoadModelRequest):
+@app.post("/llama/{role}/start")
+async def llama_role_start(role: str, req: RoleStartRequest):
+    _validate_role(role)
     try:
-        ctx_size = _validate_ctx_size(req.ctx_size)
-        await asyncio.to_thread(llama.load_model, req.model_path, ctx_size, req.n_gpu_layers)
-        return {"ok": True}
+        await asyncio.to_thread(
+            llama.start, role, req.model_path, _validate_ctx_size(req.ctx_size), req.n_gpu_layers
+        )
+        return llama.get_roles_status()
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
-@app.post("/model/unload")
-async def model_unload():
-    await asyncio.to_thread(llama.eject_model)
-    return {"ok": True}
+@app.post("/llama/{role}/stop")
+async def llama_role_stop(role: str):
+    _validate_role(role)
+    await asyncio.to_thread(llama.stop, role)
+    return llama.get_roles_status()
+
+
+@app.put("/llama/{role}/settings")
+def llama_role_settings(role: str, req: RoleSettingsRequest):
+    _validate_role(role)
+    llama.save_role_settings(role, req.model_path, _validate_ctx_size(req.ctx_size))
+    return llama.get_roles_status()
 
 
 # ── llama-server runtime (download / update) ──────────────
@@ -524,9 +542,21 @@ class ChatRequest(BaseModel):
     system_prompt: str | None = None
 
 
+def _summary_base_url() -> str | None:
+    """要約など背景処理は standard（軽量モデル）優先。無ければチャット用にフォールバック。"""
+    if llama.is_ready("standard"):
+        return llama.role_base_url("standard")
+    return llama.chat_base_url()
+
+
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
-    if not llama.is_ready():
+    """ツール無しの単発ストリーム（銘柄ノート要約などの背景処理用）。
+
+    standard 役割を優先し、思考（thinking）は無効化して高速に返す。
+    """
+    base_url = _summary_base_url()
+    if not base_url:
         raise HTTPException(503, "モデルが読み込まれていません")
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
@@ -538,11 +568,11 @@ async def chat_stream(req: ChatRequest):
             req.session_id,
             user_content,
         )
+    # system メッセージは1つに結合（Qwen3 系は複数で 400）
+    system_parts = [part for part in (req.system_prompt or "", context) if part]
     llm_messages = messages
-    if req.system_prompt:
-        llm_messages = [{"role": "system", "content": req.system_prompt}, *llm_messages]
-    if context:
-        llm_messages = [{"role": "system", "content": context}, *llm_messages]
+    if system_parts:
+        llm_messages = [{"role": "system", "content": "\n\n".join(system_parts)}, *messages]
 
     # Persist user message and auto-title on first turn
     user_message = None
@@ -554,34 +584,16 @@ async def chat_stream(req: ChatRequest):
             await asyncio.to_thread(store.rename_session, req.session_id, user_content[:28].strip())
 
     def generate():
-        body = json.dumps({"model": "local", "messages": llm_messages, "stream": True}).encode()
-        http_req = urllib_request.Request(
-            f"{llama.LLAMA_BASE_URL}/v1/chat/completions",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-
         accumulated = ""
         try:
-            with urllib_request.urlopen(http_req, timeout=120) as resp:
-                for raw_line in resp:
-                    line = raw_line.decode("utf-8").strip()
-                    if not line.startswith("data: "):
-                        continue
-                    payload = line[6:]
-                    if payload == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(payload)
-                        chunk = data["choices"][0]["delta"].get("content", "")
-                        if chunk:
-                            accumulated += chunk
-                            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-                    except Exception:
-                        pass
+            for kind, data in llm_client.chat_stream(
+                base_url, llm_messages, max_tokens=4096, enable_thinking=False
+            ):
+                if kind == "content":
+                    accumulated += data
+                    yield f"data: {json.dumps({'type': 'token', 'content': data}, ensure_ascii=False)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
             return
 
         assistant_message = None
@@ -601,9 +613,16 @@ async def chat_stream(req: ChatRequest):
 
 @app.post("/chat/agent-stream")
 async def chat_agent_stream(req: ChatRequest):
-    """ツール（Web検索・ニュース検索・銘柄指標）を使うエージェンティックチャット。"""
-    if not llama.is_ready():
+    """ツール（Web検索・ニュース検索・銘柄指標）を使うエージェンティックチャット。
+
+    deep 役割を優先し、落ちていれば standard で応答する（使用モデルは model イベントで通知）。
+    """
+    chat_role = llama.chat_role()
+    if chat_role is None:
         raise HTTPException(503, "モデルが読み込まれていません")
+    base_url = llama.role_base_url(chat_role)
+    status = llama.get_roles_status()
+    model_name = status["roles"][chat_role]["model_name"]
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     user_content = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
@@ -631,8 +650,9 @@ async def chat_agent_stream(req: ChatRequest):
 
     def generate():
         final_text = ""
+        yield f"data: {json.dumps({'type': 'model', 'name': model_name, 'role': chat_role}, ensure_ascii=False)}\n\n"
         try:
-            for event in chat_agent.run_chat_agent(llm_messages, base_url=llama.LLAMA_BASE_URL):
+            for event in chat_agent.run_chat_agent(llm_messages, base_url=base_url):
                 if event.get("type") == "_final":
                     final_text = event.get("content") or ""
                     continue
