@@ -130,6 +130,10 @@ def load_model(model_path: str, ctx_size: int = DEFAULT_CTX_SIZE, n_gpu_layers: 
         "--port", str(LLAMA_PORT),
         "--ctx-size", str(ctx_size),
         "--n-gpu-layers", str(n_gpu_layers),
+        # チャットテンプレートによるツールコール解析と reasoning_content の分離に必須
+        # （Ornith 等の reasoning + tool-calling モデルはこれが無いと機能しない）
+        "--jinja",
+        "--alias", model_p.stem,
     ]
     if mmproj_candidates:
         cmd += ["--mmproj", str(mmproj_candidates[0])]

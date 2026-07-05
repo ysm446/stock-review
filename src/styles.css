@@ -2575,6 +2575,48 @@ body.is-resizing-chat-sidebar {
   width: 100%;
 }
 
+/* エージェントの活動ログ（ツール呼び出し・思考） */
+.chat-activity {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.chat-activity:empty {
+  display: none;
+}
+
+.chat-activity-line {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 2px 4px;
+  overflow-wrap: anywhere;
+}
+
+.chat-thinking {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 2px 4px;
+}
+
+.chat-thinking summary {
+  cursor: pointer;
+  opacity: 0.85;
+  user-select: none;
+}
+
+.chat-thinking-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 6px 8px;
+  margin-top: 4px;
+  border-left: 2px solid var(--line, #374151);
+  opacity: 0.9;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
 .chat-message-text p {
   margin: 0 0 0.75em;
 }

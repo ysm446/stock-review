@@ -22,6 +22,7 @@ from urllib import request as urllib_request
 
 import chat_store as store
 import chat_llama_manager as llama
+import chat_agent
 import llama_updater
 import embed_manager
 from chat_embedder import warmup as embed_warmup
@@ -389,6 +390,12 @@ def post_document(workspace_id: int, body: DocumentBody):
     return store.create_document(workspace_id, body.title, body.content)
 
 
+# 注意: /documents/search は /documents/{id} より先に登録しないと {id} に飲まれて 422 になる
+@app.get("/documents/search")
+def document_search(session_id: int, query: str, top_k: int = 3):
+    return {"items": store.search_documents_for_session(session_id, query, top_k=top_k)}
+
+
 @app.get("/documents/{id}")
 def get_document(id: int):
     doc = store.get_document(id)
@@ -502,11 +509,6 @@ def memory_stats():
     return store.memory_stats()
 
 
-@app.get("/documents/search")
-def document_search(session_id: int, query: str, top_k: int = 3):
-    return {"items": store.search_documents_for_session(session_id, query, top_k=top_k)}
-
-
 # ── Chat streaming ────────────────────────────────────────
 
 class ChatMessage(BaseModel):
@@ -589,6 +591,63 @@ async def chat_stream(req: ChatRequest):
                 store.save_turn_memory(req.session_id, user_content, accumulated)
 
         yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/chat/agent-stream")
+async def chat_agent_stream(req: ChatRequest):
+    """ツール（Web検索・ニュース検索・銘柄指標）を使うエージェンティックチャット。"""
+    if not llama.is_ready():
+        raise HTTPException(503, "モデルが読み込まれていません")
+
+    messages = [{"role": m.role, "content": m.content} for m in req.messages]
+    user_content = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
+    context = ""
+    if user_content:
+        context = await asyncio.to_thread(
+            store.build_combined_context,
+            req.session_id,
+            user_content,
+        )
+
+    # Qwen3 系テンプレートは system メッセージが複数あると 400 を返すため、必ず1つに結合する
+    system_parts = [
+        part for part in (req.system_prompt or "", chat_agent.AGENT_SYSTEM_PROMPT, context) if part
+    ]
+    llm_messages = [{"role": "system", "content": "\n\n".join(system_parts)}, *messages]
+
+    user_message = None
+    if user_content and req.persist_user:
+        existing = await asyncio.to_thread(store.list_messages, req.session_id)
+        is_first = len(existing) == 0
+        user_message = await asyncio.to_thread(store.append_message, req.session_id, "user", user_content)
+        if is_first:
+            await asyncio.to_thread(store.rename_session, req.session_id, user_content[:28].strip())
+
+    def generate():
+        final_text = ""
+        try:
+            for event in chat_agent.run_chat_agent(llm_messages, base_url=llama.LLAMA_BASE_URL):
+                if event.get("type") == "_final":
+                    final_text = event.get("content") or ""
+                    continue
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+            return
+
+        assistant_message = None
+        if final_text and req.persist_assistant:
+            assistant_message = store.append_message(req.session_id, "assistant", final_text)
+            if user_content:
+                store.save_turn_memory(req.session_id, user_content, final_text)
+
+        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         generate(),

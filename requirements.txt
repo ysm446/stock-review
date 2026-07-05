@@ -6,3 +6,4 @@ pydantic
 uvicorn
 psutil
 nvidia-ml-py
+ddgs

@@ -4,6 +4,13 @@
 
 ## 完了済み
 
+- **2026-07-05: フェーズ4第1弾（エージェンティックチャット + Web検索、Ornith 対応）を完了**。
+  - 新規モジュール: `backend/search_web.py`（ddgs）、`backend/llm_client.py`（OpenAI 互換ストリーム、reasoning_content 分離、ツールコール断片の index 連結復元）、`backend/chat_agent.py`（MAX_TOOL_STEPS=8 のツールループ）。
+  - `POST /chat/agent-stream` 追加。system メッセージは1つに結合（Qwen3 系は複数 system で 400）。既存 `/chat/stream` は要約用にそのまま残置。
+  - llama-server 起動に `--jinja --alias` を追加（Ornith のツールコール・思考分離に必須）。
+  - フロント: `chat-api.js` に `createActivityRenderer` を追加し、renderer-chat / renderer-stock-chat 両方の送信を agent-stream 化（活動ログ + 折りたたみ思考 + turn_reset 対応）。
+  - E2E 検証済み: Ornith 9B 実ロード → 日本語ニュース質問 → news_search×2 + web_search×1 が自動実行され、thinking 4回・token 59・done まで全イベント正常。FTS `ORDER BY rank` / `/documents/search` ルート順も修正・確認済み。
+  - Ornith-1.0 9B（5.2GB）/ 35B（19.7GB）Q4_K_M は `models/` に配置済み。
 - **2026-07-05: プロジェクト全体レビューを実施し、フェーズ1（正確性・データ損失）とフェーズ2（セキュリティ）+ F12 スクリーンショットを完了**（詳細は `docs/changelog.md` 2026-07-05 参照）。
   - `holdings` をロット単位スキーマへ移行（`id INTEGER PRIMARY KEY AUTOINCREMENT`、既存 DB は起動時自動移行）。save は全量置き換え（DELETE→INSERT）。配当集計もロット合算に修正。
   - 通貨換算を `shared.py` に一本化（`portfolio_store.py` の重複 `get_latest_quote`/`convert_price_to_jpy` を削除）。GBp 等の補助単位は `normalize_price_currency` で正規化。通貨欠損時は推測せずエラー。FX 欠損日は直近過去レートで補完（`_fx_rate_for_date`、bisect）。
@@ -40,7 +47,8 @@
 
 ## 未完了 / 検討中
 
-- **フェーズ4: LLM チャット再設計（Ornith 移行）** — plan.md のロードマップ参照。news-picker の chat_agent / ddgs / 役割ベースモデル管理を移植。
+- **フェーズ4第2弾: 役割ベースモデル管理** — standard（9B、:8081 常駐、要約・背景処理用）/ deep（35B、:8082、ロード/アンロード）の2ポート化と、モデル選択モーダルの役割別 UI 化。銘柄ノート要約（現状 `/chat/stream`）を standard + `enable_thinking:false` + json_schema に移行。
+- **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化、銘柄別チャットの Markdown 描画対応、エージェントの出典リンクのクリック対応確認。
 - **フェーズ5: ダッシュボード統合** — renderer.js（約2,900行）の分割を前提に portfolio ビューを高さ固定グリッド化。
 - 外貨建て銘柄の買値の通貨対応（現状は「円で入力」ルール。買値通貨を保持して換算するのが本修正）。
 - 株数・買値の小数対応（`parse_number`/`parseWholeNumber` が整数に丸めるため、米国株の端株・小数の平均取得単価が失われる）。

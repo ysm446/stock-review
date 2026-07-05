@@ -1,4 +1,4 @@
-import { apiFetch } from "./chat-api.js";
+import { apiFetch, createActivityRenderer } from "./chat-api.js";
 
 // ── HTTP helpers ─────────────────────────────────────────
 async function api(method, path, body = null) {
@@ -16,9 +16,16 @@ async function api(method, path, body = null) {
 }
 
 async function streamChat(sessionId, messages, onToken, onDone, onError, options = {}) {
+  const dispatch = (evt) => {
+    if (evt.type === "token") onToken(evt.content);
+    else if (evt.type === "done") onDone(evt);
+    else if (evt.type === "error") onError(evt.message);
+    else if (options.onActivity) options.onActivity(evt);
+  };
+
   let res;
   try {
-    res = await apiFetch("/chat/stream", {
+    res = await apiFetch(options.endpoint || "/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -50,10 +57,7 @@ async function streamChat(sessionId, messages, onToken, onDone, onError, options
         const payload = line.slice(6);
         if (!payload) continue;
         try {
-          const evt = JSON.parse(payload);
-          if (evt.type === "token") onToken(evt.content);
-          else if (evt.type === "done") onDone(evt);
-          else if (evt.type === "error") onError(evt.message);
+          dispatch(JSON.parse(payload));
         } catch (_) {}
       }
     }
@@ -62,10 +66,7 @@ async function streamChat(sessionId, messages, onToken, onDone, onError, options
     for (const line of buf.split("\n")) {
       if (!line.startsWith("data: ")) continue;
       try {
-        const evt = JSON.parse(line.slice(6));
-        if (evt.type === "token") onToken(evt.content);
-        else if (evt.type === "done") onDone(evt);
-        else if (evt.type === "error") onError(evt.message);
+        dispatch(JSON.parse(line.slice(6)));
       } catch (_) {}
     }
   }
@@ -1115,9 +1116,11 @@ async function regenerateFromUserMessage(messageId) {
   const meta = document.createElement("div");
   meta.className = "chat-message-meta";
   meta.textContent = `アシスタント${currentModelName ? `（${currentModelName}）` : ""} 生成中`;
+  const activity = document.createElement("div");
+  activity.className = "chat-activity";
   const bubble = document.createElement("div");
   bubble.className = "chat-message-text";
-  wrap.append(meta, bubble);
+  wrap.append(meta, activity, bubble);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -1154,7 +1157,20 @@ async function regenerateFromUserMessage(messageId) {
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
     },
-    { persistUser: false }
+    {
+      persistUser: false,
+      endpoint: "/chat/agent-stream",
+      onActivity: createActivityRenderer(activity, {
+        onTextReset: () => {
+          accumulated = "";
+          setMessageBodyContent(bubble, "assistant", "");
+        },
+        onUpdate: () => {
+          wrap.classList.remove("loading");
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+      })
+    }
   );
 }
 
@@ -1175,9 +1191,11 @@ async function sendMessage() {
   const meta = document.createElement("div");
   meta.className = "chat-message-meta";
   meta.textContent = `アシスタント${currentModelName ? `（${currentModelName}）` : ""} 生成中`;
+  const activity = document.createElement("div");
+  activity.className = "chat-activity";
   const bubble = document.createElement("div");
   bubble.className = "chat-message-text";
-  wrap.append(meta, bubble);
+  wrap.append(meta, activity, bubble);
   chatMessages.appendChild(wrap);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -1222,6 +1240,19 @@ async function sendMessage() {
       bubble.textContent = `エラー: ${err}`;
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
+    },
+    {
+      endpoint: "/chat/agent-stream",
+      onActivity: createActivityRenderer(activity, {
+        onTextReset: () => {
+          accumulated = "";
+          setMessageBodyContent(bubble, "assistant", "");
+        },
+        onUpdate: () => {
+          wrap.classList.remove("loading");
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+      })
     }
   );
 }

@@ -1,4 +1,4 @@
-import { apiFetch } from "./chat-api.js";
+import { apiFetch, createActivityRenderer } from "./chat-api.js";
 
 const panel = document.getElementById("stock-chat-panel");
 const subtitle = document.getElementById("stock-chat-subtitle");
@@ -32,9 +32,16 @@ async function api(method, path, body = null) {
 }
 
 async function streamChat(sessionId, messages, options, onToken, onDone, onError) {
+  const dispatch = (payload) => {
+    if (payload.type === "token") onToken(payload.content);
+    else if (payload.type === "done") onDone(payload);
+    else if (payload.type === "error") onError(payload.message);
+    else if (options.onActivity) options.onActivity(payload);
+  };
+
   let res;
   try {
-    res = await apiFetch("/chat/stream", {
+    res = await apiFetch(options.endpoint || "/chat/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -68,12 +75,18 @@ async function streamChat(sessionId, messages, options, onToken, onDone, onError
       for (const line of event.split("\n")) {
         if (!line.startsWith("data: ")) continue;
         try {
-          const payload = JSON.parse(line.slice(6));
-          if (payload.type === "token") onToken(payload.content);
-          if (payload.type === "done") onDone(payload);
-          if (payload.type === "error") onError(payload.message);
+          dispatch(JSON.parse(line.slice(6)));
         } catch (_) {}
       }
+    }
+  }
+  // 最終イベントの後ろに空行が無いままストリームが終わるケースを取りこぼさない
+  if (buffer.trim()) {
+    for (const line of buffer.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        dispatch(JSON.parse(line.slice(6)));
+      } catch (_) {}
     }
   }
 }
@@ -248,12 +261,28 @@ async function sendMessage() {
   appendMessage("user", text);
   const assistant = appendMessage("assistant", "");
   assistant.wrap.classList.add("loading");
+  const activity = document.createElement("div");
+  activity.className = "chat-activity";
+  assistant.wrap.insertBefore(activity, assistant.body);
 
   let accumulated = "";
   await streamChat(
     activeSessionId,
     history,
-    { systemPrompt: buildStockSystemPrompt() },
+    {
+      systemPrompt: buildStockSystemPrompt(),
+      endpoint: "/chat/agent-stream",
+      onActivity: createActivityRenderer(activity, {
+        onTextReset: () => {
+          accumulated = "";
+          assistant.body.textContent = "";
+        },
+        onUpdate: () => {
+          assistant.wrap.classList.remove("loading");
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+      })
+    },
     (chunk) => {
       assistant.wrap.classList.remove("loading");
       accumulated += chunk;

@@ -780,6 +780,7 @@ def search_memory(
                 JOIN memory_chunks mc ON mc.id = mf.id
                 WHERE mf.content MATCH ? AND mc.workspace_id = ?
                 """ + session_filter + """
+                ORDER BY mf.rank
                 LIMIT ?
                 """,
                 (safe_query, workspace_id, *session_params, top_k * 4),
@@ -945,6 +946,7 @@ def search_documents(
                 SELECT dc.id FROM document_fts df
                 JOIN document_chunks dc ON dc.id = df.id
                 WHERE df.content MATCH ? AND dc.workspace_id = ?
+                ORDER BY df.rank
                 LIMIT ?
                 """,
                 (safe_query, workspace_id, top_k * 4),
