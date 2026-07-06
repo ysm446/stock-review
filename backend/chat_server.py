@@ -185,6 +185,7 @@ class RoleStartRequest(BaseModel):
 class RoleSettingsRequest(BaseModel):
     model_path: str | None = None
     ctx_size: int | None = None
+    autostart: bool | None = None
 
 
 def _validate_role(role: str) -> str:
@@ -235,7 +236,7 @@ async def llama_role_stop(role: str):
 @app.put("/llama/{role}/settings")
 def llama_role_settings(role: str, req: RoleSettingsRequest):
     _validate_role(role)
-    llama.save_role_settings(role, req.model_path, _validate_ctx_size(req.ctx_size))
+    llama.save_role_settings(role, req.model_path, _validate_ctx_size(req.ctx_size), req.autostart)
     return llama.get_roles_status()
 
 

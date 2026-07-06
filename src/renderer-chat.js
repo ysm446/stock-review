@@ -1277,6 +1277,23 @@ function buildRoleCard(roleKey, role, models) {
   controls.className = "chat-role-controls";
   controls.append(modelSelect, ctxSelect, actionBtn);
   card.append(head, controls);
+
+  // 常駐（standard）のみ「自動起動」トグル。既定 OFF＝必要なときだけ起動する。
+  if (roleKey === "standard") {
+    const autostart = document.createElement("label");
+    autostart.className = "chat-role-autostart";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = Boolean(role.autostart);
+    const text = document.createElement("span");
+    text.textContent = "バックエンド起動時に自動起動（常駐）";
+    checkbox.addEventListener("change", () => {
+      api("PUT", `/llama/${roleKey}/settings`, { autostart: checkbox.checked }).catch(() => {});
+    });
+    autostart.append(checkbox, text);
+    card.append(autostart);
+  }
+
   return card;
 }
 

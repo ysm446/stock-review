@@ -3191,6 +3191,21 @@ body.is-resizing-chat-sidebar {
   align-items: center;
 }
 
+.chat-role-autostart {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chat-role-autostart input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-soft);
+}
+
 .chat-role-select {
   flex: 1;
   min-width: 0;

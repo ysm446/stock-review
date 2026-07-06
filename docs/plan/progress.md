@@ -4,6 +4,8 @@
 
 ## 完了済み
 
+- **2026-07-07: 常駐 LLM の自動起動をトグル化**。`ensure_standard()` は `roles.standard.autostart`（既定 OFF）が真のときだけ起動。`save_role_settings`/`get_roles_status`/`PUT /llama/{role}/settings` に `autostart` を追加。モデル設定モーダルの standard カードにチェックボックスを追加（`renderer-chat.js`）。ノートPC 等で非常駐運用・小型モデル切替を想定。deep は従来どおり要求時ロード。
+
 - **2026-07-07: フェーズ6（アプリとデータの分離）第1弾を実装**。
   - パス基点を集約: `backend/paths.py`（`DATA_DIR`/`CONFIG_DIR` を環境変数から解決、`DB_FILE`/`PORTFOLIO_FILE`/`CHAT_DB_FILE`/`STOCKS_DIR`/`STOCK_MASTER_FILE`/`LLAMA_PATHS_FILE` を派生）、`electron/paths.js`（`config.json` の `dataDir` から解決、既定はリポジトリ `data/`）。`portfolio_store`/`chat_store`/`chat_llama_manager`/`update_stock_master` を paths 経由に変更。`electron/data-files.js` は `getDataDir()` から都度解決するよう関数化。
   - Electron が `STOCK_REVIEW_DATA_DIR`/`STOCK_REVIEW_CONFIG_DIR` を子プロセスへ渡す（`applyEnv()`）。データルート変更時は `restartChatServer()` で backend を新ルートで再起動。

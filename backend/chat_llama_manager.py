@@ -155,6 +155,7 @@ def get_roles_status() -> dict:
             "model_path": model_path,
             "model_name": Path(model_path).name if model_path else "",
             "ctx_size": int(state.get("ctx_size") or config["default_ctx"]),
+            "autostart": bool(state.get("autostart")),
         }
     active = chat_role()
     return {
@@ -164,13 +165,16 @@ def get_roles_status() -> dict:
     }
 
 
-def save_role_settings(role: str, model_path: str | None = None, ctx_size: int | None = None) -> None:
+def save_role_settings(role: str, model_path: str | None = None, ctx_size: int | None = None,
+                       autostart: bool | None = None) -> None:
     paths = _get_paths()
     state = _role_state(paths, role)
     if model_path is not None:
         state["model_path"] = model_path
     if ctx_size is not None:
         state["ctx_size"] = int(ctx_size)
+    if autostart is not None:
+        state["autostart"] = bool(autostart)
     _save_paths(paths)
 
 
@@ -264,11 +268,15 @@ def stop_all() -> None:
 
 
 def ensure_standard() -> None:
-    """standard が設定済みなら起動する（バックエンド起動時の自動起動用）。失敗しても落とさない。"""
+    """standard が「自動起動 ON」かつモデル設定済みのときだけ起動する。
+
+    既定は自動起動しない（ノートPC 等では常駐させず、必要なときに手動起動 /
+    要求時ロードする）。設定は roles.standard.autostart（マシン固有）。
+    """
     try:
         paths = _get_paths()
         state = (paths.get("roles") or {}).get("standard", {})
-        if state.get("model_path"):
+        if state.get("model_path") and state.get("autostart"):
             start("standard")
     except Exception as e:
         logger.warning("ensure_standard failed: %s", e)
