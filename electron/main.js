@@ -307,9 +307,12 @@ ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker
 ipcMain.handle("data-dir:get", () => ({ dataDir: getDataDir() }));
 
 ipcMain.handle("data-dir:choose", async () => {
+  // 初回は getDataDir() が null のため、既定パスはドキュメントフォルダにフォールバック
+  // （showOpenDialog の defaultPath は文字列必須）。
+  const defaultPath = getDataDir() || app.getPath("documents");
   const result = await dialog.showOpenDialog(getMainWindow(), {
     title: "データフォルダを選択",
-    defaultPath: getDataDir(),
+    defaultPath,
     properties: ["openDirectory", "createDirectory"]
   });
   if (result.canceled || !result.filePaths?.length) return { canceled: true };
