@@ -1,15 +1,96 @@
+/* ──────────────────────────────────────────────────────────
+   テーマ（配色）
+   :root = デフォルト「ダーク」。data-theme 属性で切り替える。
+   新しいテーマを増やすときは :root[data-theme="xxx"] を追加し、
+   同じ変数群を上書きするだけでよい（個別の色は変数化済み）。
+   テーマの適用は theme.js（<head> の非モジュール script）で行う。
+   ────────────────────────────────────────────────────────── */
 :root {
+  /* サーフェス（背景・パネル） */
   --bg: #111111;
   --bg-alt: #171717;
   --panel: #1e1e1e;
   --panel-soft: #141414;
+  --panel-raised: #232323;
   --line: #2f2f2f;
   --line-soft: #242424;
+
+  /* テキスト */
   --text: #f1f1f1;
+  --text-strong: #f3f4f6;
+  --text-soft: #cdd2da;
   --muted: #9a9a9a;
+
+  /* コントロール（ボタン・入力・チップ） */
+  --control-bg: #2a2a2a;
+  --control-bg-hover: #303030;
+  --control-bg-active: #4b4b4b;
+  --control-border: #696969;
+  --control-border-strong: #5c5c5c;
+
+  /* アクセント・意味色 */
   --accent: #5f5f5f;
   --accent-soft: #6f6f6f;
   --danger: #c36b6b;
+  --pos: #54e291;
+  --pos-soft: #90c091;
+  --neg: #ff7b83;
+  --neg-soft: #d18989;
+  --link: #6ea8ff;
+  --warn: #fbbf24;
+  --warn-strong: #f59e0b;
+
+  /* ポップオーバー・オーバーレイ */
+  --topbar-bg: rgba(20, 20, 20, 0.96);
+  --menu-bg: rgba(28, 28, 28, 0.96);
+  --tooltip-bg: rgba(23, 23, 23, 0.98);
+  --modal-bg: #202020;
+  --modal-border: #3b3b3b;
+  --overlay: rgba(0, 0, 0, 0.48);
+  --scrollbar-thumb: #3a3a3a;
+  --scrollbar-thumb-hover: #4a4a4a;
+}
+
+/* ネイビー（濃紺）: 添付デザインの色調 */
+:root[data-theme="navy"] {
+  --bg: #121926;
+  --bg-alt: #16202f;
+  --panel: #1e2a3d;
+  --panel-soft: #151f2e;
+  --panel-raised: #223047;
+  --line: #2c3b52;
+  --line-soft: #223044;
+
+  --text: #e9eef6;
+  --text-strong: #f5f8fc;
+  --text-soft: #bcc7d8;
+  --muted: #8493a9;
+
+  --control-bg: #253449;
+  --control-bg-hover: #2e405a;
+  --control-bg-active: #3a527a;
+  --control-border: #40567a;
+  --control-border-strong: #33465f;
+
+  --accent: #3a557f;
+  --accent-soft: #4a6ea8;
+  --danger: #e26b78;
+  --pos: #3fd2a4;
+  --pos-soft: #7bc4a8;
+  --neg: #f2707c;
+  --neg-soft: #d18f96;
+  --link: #6ea8ff;
+  --warn: #f2c14e;
+  --warn-strong: #e0a23a;
+
+  --topbar-bg: rgba(18, 25, 38, 0.96);
+  --menu-bg: rgba(24, 33, 48, 0.97);
+  --tooltip-bg: rgba(20, 29, 44, 0.98);
+  --modal-bg: #1a2436;
+  --modal-border: #33465f;
+  --overlay: rgba(5, 9, 16, 0.55);
+  --scrollbar-thumb: #33465f;
+  --scrollbar-thumb-hover: #435778;
 }
 
 * {
@@ -26,14 +107,14 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--scrollbar-thumb);
   border: 2px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4a;
+  background: var(--scrollbar-thumb-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -80,7 +161,7 @@ button {
   display: grid;
   place-items: center;
   border-bottom: 1px solid var(--line);
-  background: rgba(20, 20, 20, 0.96);
+  background: var(--topbar-bg);
 }
 
 .sidebar {
@@ -224,14 +305,14 @@ button {
 }
 
 .ghost-button {
-  background: #2a2a2a;
+  background: var(--control-bg);
   color: var(--text);
 }
 
 .accent-button {
-  background: #4b4b4b;
-  border-color: #5c5c5c;
-  color: #f3f3f3;
+  background: var(--control-bg-active);
+  border-color: var(--control-border-strong);
+  color: var(--text-strong);
   font-weight: 600;
 }
 
@@ -240,7 +321,7 @@ button {
   padding: 0 10px;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: #2a2a2a;
+  background: var(--control-bg);
   color: var(--text);
   font-size: 0.84rem;
   cursor: pointer;
@@ -248,7 +329,7 @@ button {
 
 .chart-color-select:focus {
   outline: none;
-  border-color: #696969;
+  border-color: var(--control-border);
 }
 
 .holdings-group-toggle.is-hidden {
@@ -257,8 +338,8 @@ button {
 
 .holdings-group-toggle.is-active,
 .allocation-group-toggle.is-active {
-  background: #303030;
-  border-color: #696969;
+  background: var(--control-bg-hover);
+  border-color: var(--control-border);
   color: var(--text);
 }
 
@@ -337,7 +418,7 @@ button {
   flex: 1;
   min-width: 0;
   border: 0;
-  border-bottom: 1px solid #6a6a6a;
+  border-bottom: 1px solid var(--control-border);
   background: transparent;
   color: inherit;
   font-size: inherit;
@@ -347,7 +428,7 @@ button {
 }
 
 .stat-cash-input:focus {
-  border-bottom-color: #9a9a9a;
+  border-bottom-color: var(--muted);
 }
 
 .stat-card,
@@ -374,16 +455,16 @@ button {
 
 .stat-card-positive .stat-value,
 .stat-card-positive .stat-sub {
-  color: #54e291;
+  color: var(--pos);
 }
 
 .stat-card-negative .stat-value,
 .stat-card-negative .stat-sub {
-  color: #ff7b83;
+  color: var(--neg);
 }
 
 .stat-card-accent .stat-value {
-  color: #6ea8ff;
+  color: var(--link);
 }
 
 .stat-sub {
@@ -547,11 +628,11 @@ button {
 }
 
 .trend-metric-value.is-positive {
-  color: #90c091;
+  color: var(--pos-soft);
 }
 
 .trend-metric-value.is-negative {
-  color: #d18989;
+  color: var(--neg-soft);
 }
 
 #trend-chart {
@@ -574,7 +655,7 @@ button {
   padding: 14px 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 14px;
-  background: rgba(28, 28, 28, 0.96);
+  background: var(--menu-bg);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
   pointer-events: none;
 }
@@ -584,13 +665,13 @@ button {
 }
 
 .trend-tooltip-date {
-  color: #aeb4bf;
+  color: var(--text-soft);
   font-size: 0.84rem;
 }
 
 .trend-tooltip-value {
   margin-top: 10px;
-  color: #f3f4f6;
+  color: var(--text-strong);
   font-size: 0.98rem;
   font-weight: 700;
 }
@@ -602,11 +683,11 @@ button {
 }
 
 .trend-tooltip-change.is-positive {
-  color: #54e291;
+  color: var(--pos);
 }
 
 .trend-tooltip-change.is-negative {
-  color: #ff7b83;
+  color: var(--neg);
 }
 
 .panel-head {
@@ -643,7 +724,7 @@ button {
 }
 
 .view-toggle-button.is-active {
-  background: #303030;
+  background: var(--control-bg-hover);
   color: var(--text);
 }
 
@@ -792,8 +873,8 @@ input:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: #6b6b6b;
-  box-shadow: 0 0 0 1px #6b6b6b;
+  border-color: var(--control-border);
+  box-shadow: 0 0 0 1px var(--control-border);
 }
 
 .computed-cell {
@@ -804,12 +885,12 @@ select:focus {
 
 .profit-cell.is-positive,
 .profit-rate-cell.is-positive {
-  color: #90c091;
+  color: var(--pos-soft);
 }
 
 .profit-cell.is-negative,
 .profit-rate-cell.is-negative {
-  color: #d18989;
+  color: var(--neg-soft);
 }
 
 .icon-remove {
@@ -826,7 +907,7 @@ select:focus {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #2a2a2a;
+  background: var(--control-bg);
   color: var(--text);
   font-size: 0.82rem;
 }
@@ -864,7 +945,7 @@ select:focus {
   width: 10px;
   height: 1px;
   border-radius: 999px;
-  background: #5a5a5a;
+  background: var(--control-border-strong);
 }
 
 .drag-handle:active {
@@ -877,7 +958,7 @@ select:focus {
 }
 
 .drag-handle:hover span {
-  background: #777;
+  background: var(--muted);
 }
 
 .cell-ticker {
@@ -898,7 +979,7 @@ select:focus {
 
 .ticker-link:hover .ticker-name,
 .ticker-link:focus-visible .ticker-name {
-  color: #f3f4f6;
+  color: var(--text-strong);
   text-decoration: underline;
   text-decoration-color: rgba(243, 244, 246, 0.45);
   text-underline-offset: 3px;
@@ -964,7 +1045,7 @@ select:focus {
   width: min(320px, calc(100vw - 24px));
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 12px;
-  background: rgba(23, 23, 23, 0.98);
+  background: var(--tooltip-bg);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
   pointer-events: none;
   opacity: 1;
@@ -989,7 +1070,7 @@ select:focus {
 
 .metric-help-text {
   margin: 0;
-  color: #d7dde7;
+  color: var(--text-soft);
   font-size: 0.88rem;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -1083,7 +1164,7 @@ select:focus {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #e5e7eb;
+  color: var(--text-strong);
   font-size: 0.8rem;
 }
 
@@ -1121,7 +1202,7 @@ select:focus {
 }
 
 .performance-name {
-  color: #e5e7eb;
+  color: var(--text-strong);
   font-size: 0.8rem;
   white-space: nowrap;
   overflow: hidden;
@@ -1166,7 +1247,7 @@ select:focus {
 }
 
 .performance-value {
-  color: #d6dae1;
+  color: var(--text-soft);
   font-size: 0.78rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1174,11 +1255,11 @@ select:focus {
 }
 
 .performance-value.is-positive {
-  color: #90c091;
+  color: var(--pos-soft);
 }
 
 .performance-value.is-negative {
-  color: #d18989;
+  color: var(--neg-soft);
 }
 
 .modal-backdrop {
@@ -1187,15 +1268,15 @@ select:focus {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.48);
+  background: var(--overlay);
   backdrop-filter: blur(3px);
 }
 
 .modal-card {
   width: min(100%, 420px);
-  border: 1px solid #3b3b3b;
+  border: 1px solid var(--modal-border);
   border-radius: 12px;
-  background: #202020;
+  background: var(--modal-bg);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
 }
 
@@ -1311,15 +1392,15 @@ select:focus {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #2a2a2a;
+  background: var(--control-bg);
   color: var(--text);
   font-size: 0.85rem;
   cursor: pointer;
 }
 
 .llama-variant-item:hover:not(:disabled) {
-  border-color: #696969;
-  background: #303030;
+  border-color: var(--control-border);
+  background: var(--control-bg-hover);
 }
 
 .llama-variant-item:disabled {
@@ -1339,7 +1420,7 @@ select:focus {
 .llama-progress-bar {
   height: 8px;
   border-radius: 999px;
-  background: #2a2a2a;
+  background: var(--control-bg);
   overflow: hidden;
 }
 
@@ -1347,7 +1428,7 @@ select:focus {
   display: block;
   height: 100%;
   width: 0;
-  background: #4ade80;
+  background: var(--pos);
   transition: width 120ms ease;
 }
 
@@ -1407,7 +1488,7 @@ select:focus {
   width: 54px;
   height: 4px;
   border-radius: 999px;
-  background: #2a2a2a;
+  background: var(--control-bg);
   overflow: hidden;
 }
 
@@ -1467,7 +1548,7 @@ select:focus {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #232323;
+  background: var(--panel-raised);
   box-shadow: 0 16px 30px rgba(0, 0, 0, 0.35);
 }
 
@@ -1490,7 +1571,7 @@ select:focus {
 }
 
 .search-option:hover {
-  background: #2d2d2d;
+  background: var(--control-bg-hover);
 }
 
 .search-option-name {
@@ -1608,15 +1689,15 @@ select:focus {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #242424;
+  background: var(--panel-raised);
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .review-chip.is-active {
-  color: #f3f4f6;
-  border-color: #4b4b4b;
-  background: #2f2f2f;
+  color: var(--text-strong);
+  border-color: var(--control-border-strong);
+  background: var(--control-bg-hover);
 }
 
 .review-grid-layout {
@@ -1698,8 +1779,8 @@ select:focus {
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 10px;
-  background: rgba(23, 23, 23, 0.98);
-  color: #d7dde7;
+  background: var(--tooltip-bg);
+  color: var(--text-soft);
   font-size: 0.74rem;
   line-height: 1.5;
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
@@ -1717,7 +1798,7 @@ select:focus {
   z-index: 3;
   border-width: 6px 6px 0;
   border-style: solid;
-  border-color: rgba(23, 23, 23, 0.98) transparent transparent;
+  border-color: var(--tooltip-bg) transparent transparent;
   opacity: 0;
   transform: translateY(4px);
   pointer-events: none;
@@ -1741,11 +1822,11 @@ select:focus {
 }
 
 .review-kv-value.is-positive {
-  color: #54e291;
+  color: var(--pos);
 }
 
 .review-kv-value.is-negative {
-  color: #ff7b83;
+  color: var(--neg);
 }
 
 .review-financial-panel {
@@ -1775,11 +1856,11 @@ select:focus {
 }
 
 .review-financial-value.is-positive {
-  color: #54e291;
+  color: var(--pos);
 }
 
 .review-financial-value.is-negative {
-  color: #ff7b83;
+  color: var(--neg);
 }
 
 .stock-chat-panel {
@@ -1860,7 +1941,7 @@ select:focus {
 
 .stock-chat-new-btn:hover:not(:disabled) {
   color: var(--text);
-  border-color: #5c5c5c;
+  border-color: var(--control-border-strong);
 }
 
 .stock-chat-new-btn:disabled {
@@ -1912,7 +1993,7 @@ select:focus {
 }
 
 .stock-chat-session-delete:hover {
-  color: #ff7b83;
+  color: var(--neg);
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -2233,12 +2314,12 @@ select:focus {
 }
 
 .chat-model-indicator.is-loaded {
-  background: #4ade80;
+  background: var(--pos);
   box-shadow: 0 0 6px #4ade8055;
 }
 
 .chat-model-indicator.is-loading {
-  background: #fbbf24;
+  background: var(--warn);
   animation: chat-pulse 1.2s ease-in-out infinite;
 }
 
@@ -3085,7 +3166,7 @@ body.is-resizing-chat-sidebar {
 }
 
 .chat-role-state.is-ready {
-  color: #4ade80;
+  color: var(--pos);
 }
 
 .chat-role-controls {
@@ -3112,4 +3193,155 @@ body.is-resizing-chat-sidebar {
 .chat-role-action {
   flex: 0 0 auto;
   padding: 8px 18px;
+}
+
+/* ── テーマ（配色）ピッカー ────────────────────────────────
+   設定 > 表示。各スウォッチはそのテーマ固有色でプレビューを描くため、
+   var(--*) ではなく明示色を使う（現在のテーマに依存させない）。 */
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  text-align: left;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+.theme-swatch:hover {
+  border-color: var(--control-border);
+  color: var(--text);
+}
+
+.theme-swatch.is-active {
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+  color: var(--text);
+}
+
+.theme-swatch-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.theme-swatch-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--control-bg);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+/* ミニ・アプリのモックアップ */
+.theme-swatch-preview {
+  display: block;
+  height: 76px;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.theme-swatch-preview .tp-bar {
+  display: block;
+  height: 14px;
+}
+
+.theme-swatch-preview .tp-body {
+  display: flex;
+  height: calc(100% - 14px);
+}
+
+.theme-swatch-preview .tp-side {
+  flex: 0 0 16px;
+}
+
+.theme-swatch-preview .tp-main {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 5px;
+}
+
+.theme-swatch-preview .tp-chip {
+  width: 26px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.theme-swatch-preview .tp-line {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  margin-top: 2px;
+}
+
+.theme-swatch-preview .tp-line-short {
+  width: 60%;
+}
+
+/* ダーク */
+.theme-preview-dark {
+  background: #1e1e1e;
+}
+.theme-preview-dark .tp-bar {
+  background: #141414;
+  border-bottom: 1px solid #2f2f2f;
+}
+.theme-preview-dark .tp-side {
+  background: #141414;
+  border-right: 1px solid #2f2f2f;
+}
+.theme-preview-dark .tp-main {
+  background: #111111;
+}
+.theme-preview-dark .tp-chip-pos {
+  background: #54e291;
+}
+.theme-preview-dark .tp-chip-neg {
+  background: #ff7b83;
+}
+.theme-preview-dark .tp-line {
+  background: #3a3f47;
+}
+
+/* ネイビー */
+.theme-preview-navy {
+  background: #1e2a3d;
+}
+.theme-preview-navy .tp-bar {
+  background: #151f2e;
+  border-bottom: 1px solid #2c3b52;
+}
+.theme-preview-navy .tp-side {
+  background: #151f2e;
+  border-right: 1px solid #2c3b52;
+}
+.theme-preview-navy .tp-main {
+  background: #121926;
+}
+.theme-preview-navy .tp-chip-pos {
+  background: #3fd2a4;
+}
+.theme-preview-navy .tp-chip-neg {
+  background: #f2707c;
+}
+.theme-preview-navy .tp-line {
+  background: #3a4a63;
 }

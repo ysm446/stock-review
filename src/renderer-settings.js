@@ -285,6 +285,35 @@ settingsBackdrop?.addEventListener("click", e => {
 llamaCheckUpdate?.addEventListener("click", checkLatestRelease);
 embedDownloadBtn?.addEventListener("click", onEmbedButtonClick);
 
+// ── テーマ（配色）の切り替え ───────────────────────────────
+// 実際のテーマ適用・永続化は theme.js（window.StockReviewTheme）が担う。
+const themePicker = document.getElementById("theme-picker");
+if (themePicker) {
+  const themeApi = window.StockReviewTheme;
+
+  function markActiveTheme(value) {
+    themePicker.querySelectorAll(".theme-swatch").forEach(btn => {
+      btn.classList.toggle("is-active", btn.dataset.themeValue === value);
+    });
+  }
+
+  // 初期状態を現在のテーマに合わせる。
+  markActiveTheme(themeApi ? themeApi.get() : "dark");
+
+  themePicker.addEventListener("click", e => {
+    const btn = e.target.closest(".theme-swatch");
+    if (!btn) return;
+    const value = btn.dataset.themeValue;
+    if (themeApi) themeApi.set(value);
+    markActiveTheme(value);
+  });
+
+  // 他経路（将来）で変わったときも追従。
+  window.addEventListener("stock-review:theme", e => {
+    markActiveTheme(e.detail?.theme);
+  });
+}
+
 // ── リソースモニターの表示切り替え ─────────────────────────
 if (resourceMonitorToggle) {
   resourceMonitorToggle.checked = localStorage.getItem(RESOURCE_MONITOR_KEY) === "1";

@@ -1,8 +1,15 @@
 # Progress
 
-最終更新: 2026-07-06
+最終更新: 2026-07-07
 
 ## 完了済み
+
+- **2026-07-07: 配色テーマ（デザインテンプレート）機能の第1弾**。
+  - `styles.css` の色をCSS変数に集約（`--control-bg/-hover/-active/-border`、`--pos/-soft`・`--neg/-soft`・`--link`・`--warn`、`--text-strong/-soft`、`--topbar-bg`・`--menu-bg`・`--tooltip-bg`・`--modal-bg/-border`・`--overlay`・`--scrollbar-thumb` 等）。`:root` = ダーク（デフォルト）、`:root[data-theme="navy"]` = ネイビーを定義。
+  - `src/theme.js`（**非モジュール** script。CSP `script-src 'self'` のためインライン不可）を `<head>` でスタイルシートより前に読み込み、body描画前に `data-theme` を確定してFOUCを防止。API は `window.StockReviewTheme`（get/set、localStorage `stock-review.theme` に保存、`stock-review:theme` イベント発火）。
+  - 設定 > 表示にテーマピッカー（ミニプレビュー付きスウォッチ）を追加。`renderer-settings.js` で選択・アクティブ表示を制御。
+  - 検証: 実 `styles.css`/`theme.js` を読み込む Electron ハーネスで dark/navy 両方をスクリーンショットし、ネイビーが添付画像の色調（濃紺背景・青みパネル・ティール系プラス・コーラル系マイナス）になることを目視確認（scratchpad）。
+  - **残課題**: canvas チャート（`renderer.js` のトレンド緑 `#4ade80` / テキスト `#9ca3af` / グリッド、保有割合HSLパレット）はハードコードのままでテーマ非追従。テーマ変更時の再描画と `getComputedStyle` での色取得が今後の対応。
 
 - **2026-07-06: レビューページのデザイン統一 + チャット Markdown テーブル対応 + 起動時のポート 8001 掃除**。
   - レビュービュー内の全パネル（データ・チャット）で見出し 0.92rem / 余白 14-16px / 背景 var(--panel) / 角丸 10px に統一。指標はラベル muted / 値 text + tabular-nums。銘柄チャットの本文 0.92rem、見出しは h1 1.08rem スケール。

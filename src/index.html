@@ -8,6 +8,8 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Stock Review</title>
+    <!-- テーマを body 描画前に適用（ちらつき防止）。styles.css より前に読み込む。 -->
+    <script src="theme.js"></script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -555,6 +557,42 @@
               </div>
             </section>
             <section class="settings-panel" id="settings-panel-display" data-tab="display">
+              <div class="settings-section">
+                <p class="settings-label">テーマ（配色）</p>
+                <div class="theme-picker" id="theme-picker">
+                  <button class="theme-swatch is-active" type="button" data-theme-value="dark">
+                    <span class="theme-swatch-preview theme-preview-dark" aria-hidden="true">
+                      <span class="tp-bar"></span>
+                      <span class="tp-body">
+                        <span class="tp-side"></span>
+                        <span class="tp-main">
+                          <span class="tp-chip tp-chip-pos"></span>
+                          <span class="tp-chip tp-chip-neg"></span>
+                          <span class="tp-line"></span>
+                          <span class="tp-line tp-line-short"></span>
+                        </span>
+                      </span>
+                    </span>
+                    <span class="theme-swatch-name">ダーク<span class="theme-swatch-badge">デフォルト</span></span>
+                  </button>
+                  <button class="theme-swatch" type="button" data-theme-value="navy">
+                    <span class="theme-swatch-preview theme-preview-navy" aria-hidden="true">
+                      <span class="tp-bar"></span>
+                      <span class="tp-body">
+                        <span class="tp-side"></span>
+                        <span class="tp-main">
+                          <span class="tp-chip tp-chip-pos"></span>
+                          <span class="tp-chip tp-chip-neg"></span>
+                          <span class="tp-line"></span>
+                          <span class="tp-line tp-line-short"></span>
+                        </span>
+                      </span>
+                    </span>
+                    <span class="theme-swatch-name">ネイビー</span>
+                  </button>
+                </div>
+                <p class="settings-hint">アプリ全体の配色を切り替えます。選択はこの端末に保存されます。</p>
+              </div>
               <div class="settings-section">
                 <label class="settings-checkbox">
                   <input type="checkbox" id="resource-monitor-toggle" />
