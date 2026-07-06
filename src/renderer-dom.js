@@ -1,5 +1,8 @@
 export const views = document.querySelectorAll(".view");
-export const navButtons = document.querySelectorAll(".nav-button");
+// ビュー切り替え用のナビのみ（data-view を持つもの）。
+// 設定ボタンも .nav-button だが data-view を持たず、ビュー遷移ではなく
+// ポップアップを開く別扱いのため、ここには含めない。
+export const navButtons = document.querySelectorAll(".nav-button[data-view]");
 export const statsGrid = document.getElementById("stats-grid");
 export const holdingsTable = document.querySelector(".holdings-table");
 export const holdingsHead = document.getElementById("holdings-head");
