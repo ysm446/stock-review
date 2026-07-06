@@ -1097,31 +1097,52 @@ async function persistPortfolio({ silent = false } = {}) {
   }
 }
 
-function getCashInput() {
-  return document.getElementById("cash-input");
+function startCashEdit(valueEl) {
+  const current = Math.max(0, parseNumericInput(appState.cashJpy));
+  valueEl.innerHTML = "";
+  valueEl.classList.add("is-editing");
+  const yen = document.createElement("span");
+  yen.textContent = "¥";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "stat-cash-input";
+  input.inputMode = "numeric";
+  input.autocomplete = "off";
+  input.placeholder = "0";
+  input.value = current > 0 ? formatPlainNumber(current) : "";
+  valueEl.append(yen, input);
+
+  let cancelled = false;
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelled = true;
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (cancelled) {
+      renderStats();
+      return;
+    }
+    commitCashInput(input.value);
+  });
+  input.focus();
+  input.select();
 }
 
-function renderCashInput() {
-  const input = getCashInput();
-  if (!input) {
-    return;
-  }
-  const value = parseNumericInput(appState.cashJpy);
-  input.value = value > 0 ? formatPlainNumber(value) : "";
-}
-
-function commitCashInput() {
-  const input = getCashInput();
-  if (!input) {
-    return;
-  }
-  const next = Math.max(0, parseWholeNumber(input.value));
+function commitCashInput(rawValue) {
+  const next = Math.max(0, parseWholeNumber(rawValue));
   const changed = next !== parseNumericInput(appState.cashJpy);
   appState.cashJpy = next;
-  renderCashInput();
   if (changed) {
     persistPortfolio();
     renderPortfolioSummary();
+  } else {
+    renderStats();
   }
 }
 
@@ -1131,7 +1152,6 @@ async function applyPortfolioState(data) {
   appState.cashJpy = parseNumericInput(data?.cashJpy ?? data?.cash);
   appState.trendHistory = Array.isArray(data?.trendHistory) ? data.trendHistory : [];
   render();
-  renderCashInput();
   if (holdingsTableMode === "metrics") {
     await ensureHoldingMetricsLoaded();
   }
@@ -1609,7 +1629,7 @@ function buildTopStats() {
     {
       label: "現金（買付余力）",
       value: formatCurrency(cash),
-      sub: totalAssets > 0 ? `資産比率 ${formatPercent((cash / totalAssets) * 100)}` : "クリックして入力",
+      sub: totalAssets > 0 ? `資産比率 ${formatPercent((cash / totalAssets) * 100)}` : "未設定",
       isCash: true
     },
     { label: "総取得金額", value: formatCurrency(totalCost), sub: "" },
@@ -1638,23 +1658,22 @@ function renderStats() {
       card.classList.add(`stat-card-${stat.tone}`);
     }
     if (stat.isCash) {
-      // 現金カードはその場で編集できる（専用の入力欄は持たない）
+      // 現金カード: 通常は表示のみ。ペンアイコンで編集モードに切り替える
       card.classList.add("stat-card-cash");
       card.innerHTML = `
         <div class="stat-label">${stat.label}</div>
-        <div class="stat-value stat-cash-field"><span>¥</span><input type="text" id="cash-input" class="stat-cash-input" inputmode="numeric" autocomplete="off" placeholder="0" /></div>
+        <div class="stat-value stat-cash-display">
+          <span class="stat-cash-value">${stat.value}</span>
+          <button type="button" class="stat-cash-edit" title="現金を編集" aria-label="現金を編集">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" aria-hidden="true">
+              <path d="M11.1 2.2a1.4 1.4 0 0 1 2 2L5.6 11.7l-2.8.8.8-2.8 7.5-7.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
         <div class="stat-sub">${stat.sub}</div>
       `;
-      const input = card.querySelector("#cash-input");
-      const cashValue = Math.max(0, parseNumericInput(appState.cashJpy));
-      input.value = cashValue > 0 ? formatPlainNumber(cashValue) : "";
-      input.addEventListener("blur", commitCashInput);
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          input.blur();
-        }
-      });
+      const valueEl = card.querySelector(".stat-cash-display");
+      card.querySelector(".stat-cash-edit").addEventListener("click", () => startCashEdit(valueEl));
     } else {
       card.innerHTML = `
         <div class="stat-label">${stat.label}</div>

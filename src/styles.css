@@ -299,28 +299,51 @@ button {
   margin: 0 0 16px;
 }
 
-/* 現金カード: 値をその場で編集できる */
-.stat-cash-field {
+/* 現金カード: 通常は表示のみ。ペンアイコンで編集モードに切り替える */
+.stat-cash-display {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.stat-cash-edit {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.stat-card-cash:hover .stat-cash-edit {
+  opacity: 1;
+}
+
+.stat-cash-edit:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.stat-cash-display.is-editing {
   gap: 2px;
+  align-items: baseline;
 }
 
 .stat-cash-input {
   flex: 1;
   min-width: 0;
   border: 0;
-  border-bottom: 1px dashed #4a4a4a;
+  border-bottom: 1px solid #6a6a6a;
   background: transparent;
   color: inherit;
   font-size: inherit;
   font-weight: inherit;
   padding: 0 0 1px;
   outline: none;
-}
-
-.stat-cash-input:hover {
-  border-bottom-color: #6a6a6a;
 }
 
 .stat-cash-input:focus {
