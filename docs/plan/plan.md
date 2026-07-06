@@ -35,6 +35,22 @@
    - system メッセージは1つに結合（Qwen3 系は複数で 400）。SSE イベント語彙は news-picker 互換。
    - フロントは共通 `chat-client.js` に統合し、銘柄別チャットは「ワークスペース＝銘柄」として同一実装へ。
 5. **フェーズ5: ダッシュボード統合** — renderer.js の分割（state / テーブル / チャート / レビュー）を前提に、portfolio ビューを高さ固定グリッドへ再構成。
+6. **フェーズ6: データルートフォルダの分離（アプリとデータの分離）**
+   - **目的**: アプリ本体（コード・実行バイナリ）とユーザーデータを分離し、データの保存先ルートフォルダを設定で選べるようにする。バックアップ・別ドライブ配置・再インストール時のデータ保持を容易にする（`goals.md` の「ローカル完結」と整合）。
+   - **`data/` 内の分類（ユーザーデータ／環境設定／参照キャッシュ）**: `data/` を一律に扱わず、性質で分離する。
+     - **① ユーザーデータ（可搬・バックアップ対象・ルート移動の対象）**: `app.db`（保有・ウォッチ・現金・`app_settings`）、`chat.db`（会話）、`portfolio.json`(+`.bak`)、`annotations.json`(+`.bak`)、`stocks/<ticker>/notes.md`（銘柄別ノート）、`notes/`（旧ノート）、`screenshots/`（ユーザー生成だが破棄可）。
+     - **② 環境設定（マシン固有・可搬にしない・ルート移動の対象外）**: `llama_paths.json`（このマシンの GGUF 絶対パス・`ctx_size`・PID・役割/ポート設定）。将来の `config.json`（リソースモニター表示、モデル役割設定、そして**データルートの保存先ポインタ自身**）もここ。※ データルートの場所を可搬なユーザーデータ内に置くと自己参照になるため、ポインタは必ず環境設定側（例: `app.getPath("userData")`）に置く。
+     - **③ 参照/キャッシュ（アプリ管理・再取得可能）**: `stock_master.json`（`update_stock_master.py` で更新可能な銘柄マスタ）、`portfolio.example.json`（アプリ同梱のサンプル。ユーザーデータではない）。埋め込みベクトル DB もここ寄り（再生成可能なら）。ルートに含めるか、別のキャッシュ領域に置くかは容量と再取得コストで判断。
+   - **`models/`・`runtime/`（llama-server バイナリ）** は容量が大きく「アプリ資産」寄りのため、上記いずれとも別に扱う（データルートには含めない方針を軸に検討）。
+   - **現状の課題**: データ基点が複数箇所でハードコードされ二重管理になっている。Electron 側は `electron/data-files.js` の `DATA_DIR = __dirname/../data` と `electron/main.js` の `LLAMA_PATHS_FILE`。Python 側は `backend/portfolio_store.py` の `REPO_ROOT/data`（`shared.py`・ノート・埋め込み等の各モジュールも同様の基点を持つ想定）。まずこれらの基点を洗い出して一本化する。
+   - **方針**:
+     - **2系統のパスを別々に解決する**: (a) ユーザーデータルート（①、ユーザーが設定で選べる。デフォルトは `app.getPath("userData")/data` 等）、(b) 環境設定ディレクトリ（②、常にマシン固有の固定領域＝`app.getPath("userData")` 直下。ユーザーデータルートのポインタもここに保存）。
+     - パス基点は Electron 側・Python 側それぞれ一箇所（`paths.js` / `paths.py` 的なモジュール）に集約し、二重ハードコードを解消する。バックエンド（Python）へは環境変数（例 `STOCK_REVIEW_DATA_DIR` とは別に `STOCK_REVIEW_CONFIG_DIR`）または CLI 引数で両方を明示的に渡す。
+     - 相対パス前提の箇所を棚卸しして振り分ける: `screenshots/`・ノート・`app.db`・`chat.db`・`portfolio.json`・`annotations.json` → ユーザーデータルート。`llama_paths.json`・将来の `config.json` → 環境設定。`stock_master.json` → 参照/キャッシュ。
+   - **設定 UI**: 設定モーダルに「データ」タブ（または表示タブ内）を新設し、フォルダ選択（`dialog.showOpenDialog`）・現在の保存先表示・「フォルダを開く」を用意。
+   - **エクスポート／インポートの廃止**: ポートフォリオヘッダーの「エクスポート」「インポート」ボタン（`src/index.html` の `#export-portfolio`/`#import-portfolio`、`renderer.js` の `exportPortfolio`/`importPortfolio`、preload/`main.js` の `stockReviewApi.exportPortfolio`/`importPortfolio` IPC）を撤去する。これらは `portfolio.json` を手動でファイル入出力する機能で、データルートをユーザーが選んで直接バックアップ・移動できるようになれば役割が重複するため。ルートフォルダ設定が可搬性の担い手を引き継ぐ。撤去に伴いヘッダーは「価格を更新」のみになる。
+   - **移行**: ルート変更時に既存 `data/` の移動/コピー方針を決める（コピー後に旧を残す/消す、書き込み中の安全性）。初回起動時のデフォルト作成と、旧レイアウト（リポジトリ直下 `data/`）からの後方互換フォールバック。
+   - **注意**: DB は WAL 運用（`app.db-wal`/`-shm` も含めて移動）。移行中の非アトミック書き込みに注意（tmp+rename 方針を踏襲）。
 
 ### 従来からの候補（フェーズ後に検討）
 
