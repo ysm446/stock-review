@@ -1265,6 +1265,7 @@ select:focus {
 .modal-backdrop {
   position: fixed;
   inset: 0;
+  z-index: 100; /* サイドバー(20)・トップバー(16)・ツールチップ(30) より前面に浮かせる */
   display: grid;
   place-items: center;
   padding: 24px;
