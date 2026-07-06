@@ -1627,8 +1627,20 @@ select:focus {
 }
 
 .review-panel {
-  padding: 18px 20px;
+  padding: 14px 16px;
   height: 100%;
+}
+
+/* レビュービュー内の見出しはデータ・チャットとも同じサイズに統一 */
+#view-review .panel h2,
+#view-review .stock-chat-head h2 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+#view-review .review-panel .panel-head {
+  margin-bottom: 10px;
 }
 
 .review-overview-panel {
@@ -1636,14 +1648,14 @@ select:focus {
 }
 
 .review-symbol {
-  color: #b8c7db;
-  font-size: 0.9rem;
+  color: var(--text);
+  font-size: 0.92rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .review-divider {
-  margin: 14px 0 18px;
+  margin: 10px 0 12px;
   border-top: 1px solid var(--line);
 }
 
@@ -1660,8 +1672,8 @@ select:focus {
 }
 
 .review-kv-label {
-  color: #f0f3f8;
-  font-size: 0.82rem;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .review-kv-label-help {
@@ -1721,10 +1733,11 @@ select:focus {
 }
 
 .review-kv-value {
-  color: #dfe5ee;
+  color: var(--text);
   text-align: right;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .review-kv-value.is-positive {
@@ -1771,22 +1784,30 @@ select:focus {
 
 .stock-chat-panel {
   border: 1px solid var(--line);
-  background: var(--bg-alt);
+  border-radius: 10px;
+  background: var(--panel);
   min-height: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .stock-chat-head {
-  padding: 16px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--line);
 }
 
 .stock-chat-head p {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+}
+
+.stock-chat-actions .ghost-button {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 0.78rem;
 }
 
 .stock-chat-actions {
@@ -1931,11 +1952,37 @@ select:focus {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  background: transparent;
 }
 
 .stock-chat-messages {
   min-height: 0;
+  padding: 16px;
+  gap: 12px;
+}
+
+.stock-chat-panel .chat-message-text,
+.stock-chat-panel .chat-message-bubble {
+  font-size: 0.92rem;
+  line-height: 1.75;
+}
+
+.stock-chat-panel .chat-message-meta {
+  font-size: 0.7rem;
+}
+
+.stock-chat-panel .chat-input {
+  font-size: 0.9rem;
+  min-height: 32px;
+}
+
+.stock-chat-panel .chat-footer {
+  background: transparent;
+  padding: 10px 12px;
+}
+
+.stock-chat-panel .chat-empty-hint {
+  font-size: 0.82rem;
 }
 
 .stock-chat-footer {
@@ -2801,6 +2848,41 @@ body.is-resizing-chat-sidebar {
 
 .chat-message-text h3 {
   font-size: 1.24rem;
+}
+
+/* Markdown テーブル（チャット回答内） */
+.chat-message-text table {
+  border-collapse: collapse;
+  margin: 0.35em 0 0.85em;
+  font-size: 0.94em;
+  max-width: 100%;
+}
+
+.chat-message-text th,
+.chat-message-text td {
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.chat-message-text th {
+  background: var(--panel-soft);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* 銘柄チャット内はデータパネルに合わせて見出しを小さく */
+.stock-chat-panel .chat-message-text h1 {
+  font-size: 1.08rem;
+}
+
+.stock-chat-panel .chat-message-text h2 {
+  font-size: 1rem;
+}
+
+.stock-chat-panel .chat-message-text h3 {
+  font-size: 0.94rem;
 }
 
 .chat-message-text ul {

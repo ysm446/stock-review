@@ -33,7 +33,37 @@ const LLAMA_PATHS_FILE = path.join(__dirname, "..", "data", "llama_paths.json");
 // 外部サイトのブラウザ経由アクセスを防ぐ API トークン（起動ごとに生成）
 const CHAT_API_TOKEN = crypto.randomBytes(24).toString("hex");
 
+function killStaleChatServer() {
+  // 以前の異常終了で残った chat_server がポート 8001 を握っていると、
+  // 新しいサーバーが起動できず、古いトークンの孤児と会話して全リクエストが
+  // 401 になる。起動前に 8001 の LISTEN プロセスを掃除する（8001 は本アプリ専用）。
+  if (process.platform !== "win32") return;
+  try {
+    const out = spawnSync("netstat", ["-ano", "-p", "TCP"], {
+      encoding: "utf8",
+      windowsHide: true
+    }).stdout || "";
+    for (const line of out.split(/\r?\n/)) {
+      if (!line.includes("LISTENING")) continue;
+      const parts = line.trim().split(/\s+/);
+      if (parts[1] && parts[1].endsWith(":8001")) {
+        const pid = Number(parts[parts.length - 1]);
+        if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) {
+          console.warn(`Killing stale process on :8001 (pid ${pid})`);
+          spawnSync("taskkill", ["/F", "/T", "/PID", String(pid)], {
+            windowsHide: true,
+            stdio: "ignore"
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.warn("Stale chat server cleanup failed:", error);
+  }
+}
+
 function startChatServer() {
+  killStaleChatServer();
   const script = path.join(__dirname, "..", "backend", "chat_server.py");
   chatServerProcess = spawnPython(script, [], {
     env: {
@@ -170,10 +200,14 @@ function createWindow() {
       setTimeout(async () => {
         await captureScreenshot(win, "-portfolio");
         await clickNav("review");
+        // 先頭の銘柄チップをクリックしてデータ入りの状態で撮影する
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.review-chip')?.click()`
+        );
         setTimeout(async () => {
           await captureScreenshot(win, "-review");
           setTimeout(() => app.quit(), 500);
-        }, 2000);
+        }, 9000);
       }, 6000);
     });
   }
