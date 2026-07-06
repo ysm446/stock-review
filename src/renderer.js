@@ -11,7 +11,6 @@ import {
   cancelWatchlistModalButton,
   closeHoldingModalButton,
   closeWatchlistModalButton,
-  exportPortfolioButton,
   holdingBuyPriceInput,
   holdingForm,
   holdingModalBackdrop,
@@ -25,7 +24,6 @@ import {
   holdingsHead,
   holdingsModeButtons,
   holdingsTable,
-  importPortfolioButton,
   loadReviewButton,
   metricHelpPopup,
   metricHelpPopupText,
@@ -335,8 +333,6 @@ watchlistModeButtons.forEach((button) => {
 loadReviewButton.addEventListener("click", () => {
   loadReviewSnapshot(reviewTickerInput.value);
 });
-exportPortfolioButton?.addEventListener("click", exportPortfolio);
-importPortfolioButton?.addEventListener("click", importPortfolio);
 reviewTickerInput.addEventListener("input", () => {
   renderReviewTickerSuggestions(reviewTickerInput.value);
 });
@@ -1159,51 +1155,6 @@ async function applyPortfolioState(data) {
   await refreshHoldingSectors();
 }
 
-async function exportPortfolio() {
-  exportPortfolioButton.disabled = true;
-  const previousText = exportPortfolioButton.textContent;
-  exportPortfolioButton.textContent = "Exporting...";
-
-  try {
-    const result = await window.stockReviewApi.exportPortfolio();
-    if (result?.canceled) {
-      setStatus("エクスポートをキャンセルしました。", "neutral");
-      return;
-    }
-    setStatus(`エクスポートしました: ${result.filePath}`, "success");
-  } catch (error) {
-    setStatus(`エクスポートエラー: ${error.message}`, "error");
-  } finally {
-    exportPortfolioButton.disabled = false;
-    exportPortfolioButton.textContent = previousText;
-  }
-}
-
-async function importPortfolio() {
-  const confirmed = window.confirm("現在の保有銘柄とウォッチリストを、選択したファイルの内容で置き換えます。続けますか？");
-  if (!confirmed) {
-    return;
-  }
-
-  importPortfolioButton.disabled = true;
-  const previousText = importPortfolioButton.textContent;
-  importPortfolioButton.textContent = "Importing...";
-
-  try {
-    const result = await window.stockReviewApi.importPortfolio();
-    if (result?.canceled) {
-      setStatus("インポートをキャンセルしました。", "neutral");
-      return;
-    }
-    await applyPortfolioState(result?.portfolio || {});
-    setStatus(`インポートしました: ${result.filePath}`, "success");
-  } catch (error) {
-    setStatus(`インポートエラー: ${error.message}`, "error");
-  } finally {
-    importPortfolioButton.disabled = false;
-    importPortfolioButton.textContent = previousText;
-  }
-}
 
 function queueAutosave() {
   if (autosaveTimer) {

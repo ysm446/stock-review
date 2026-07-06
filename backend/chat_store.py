@@ -10,9 +10,8 @@ import uuid
 from pathlib import Path
 
 from shared import atomic_write_text
+from paths import CHAT_DB_FILE as DB_PATH, DATA_DIR, STOCKS_DIR
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chat.db"
-STOCKS_DIR = Path(__file__).resolve().parent.parent / "data" / "stocks"
 EMBED_DIM = 768
 
 logger = logging.getLogger(__name__)
@@ -328,7 +327,7 @@ def get_stock_notes(ticker: str) -> dict:
         "ticker": normalized,
         "content": content,
         "path": str(path),
-        "relative_path": str(path.relative_to(Path(__file__).resolve().parent.parent)),
+        "relative_path": str(path.relative_to(DATA_DIR)),
     }
 
 

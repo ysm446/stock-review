@@ -25,6 +25,11 @@ const embedProgressText       = document.getElementById("embed-progress-text");
 const resourceMonitorToggle   = document.getElementById("resource-monitor-toggle");
 const RESOURCE_MONITOR_KEY    = "stock-review.resourceMonitor";
 
+const dataDirCurrent          = document.getElementById("data-dir-current");
+const dataDirOpenBtn          = document.getElementById("data-dir-open");
+const dataDirChangeBtn        = document.getElementById("data-dir-change");
+const dataDirStatus           = document.getElementById("data-dir-status");
+
 let downloading = false;
 
 async function settingsApi(method, path) {
@@ -71,6 +76,7 @@ function openSettings() {
   settingsBackdrop.classList.remove("is-hidden");
   refreshLlamaStatus();
   refreshEmbeddingStatus();
+  refreshDataDir();
 }
 
 function closeSettings() {
@@ -284,6 +290,42 @@ settingsBackdrop?.addEventListener("click", e => {
 });
 llamaCheckUpdate?.addEventListener("click", checkLatestRelease);
 embedDownloadBtn?.addEventListener("click", onEmbedButtonClick);
+
+// ── データフォルダ（保存先ルート） ─────────────────────────
+async function refreshDataDir() {
+  if (!dataDirCurrent) return;
+  try {
+    const info = await window.stockReviewApi.getDataDir();
+    dataDirCurrent.textContent = info?.dataDir || "(不明)";
+  } catch (err) {
+    dataDirCurrent.textContent = "取得できません";
+  }
+}
+
+async function changeDataDir() {
+  if (!window.confirm("データフォルダを変更すると、選択したフォルダのデータに切り替わります。アプリを再読み込みします。続けますか？")) {
+    return;
+  }
+  dataDirChangeBtn.disabled = true;
+  try {
+    const result = await window.stockReviewApi.chooseDataDir();
+    if (result?.canceled) {
+      if (dataDirStatus) dataDirStatus.textContent = "変更をキャンセルしました。";
+      return;
+    }
+    dataDirCurrent.textContent = result.dataDir;
+    if (dataDirStatus) dataDirStatus.textContent = "切り替えました。再読み込みします…";
+    // 新しいデータルートで全体を読み込み直す（backend は main 側で再起動済み）。
+    setTimeout(() => window.location.reload(), 600);
+  } catch (err) {
+    if (dataDirStatus) dataDirStatus.textContent = `変更に失敗しました: ${err.message}`;
+  } finally {
+    dataDirChangeBtn.disabled = false;
+  }
+}
+
+dataDirChangeBtn?.addEventListener("click", changeDataDir);
+dataDirOpenBtn?.addEventListener("click", () => window.stockReviewApi.openDataDir());
 
 // ── テーマ（配色）の切り替え ───────────────────────────────
 // 実際のテーマ適用・永続化は theme.js（window.StockReviewTheme）が担う。

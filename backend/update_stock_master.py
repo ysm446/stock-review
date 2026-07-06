@@ -59,8 +59,9 @@ def build_stock_master() -> dict[str, str]:
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parent.parent
-    output_path = repo_root / "data" / "stock_master.json"
+    from paths import STOCK_MASTER_FILE
+
+    output_path = STOCK_MASTER_FILE
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     master = build_stock_master()

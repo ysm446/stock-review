@@ -59,8 +59,6 @@
               <h1>ポートフォリオ</h1>
             </div>
             <div class="hero-actions">
-              <button class="ghost-button" id="export-portfolio">エクスポート</button>
-              <button class="ghost-button" id="import-portfolio">インポート</button>
               <button class="ghost-button" id="refresh-prices">価格を更新</button>
             </div>
           </header>
@@ -515,6 +513,7 @@
             <button class="settings-tab is-active" type="button" data-tab="llama">llama-cpp</button>
             <button class="settings-tab" type="button" data-tab="embedding">埋め込み</button>
             <button class="settings-tab" type="button" data-tab="display">表示</button>
+            <button class="settings-tab" type="button" data-tab="data">データ</button>
           </nav>
           <div class="settings-panels">
             <section class="settings-panel is-active" id="settings-panel-llama" data-tab="llama">
@@ -599,6 +598,18 @@
                   <span>リソースモニターを表示（上部バーに CPU / RAM / GPU / VRAM）</span>
                 </label>
                 <p class="settings-hint">使用状況を1秒ごとに更新します。GPU / VRAM は NVIDIA GPU（pynvml）が必要です。psutil / pynvml が未導入の場合は表示できません。</p>
+              </div>
+            </section>
+            <section class="settings-panel" id="settings-panel-data" data-tab="data">
+              <div class="settings-section">
+                <p class="settings-label">データフォルダ（保存先ルート）</p>
+                <p class="settings-value settings-path" id="data-dir-current">確認中…</p>
+                <div class="settings-row settings-row-actions">
+                  <button class="ghost-button" id="data-dir-open" type="button">フォルダを開く</button>
+                  <button class="accent-button" id="data-dir-change" type="button">変更…</button>
+                </div>
+                <p class="settings-hint">ポートフォリオ・保有・会話・ノート・スクリーンショットなどのユーザーデータの保存先です。別ドライブやバックアップ対象のフォルダを指定できます。変更するとそのフォルダのデータに切り替わります（アプリ本体とモデル、llama-server の設定は移動しません）。</p>
+                <p class="settings-hint" id="data-dir-status"></p>
               </div>
             </section>
           </div>

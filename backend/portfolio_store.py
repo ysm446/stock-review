@@ -8,13 +8,7 @@ from pathlib import Path
 import yfinance as yf
 
 from shared import FX_TICKERS, convert_to_jpy, get_yf_price, normalize_price_currency
-
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = REPO_ROOT / "data"
-DB_FILE = DATA_DIR / "app.db"
-PORTFOLIO_FILE = DATA_DIR / "portfolio.json"
-STOCK_MASTER_FILE = DATA_DIR / "stock_master.json"
+from paths import DATA_DIR, DB_FILE, PORTFOLIO_FILE, STOCK_MASTER_FILE
 
 
 def utc_now() -> str:

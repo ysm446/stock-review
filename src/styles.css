@@ -1373,6 +1373,21 @@ select:focus {
   color: var(--text);
 }
 
+.settings-path {
+  font-size: 0.86rem;
+  font-weight: 500;
+  word-break: break-all;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.settings-row-actions {
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .settings-hint {
   margin: 0;
   font-size: 0.78rem;
@@ -3194,6 +3209,55 @@ body.is-resizing-chat-sidebar {
 .chat-role-action {
   flex: 0 0 auto;
   padding: 8px 18px;
+}
+
+/* ── 初回セットアップ画面 ─────────────────────────────────── */
+.setup-screen {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.setup-card {
+  width: min(100%, 560px);
+  padding: 28px 30px 26px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.setup-title {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.setup-lead {
+  margin: 10px 0 14px;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.setup-desc {
+  line-height: 1.7;
+}
+
+.setup-actions {
+  margin: 20px 0 0;
+}
+
+.setup-actions .accent-button {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 0.92rem;
+}
+
+.setup-status {
+  margin-top: 12px;
+  white-space: pre-line;
+  min-height: 1.2em;
 }
 
 /* ── テーマ（配色）ピッカー ────────────────────────────────

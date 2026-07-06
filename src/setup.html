@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src http://127.0.0.1:8001;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stock Review — 初期設定</title>
+    <!-- テーマを body 描画前に適用（ちらつき防止）。styles.css より前に読み込む。 -->
+    <script src="theme.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="setup-screen">
+      <section class="setup-card">
+        <h1 class="setup-title">ようこそ</h1>
+        <p class="setup-lead">はじめに、データの保存先フォルダを選んでください。</p>
+        <p class="settings-hint setup-desc">
+          ポートフォリオ・保有・会話・ノート・スクリーンショットなどのユーザーデータを、指定したフォルダに保存します。
+          既存のフォルダを選ぶか、ダイアログ内で新しいフォルダを作成できます。別ドライブやバックアップ対象の場所も指定できます。
+          （アプリ本体・モデル・llama-server の設定はこのフォルダには含まれません。）
+        </p>
+        <div class="setup-actions">
+          <button class="accent-button" id="setup-choose" type="button">フォルダを選択・作成…</button>
+        </div>
+        <p class="settings-hint setup-status" id="setup-status"></p>
+      </section>
+    </div>
+    <script type="module" src="setup.js"></script>
+  </body>
+</html>

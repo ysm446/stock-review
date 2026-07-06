@@ -19,11 +19,11 @@ from pathlib import Path
 from urllib import request as urllib_request
 
 from shared import atomic_write_text
+from paths import LLAMA_PATHS_FILE as _PATHS_FILE
 
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
-_PATHS_FILE = _ROOT / "data" / "llama_paths.json"
 # Downloaded llama-server builds live under runtime/; bin/ is the legacy location.
 _RUNTIME_DIR = _ROOT / "runtime" / "llama-server"
 _LEGACY_BIN_DIR = _ROOT / "bin" / "llama-server"

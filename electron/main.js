@@ -5,15 +5,11 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const {
-  DATA_DIR,
-  buildExportPayload,
   ensurePortfolioFile,
   ensureStockMasterFile,
-  formatExportDate,
   readAnnotations,
   readPortfolio,
   readStockMaster,
-  sanitizePortfolioPayload,
   writeAnnotations,
   writePortfolio
 } = require("./data-files");
@@ -26,10 +22,11 @@ const {
   spawnPython,
   syncPortfolioStore
 } = require("./python-services");
+const { applyEnv, getDataDir, getLlamaPathsFile, isConfigured, setDataDir } = require("./paths");
 
 // ── Chat server (Python FastAPI) ─────────────────────────
 let chatServerProcess = null;
-const LLAMA_PATHS_FILE = path.join(__dirname, "..", "data", "llama_paths.json");
+const LLAMA_PATHS_FILE = getLlamaPathsFile();
 // 外部サイトのブラウザ経由アクセスを防ぐ API トークン（起動ごとに生成）
 const CHAT_API_TOKEN = crypto.randomBytes(24).toString("hex");
 
@@ -79,6 +76,20 @@ function startChatServer() {
   chatServerProcess.on("exit", code => {
     if (code !== null && code !== 0) console.error(`Chat server exited with code ${code}`);
   });
+}
+
+function stopChatServer() {
+  if (chatServerProcess) {
+    try { chatServerProcess.kill("SIGTERM"); } catch (_) {}
+    chatServerProcess = null;
+  }
+}
+
+// データルート変更時: 新しい環境変数で backend を起動し直す（Python は起動時に
+// STOCK_REVIEW_DATA_DIR を読むため、再起動しないと旧ルートのままになる）。
+function restartChatServer() {
+  stopChatServer();
+  startChatServer();
 }
 
 function stopLlamaServer() {
@@ -135,7 +146,7 @@ function getMainWindow() {
 function captureScreenshot(win, suffix = "") {
   if (!win || win.isDestroyed()) return Promise.resolve();
   return win.webContents.capturePage().then(image => {
-    const dir = path.join(DATA_DIR, "screenshots");
+    const dir = path.join(getDataDir(), "screenshots");
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date();
     const pad = n => String(n).padStart(2, "0");
@@ -212,7 +223,9 @@ function createWindow() {
     });
   }
 
-  win.loadFile(path.join(__dirname, "..", "src", "index.html"));
+  // データ保存先が未設定なら初回セットアップ画面を、設定済みならメイン画面を読み込む。
+  const page = isConfigured() ? "index.html" : "setup.html";
+  win.loadFile(path.join(__dirname, "..", "src", page));
 }
 
 async function loadPortfolioWithHistory() {
@@ -224,37 +237,15 @@ async function loadPortfolioWithHistory() {
   };
 }
 
-async function importPortfolioFromFile(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8");
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`Invalid JSON file: ${error.message}`);
-  }
-
-  const payload = sanitizePortfolioPayload(parsed);
-  writePortfolio(payload);
-
-  const synced = await syncPortfolioStore(payload);
-  const fallbackHistory = await runPortfolioStore("history", { holdings: payload.holdings || [] });
-  const trendHistory = Array.isArray(synced?.trendHistory)
-    ? synced.trendHistory
-    : Array.isArray(fallbackHistory?.trendHistory)
-      ? fallbackHistory.trendHistory
-      : [];
-
-  return {
-    canceled: false,
-    filePath,
-    portfolio: { ...payload, trendHistory }
-  };
-}
-
 app.whenReady().then(() => {
-  ensurePortfolioFile();
-  ensureStockMasterFile();
-  startChatServer();
+  // 保存先が未設定のときはメイン機能（ファイル準備・backend）を起動しない。
+  // 初回セットアップでフォルダが決まってから開始する。
+  if (isConfigured()) {
+    applyEnv(); // データルートを Python 子プロセスへ渡す環境変数を設定
+    ensurePortfolioFile();
+    ensureStockMasterFile();
+    startChatServer();
+  }
   createWindow();
 
   app.on("activate", () => {
@@ -268,7 +259,7 @@ app.on("window-all-closed", () => {
 
 app.on("will-quit", () => {
   stopLlamaServer();
-  if (chatServerProcess) { try { chatServerProcess.kill("SIGTERM"); } catch (_) {} }
+  stopChatServer();
 });
 
 // ── Chat API token IPC ──────────────────────────────────
@@ -301,37 +292,6 @@ ipcMain.handle("portfolio:trend-history", async (_event, holdings) =>
   runPortfolioStore("history", { holdings })
 );
 
-ipcMain.handle("portfolio:export", async () => {
-  const portfolio = readPortfolio();
-  const result = await dialog.showSaveDialog(getMainWindow(), {
-    title: "Export Portfolio Data",
-    defaultPath: path.join(DATA_DIR, `stock-review-export-${formatExportDate()}.json`),
-    filters: [{ name: "JSON Files", extensions: ["json"] }]
-  });
-
-  if (result.canceled || !result.filePath) return { canceled: true };
-
-  const exportPayload = buildExportPayload(portfolio);
-  fs.writeFileSync(result.filePath, JSON.stringify(exportPayload, null, 2), "utf8");
-  return {
-    canceled: false,
-    filePath: result.filePath,
-    holdingCount: exportPayload.holdings.length,
-    watchlistCount: exportPayload.watchlist.length
-  };
-});
-
-ipcMain.handle("portfolio:import", async () => {
-  const result = await dialog.showOpenDialog(getMainWindow(), {
-    title: "Import Portfolio Data",
-    properties: ["openFile"],
-    filters: [{ name: "JSON Files", extensions: ["json"] }]
-  });
-
-  if (result.canceled || !result.filePaths?.length) return { canceled: true };
-  return importPortfolioFromFile(result.filePaths[0]);
-});
-
 ipcMain.handle("portfolio:dividend-summary", async (_event, holdings) =>
   runDividendFetcher(holdings)
 );
@@ -342,3 +302,36 @@ ipcMain.handle("portfolio:sectors", async (_event, tickers) =>
 
 ipcMain.handle("stock-master:load", async () => readStockMaster());
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
+
+// ── データルートフォルダ IPC ─────────────────────────────
+ipcMain.handle("data-dir:get", () => ({ dataDir: getDataDir() }));
+
+ipcMain.handle("data-dir:choose", async () => {
+  const result = await dialog.showOpenDialog(getMainWindow(), {
+    title: "データフォルダを選択",
+    defaultPath: getDataDir(),
+    properties: ["openDirectory", "createDirectory"]
+  });
+  if (result.canceled || !result.filePaths?.length) return { canceled: true };
+
+  const dataDir = setDataDir(result.filePaths[0]);
+  applyEnv();          // 子プロセスへ渡す環境変数を更新
+  ensurePortfolioFile();
+  ensureStockMasterFile();
+  restartChatServer(); // backend を新ルートで起動し直す
+  return { canceled: false, dataDir };
+});
+
+ipcMain.handle("data-dir:open", () => {
+  const dir = getDataDir();
+  if (!dir) return "";
+  fs.mkdirSync(dir, { recursive: true });
+  return shell.openPath(dir);
+});
+
+// 初回セットアップ完了 → メイン画面へ遷移
+ipcMain.handle("app:enter-main", () => {
+  const win = getMainWindow();
+  if (win) win.loadFile(path.join(__dirname, "..", "src", "index.html"));
+  return { ok: true };
+});

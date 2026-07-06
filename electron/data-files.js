@@ -1,11 +1,24 @@
 const fs = require("fs");
 const path = require("path");
 
-const DATA_DIR = path.join(__dirname, "..", "data");
-const PORTFOLIO_FILE = path.join(DATA_DIR, "portfolio.json");
-const PORTFOLIO_EXAMPLE_FILE = path.join(DATA_DIR, "portfolio.example.json");
-const STOCK_MASTER_FILE = path.join(DATA_DIR, "stock_master.json");
-const ANNOTATIONS_FILE = path.join(DATA_DIR, "annotations.json");
+const { getDataDir } = require("./paths");
+
+// データルートは実行中に設定変更されうるため、パスは都度 getDataDir() から解決する。
+function dataDir() {
+  return getDataDir();
+}
+function portfolioFile() {
+  return path.join(dataDir(), "portfolio.json");
+}
+function portfolioExampleFile() {
+  return path.join(dataDir(), "portfolio.example.json");
+}
+function stockMasterFile() {
+  return path.join(dataDir(), "stock_master.json");
+}
+function annotationsFile() {
+  return path.join(dataDir(), "annotations.json");
+}
 
 const FALLBACK_PORTFOLIO = {
   holdings: [],
@@ -20,7 +33,7 @@ const FALLBACK_STOCK_MASTER = {
 };
 
 function ensureDataDirectory() {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(dataDir(), { recursive: true });
 }
 
 function readJsonFile(filePath, fallback) {
@@ -56,88 +69,52 @@ function writeJsonFile(filePath, payload) {
 
 function ensurePortfolioFile() {
   ensureDataDirectory();
-  if (!fs.existsSync(PORTFOLIO_FILE)) {
-    const seed = readJsonFile(PORTFOLIO_EXAMPLE_FILE, FALLBACK_PORTFOLIO);
-    writeJsonFile(PORTFOLIO_FILE, seed);
+  const file = portfolioFile();
+  if (!fs.existsSync(file)) {
+    const seed = readJsonFile(portfolioExampleFile(), FALLBACK_PORTFOLIO);
+    writeJsonFile(file, seed);
   }
 }
 
 function ensureStockMasterFile() {
   ensureDataDirectory();
-  if (!fs.existsSync(STOCK_MASTER_FILE)) {
-    writeJsonFile(STOCK_MASTER_FILE, FALLBACK_STOCK_MASTER);
+  const file = stockMasterFile();
+  if (!fs.existsSync(file)) {
+    writeJsonFile(file, FALLBACK_STOCK_MASTER);
   }
 }
 
 function readPortfolio() {
   ensurePortfolioFile();
-  return readJsonFile(PORTFOLIO_FILE, FALLBACK_PORTFOLIO);
+  return readJsonFile(portfolioFile(), FALLBACK_PORTFOLIO);
 }
 
 function writePortfolio(payload) {
   ensurePortfolioFile();
-  writeJsonFile(PORTFOLIO_FILE, payload);
+  writeJsonFile(portfolioFile(), payload);
 }
 
 function readStockMaster() {
   ensureStockMasterFile();
-  return readJsonFile(STOCK_MASTER_FILE, FALLBACK_STOCK_MASTER);
-}
-
-function buildExportPayload(portfolio) {
-  return {
-    version: 1,
-    source: "stock-review",
-    exportedAt: new Date().toISOString(),
-    holdings: Array.isArray(portfolio?.holdings) ? portfolio.holdings : [],
-    watchlist: Array.isArray(portfolio?.watchlist) ? portfolio.watchlist : []
-  };
-}
-
-function sanitizePortfolioPayload(payload) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    throw new Error("Import file must be a JSON object.");
-  }
-
-  const holdings = Array.isArray(payload.holdings) ? payload.holdings : null;
-  const watchlist = Array.isArray(payload.watchlist) ? payload.watchlist : null;
-
-  if (!holdings || !watchlist) {
-    throw new Error("Import file must include holdings and watchlist arrays.");
-  }
-
-  return { holdings, watchlist };
+  return readJsonFile(stockMasterFile(), FALLBACK_STOCK_MASTER);
 }
 
 function readAnnotations() {
   ensureDataDirectory();
-  return readJsonFile(ANNOTATIONS_FILE, []);
+  return readJsonFile(annotationsFile(), []);
 }
 
 function writeAnnotations(annotations) {
   ensureDataDirectory();
-  writeJsonFile(ANNOTATIONS_FILE, Array.isArray(annotations) ? annotations : []);
-}
-
-function formatExportDate(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  writeJsonFile(annotationsFile(), Array.isArray(annotations) ? annotations : []);
 }
 
 module.exports = {
-  DATA_DIR,
-  PORTFOLIO_FILE,
-  STOCK_MASTER_FILE,
-  buildExportPayload,
   ensurePortfolioFile,
   ensureStockMasterFile,
-  formatExportDate,
   readAnnotations,
   readPortfolio,
   readStockMaster,
-  sanitizePortfolioPayload,
   writeAnnotations,
   writePortfolio
 };

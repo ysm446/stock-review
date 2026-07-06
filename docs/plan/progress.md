@@ -4,6 +4,16 @@
 
 ## 完了済み
 
+- **2026-07-07: フェーズ6（アプリとデータの分離）第1弾を実装**。
+  - パス基点を集約: `backend/paths.py`（`DATA_DIR`/`CONFIG_DIR` を環境変数から解決、`DB_FILE`/`PORTFOLIO_FILE`/`CHAT_DB_FILE`/`STOCKS_DIR`/`STOCK_MASTER_FILE`/`LLAMA_PATHS_FILE` を派生）、`electron/paths.js`（`config.json` の `dataDir` から解決、既定はリポジトリ `data/`）。`portfolio_store`/`chat_store`/`chat_llama_manager`/`update_stock_master` を paths 経由に変更。`electron/data-files.js` は `getDataDir()` から都度解決するよう関数化。
+  - Electron が `STOCK_REVIEW_DATA_DIR`/`STOCK_REVIEW_CONFIG_DIR` を子プロセスへ渡す（`applyEnv()`）。データルート変更時は `restartChatServer()` で backend を新ルートで再起動。
+  - **環境設定の分離**: `llama_paths.json` を `app.getPath("userData")` 側へ分離（初回に旧 `data/llama_paths.json` から自動コピー移行）。保存先ポインタ `config.json` も同領域（ユーザーデータルート内に置くと自己参照になるため）。
+  - UI: 設定に「データ」タブを追加（現在の保存先表示 / 変更（フォルダピッカー）/ フォルダを開く）。`preload.js` に `getDataDir`/`chooseDataDir`/`openDataDir`/`enterMainApp` を追加。変更後は `location.reload()` で新ルートを読み込み直す。
+  - **初回セットアップ画面**（`src/setup.html` + `setup.js`）: 保存先が未設定/不在のとき `createWindow` が `index.html` の代わりに読み込む。フォルダを選ぶ/新規作成すると backend 起動 → `app:enter-main` で `index.html` へ遷移。`getDataDir()` は**フォールバックせず未設定なら null**（`isConfigured()` で判定）。未設定時は `applyEnv`/ファイル準備/backend を起動しない。設定フォルダが見つからないときも自動的にセットアップへ戻る。
+  - **エクスポート／インポートを廃止**（ボタン・`renderer.js` の関数・`portfolio:export`/`import` IPC・preload を撤去）。
+  - 検証: 隔離した userData でデータルートを `E:\sample files\stock-review\data-2026-7-7` に切替 → env 経由で Python `portfolio_store.DATA_DIR` がそのルートを解決し `app.db` を検出、`llama_paths.json` が config 側へ移行、`config.json` にポインタ保存、を確認。設定「データ」タブとヘッダー（価格を更新のみ）の描画も確認（scratchpad）。
+  - **残課題**: 保存先変更時の既存データ自動コピー/移行（現状は「切り替え」のみ、事前コピー前提）。`stock_master.json`（参照/キャッシュ）は当面 `DATA_DIR` 配下。`update_stock_master.py` を独立実行するときは env 未設定＝リポジトリ `data/` に書く（Electron 経由なら現ルート）。
+
 - **2026-07-07: 配色テーマ（デザインテンプレート）機能の第1弾**。
   - `styles.css` の色をCSS変数に集約（`--control-bg/-hover/-active/-border`、`--pos/-soft`・`--neg/-soft`・`--link`・`--warn`、`--text-strong/-soft`、`--topbar-bg`・`--menu-bg`・`--tooltip-bg`・`--modal-bg/-border`・`--overlay`・`--scrollbar-thumb` 等）。`:root` = ダーク（デフォルト）、`:root[data-theme="navy"]` = ネイビーを定義。
   - `src/theme.js`（**非モジュール** script。CSP `script-src 'self'` のためインライン不可）を `<head>` でスタイルシートより前に読み込み、body描画前に `data-theme` を確定してFOUCを防止。API は `window.StockReviewTheme`（get/set、localStorage `stock-review.theme` に保存、`stock-review:theme` イベント発火）。
@@ -75,7 +85,7 @@
 
 ## 未完了 / 検討中
 
-- **フェーズ6（予定）: データルートフォルダの分離**（アプリとデータの分離）。データ保存先を設定で選べるようにし、パス基点（Electron `data-files.js`/`main.js`、Python `portfolio_store.py` 等）を一本化する。さらに `data/` 内を **①ユーザーデータ（可搬）／②環境設定（マシン固有・`llama_paths.json` 等）／③参照キャッシュ（`stock_master.json` 等）** に分類し、①と②は別系統のパスとして解決する（データルートのポインタ自身は②側に保存）。あわせて役割が重複する**ポートフォリオのエクスポート／インポートは廃止**（可搬性はルートフォルダ設定が担う）。詳細は `plan.md` フェーズ6。
+- **フェーズ6残課題**: 保存先変更時の既存データの自動コピー/移行（現状は切り替えのみ）。`stock_master.json` の置き場（当面 `DATA_DIR`）と `models/`・`runtime/` の扱いの最終決定。第1弾の実装内容は上の「完了済み」参照。
 - **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化（Markdown は共通化済み）、エージェントの出典リンクのクリック対応確認、要約への json_schema 構造化出力の導入検討。
 - **UI 微調整候補**: 保有割合ドーナツの小さいスライスのラベル重なり、レビュー左カラムのパネル密度調整、銘柄チャットの会話リネーム。renderer.js（約2,900行）のモジュール分割。
 - 外貨建て銘柄の買値の通貨対応（現状は「円で入力」ルール。買値通貨を保持して換算するのが本修正）。
