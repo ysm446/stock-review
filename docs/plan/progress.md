@@ -1,8 +1,17 @@
 # Progress
 
-最終更新: 2026-07-07
+最終更新: 2026-07-10
 
 ## 完了済み
+
+- **2026-07-10: レビュー左カラムに「ノート」タブ + 会話からのノート自動更新**。
+  - 左カラム上部に「指標 / ノート」タブ（`review-left-tabs`、sticky）。ノートタブは `stocks/<ticker>/notes.md` を `renderMarkdown` で描画（`#review-notes-pane`）。実装は `renderer-stock-chat.js` に集約（チャットのライフサイクルと密結合のため）。
+  - 銘柄チャットの応答完了ごとに `queueNotesUpdate` → `processNotesQueue` が背景で `/chat/stream`（standard 優先・thinking 無効）に「既存ノート + 新やり取り」のマージプロンプトを投げ、結果を PATCH `/stocks/{ticker}/notes` で保存して表示を更新。キュー方式（更新中に来た分はまとめて次回処理）、銘柄切替時は結果破棄・キュークリア。LLM がコードフェンスで包んだ場合は `stripMarkdownFences` で除去。
+  - 指標タブ表示中の更新は「ノート」タブに黄ドット（開くと消える）。タブ行右端にステータス（更新中... / HH:MM 更新 / 失敗）。
+  - 「会話をMarkdownにまとめる」も保存後にノート表示へ反映するよう変更。
+  - AUTOSHOT にノートタブ撮影（`-review-notes`）を追加し、実起動で指標タブ・ノートタブ両方の描画を目視確認。
+  - **注意**: 自動更新は standard（または deep フォールバック）モデルが起動していないと 503 → ステータスに「自動更新に失敗」と出るだけでチャットは阻害しない。マージプロンプトの品質（既存内容の保持・推測禁止）は実モデルでの運用で要チューニング。
+  - **同日追記**: 「会話をMarkdownにまとめる」→「ノートを作り直す」に改名（全面再生成の役割を明確化）。会話が空のとき（無セッション銘柄・新規会話・削除後）にテンプレート質問チップ4種（`TEMPLATE_QUESTIONS`）を表示、クリックで送信（無セッション時は `createSession` から自動実行）。表示は `showSuggestions()`、送信時に `appendMessage` が hint と一緒に除去。実CSSを読むハーネスで見た目確認済み（scratchpad）。
 
 - **2026-07-07: 常駐 LLM の自動起動をトグル化**。`ensure_standard()` は `roles.standard.autostart`（既定 OFF）が真のときだけ起動。`save_role_settings`/`get_roles_status`/`PUT /llama/{role}/settings` に `autostart` を追加。モデル設定モーダルの standard カードにチェックボックスを追加（`renderer-chat.js`）。ノートPC 等で非常駐運用・小型モデル切替を想定。deep は従来どおり要求時ロード。
 

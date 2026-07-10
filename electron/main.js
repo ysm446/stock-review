@@ -217,7 +217,14 @@ function createWindow() {
         );
         setTimeout(async () => {
           await captureScreenshot(win, "-review");
-          setTimeout(() => app.quit(), 500);
+          // ノートタブに切り替えて notes.md の描画も撮影する
+          await win.webContents.executeJavaScript(
+            `document.getElementById('review-tab-notes')?.click()`
+          );
+          setTimeout(async () => {
+            await captureScreenshot(win, "-review-notes");
+            setTimeout(() => app.quit(), 500);
+          }, 800);
         }, 9000);
       }, 6000);
     });

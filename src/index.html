@@ -239,7 +239,12 @@
 
             <div class="review-main-grid">
             <div class="review-metrics-col">
-            <div class="review-grid-layout">
+            <div class="review-left-tabs">
+              <button type="button" class="review-left-tab is-active" id="review-tab-metrics">指標</button>
+              <button type="button" class="review-left-tab" id="review-tab-notes">ノート<span class="review-notes-dot is-hidden" id="review-notes-dot"></span></button>
+              <span class="review-notes-status" id="review-notes-status"></span>
+            </div>
+            <div class="review-grid-layout" id="review-metrics-pane">
               <article class="panel review-panel review-overview-panel">
                 <div class="review-symbol" id="review-symbol">-</div>
                 <div class="review-divider"></div>
@@ -295,6 +300,9 @@
               </article>
 
             </div>
+            <article class="panel review-notes-pane is-hidden" id="review-notes-pane">
+              <div class="chat-message-text review-notes-body" id="review-notes-body"></div>
+            </article>
             </div>
 
             <section class="stock-chat-panel" id="stock-chat-panel">
@@ -304,7 +312,7 @@
                   <p id="stock-chat-subtitle">銘柄を表示すると会話できます</p>
                 </div>
                 <div class="stock-chat-actions">
-                  <button class="ghost-button" id="stock-chat-summarize" disabled>会話をMarkdownにまとめる</button>
+                  <button class="ghost-button" id="stock-chat-summarize" title="会話全体からノートを全面的に再生成します" disabled>ノートを作り直す</button>
                 </div>
               </div>
               <div class="stock-chat-shell">

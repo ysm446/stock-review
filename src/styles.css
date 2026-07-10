@@ -1716,6 +1716,92 @@ select:focus {
   background: var(--control-bg-hover);
 }
 
+/* 左カラムの「指標 / ノート」タブ */
+.review-left-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  background: var(--bg);
+}
+
+.review-left-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-raised);
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.review-left-tab.is-active {
+  color: var(--text-strong);
+  border-color: var(--control-border-strong);
+  background: var(--control-bg-hover);
+}
+
+.review-left-tab:not(.is-active):hover {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+/* ノート未読の更新ドット */
+.review-notes-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.review-notes-dot.is-hidden {
+  display: none;
+}
+
+.review-notes-status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.review-notes-status.is-error {
+  color: var(--neg-soft);
+}
+
+/* ノート表示パネル（notes.md の描画） */
+.review-notes-pane {
+  padding: 16px 18px;
+}
+
+.review-notes-pane.is-hidden,
+.review-grid-layout.is-hidden {
+  display: none;
+}
+
+.review-notes-pane .review-notes-body {
+  font-size: 0.92rem;
+  line-height: 1.75;
+}
+
+.review-notes-pane .review-notes-body h1 {
+  font-size: 1.08rem;
+}
+
+.review-notes-pane .review-notes-body h2 {
+  font-size: 1rem;
+}
+
+.review-notes-pane .review-notes-body h3 {
+  font-size: 0.94rem;
+}
+
 .review-grid-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2080,6 +2166,31 @@ select:focus {
 
 .stock-chat-panel .chat-empty-hint {
   font-size: 0.82rem;
+}
+
+/* 会話が空のときのテンプレート質問チップ */
+.stock-chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  padding: 4px 12px;
+}
+
+.stock-chat-suggestion {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-raised);
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.stock-chat-suggestion:hover {
+  background: var(--control-bg-hover);
+  color: var(--text);
 }
 
 .stock-chat-footer {

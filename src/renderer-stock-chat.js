@@ -11,12 +11,25 @@ const messagesEl = document.getElementById("stock-chat-messages");
 const inputEl = document.getElementById("stock-chat-input");
 const sendButton = document.getElementById("stock-chat-send");
 
+const tabMetricsBtn = document.getElementById("review-tab-metrics");
+const tabNotesBtn = document.getElementById("review-tab-notes");
+const notesDot = document.getElementById("review-notes-dot");
+const notesStatus = document.getElementById("review-notes-status");
+const metricsPane = document.getElementById("review-metrics-pane");
+const notesPane = document.getElementById("review-notes-pane");
+const notesBody = document.getElementById("review-notes-body");
+
 let activeTicker = "";
 let activeSnapshot = null;
 let sessions = [];
 let activeSessionId = null;
 let history = [];
 let streaming = false;
+
+// ノート（notes.md）の表示と会話からの自動更新
+let notesContent = "";
+let notesQueue = []; // 未反映の会話やり取り [{user, assistant}]
+let notesUpdating = false;
 
 async function api(method, path, body = null) {
   const opts = { method, headers: {} };
@@ -113,8 +126,37 @@ function clearMessages(text = "新しい会話を作成してください") {
   messagesEl.appendChild(empty);
 }
 
+// 会話が空のときに表示するテンプレート質問
+const TEMPLATE_QUESTIONS = [
+  "最近のニュースを教えて",
+  "直近の決算のポイントは？",
+  "強みと競合優位性を整理して",
+  "バリュエーションは割安？割高？",
+];
+
+function showSuggestions() {
+  messagesEl.querySelectorAll(".stock-chat-suggestions").forEach((el) => el.remove());
+  const wrap = document.createElement("div");
+  wrap.className = "stock-chat-suggestions";
+  TEMPLATE_QUESTIONS.forEach((question) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "stock-chat-suggestion";
+    btn.textContent = question;
+    btn.addEventListener("click", async () => {
+      if (!activeTicker || streaming) return;
+      // 会話がまだ無い銘柄では作成から送信まで一気に行う
+      if (!activeSessionId) await createSession();
+      inputEl.value = question;
+      sendMessage();
+    });
+    wrap.appendChild(btn);
+  });
+  messagesEl.appendChild(wrap);
+}
+
 function appendMessage(role, content, createdAt = Date.now()) {
-  messagesEl.querySelectorAll(".chat-empty-hint").forEach((el) => el.remove());
+  messagesEl.querySelectorAll(".chat-empty-hint, .stock-chat-suggestions").forEach((el) => el.remove());
   const wrap = document.createElement("div");
   wrap.className = `chat-message ${role}`;
 
@@ -199,11 +241,132 @@ function buildStockSystemPrompt() {
   ].join("\n");
 }
 
+function setNotesStatus(text, isError = false) {
+  if (!notesStatus) return;
+  notesStatus.textContent = text;
+  notesStatus.classList.toggle("is-error", isError);
+}
+
+function renderNotes() {
+  if (!notesBody) return;
+  if (!notesContent.trim()) {
+    notesBody.innerHTML = "";
+    const empty = document.createElement("p");
+    empty.className = "chat-empty-hint";
+    empty.textContent = activeTicker
+      ? "まだノートがありません。チャットで会話すると自動で作成されます"
+      : "銘柄を選択してください";
+    notesBody.appendChild(empty);
+    return;
+  }
+  notesBody.innerHTML = renderMarkdown(notesContent);
+}
+
+function switchReviewTab(tab) {
+  const showNotes = tab === "notes";
+  metricsPane?.classList.toggle("is-hidden", showNotes);
+  notesPane?.classList.toggle("is-hidden", !showNotes);
+  tabMetricsBtn?.classList.toggle("is-active", !showNotes);
+  tabNotesBtn?.classList.toggle("is-active", showNotes);
+  if (showNotes) notesDot?.classList.add("is-hidden");
+}
+
+// LLM がコードフェンスで包んで返した場合に中身だけ取り出す
+function stripMarkdownFences(text) {
+  const trimmed = (text || "").trim();
+  const match = trimmed.match(/^```(?:markdown|md)?\n([\s\S]*?)\n```$/);
+  return match ? match[1] : trimmed;
+}
+
+function buildNotesUpdatePrompt(exchanges) {
+  const name = activeSnapshot?.name || activeTicker;
+  return [
+    `${activeTicker}（${name}）の投資レビューノート（Markdown）を、新しい会話のやり取りを踏まえて更新してください。`,
+    "",
+    "ルール:",
+    "- 出力は更新後のノート全文（Markdown本文）のみ。前置き・説明・コードフェンスは書かない。",
+    "- 既存の内容は保持し、新しい情報の追記や古い記述の修正だけを行う。",
+    "- 会話に出ていない情報を推測で補わない。",
+    `- ノートが空のときは「# ${activeTicker} ${name}」「## 投資仮説」「## 強み」「## リスク」「## 確認事項」「## メモ」の構成で新規作成する。該当する内容がない見出しは省略してよい。`,
+    "",
+    "【現在のノート】",
+    notesContent.trim() || "(空)",
+    "",
+    "【新しい会話】",
+    exchanges
+      .map((ex) => `User:\n${ex.user}\n\nAssistant:\n${ex.assistant}`)
+      .join("\n\n"),
+  ].join("\n");
+}
+
+function queueNotesUpdate(userText, assistantText) {
+  if (!activeTicker || !activeSessionId) return;
+  notesQueue.push({ user: userText, assistant: assistantText });
+  processNotesQueue();
+}
+
+async function processNotesQueue() {
+  if (notesUpdating || !notesQueue.length) return;
+  notesUpdating = true;
+  const ticker = activeTicker;
+  const sessionId = activeSessionId;
+
+  while (notesQueue.length && activeTicker === ticker) {
+    const exchanges = notesQueue.splice(0, notesQueue.length);
+    setNotesStatus("ノートを更新中...");
+    let markdown = "";
+    let failed = null;
+    await streamChat(
+      sessionId,
+      [{ role: "user", content: buildNotesUpdatePrompt(exchanges) }],
+      { persistUser: false, persistAssistant: false },
+      (chunk) => {
+        markdown += chunk;
+      },
+      () => {},
+      (error) => {
+        failed = error;
+      }
+    );
+
+    // 更新中に銘柄が切り替わったら結果を破棄する
+    if (activeTicker !== ticker) break;
+
+    if (failed !== null || !stripMarkdownFences(markdown)) {
+      setNotesStatus("ノートの自動更新に失敗しました", true);
+      continue;
+    }
+
+    try {
+      const saved = await api("PATCH", `/stocks/${encodeURIComponent(ticker)}/notes`, {
+        content: stripMarkdownFences(markdown),
+      });
+      if (activeTicker !== ticker) break;
+      notesContent = saved.content ?? stripMarkdownFences(markdown);
+      renderNotes();
+      const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      setNotesStatus(`${time} 更新`);
+      if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
+    } catch (error) {
+      setNotesStatus("ノートの保存に失敗しました", true);
+    }
+  }
+
+  notesUpdating = false;
+  // 銘柄切替などで break した間に積まれた分を処理し直す
+  if (notesQueue.length) processNotesQueue();
+}
+
 async function loadTicker(ticker, snapshot) {
   activeTicker = String(ticker || "").trim().toUpperCase();
   activeSnapshot = snapshot || null;
   activeSessionId = null;
   history = [];
+  notesContent = "";
+  notesQueue = [];
+  setNotesStatus("");
+  notesDot?.classList.add("is-hidden");
+  renderNotes();
 
   if (!activeTicker) {
     subtitle.textContent = "銘柄を表示すると会話できます";
@@ -223,11 +386,14 @@ async function loadTicker(ticker, snapshot) {
     const data = await api("GET", `/stocks/${encodeURIComponent(activeTicker)}/workspace`);
     sessions = data.sessions || [];
     notePath.textContent = data.notes?.relative_path ? `保存先: ${data.notes.relative_path}` : "";
+    notesContent = data.notes?.content || "";
+    renderNotes();
     renderSessions();
     if (sessions.length) {
       await selectSession(sessions[0].id);
     } else {
       setEnabled(true);
+      showSuggestions();
     }
   } catch (error) {
     clearMessages(`銘柄チャットの初期化に失敗しました: ${error.message}`);
@@ -256,7 +422,10 @@ async function selectSession(sessionId) {
     history.push({ id: message.id, role: message.role, content: message.content });
     appendMessage(message.role, message.content, message.created_at);
   });
-  if (!messages.length) clearMessages("この銘柄について質問できます");
+  if (!messages.length) {
+    clearMessages("この銘柄について質問できます");
+    showSuggestions();
+  }
   setEnabled(true);
 }
 
@@ -280,6 +449,7 @@ async function deleteSession(session) {
     activeSessionId = null;
     history = [];
     clearMessages("会話を選択するか、新しい会話を作成してください");
+    showSuggestions();
   }
   await refreshSessions();
   setEnabled(true);
@@ -336,6 +506,7 @@ async function sendMessage() {
       history[history.length - 1].id = userId;
       history.push({ id: assistantId, role: "assistant", content: accumulated });
       streaming = false;
+      queueNotesUpdate(text, accumulated);
       await refreshSessions();
       setEnabled(true);
       inputEl.focus();
@@ -383,7 +554,14 @@ async function summarizeToMarkdown() {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
     async () => {
-      await api("PATCH", `/stocks/${encodeURIComponent(activeTicker)}/notes`, { content: markdown });
+      const saved = await api("PATCH", `/stocks/${encodeURIComponent(activeTicker)}/notes`, {
+        content: stripMarkdownFences(markdown),
+      });
+      notesContent = saved.content ?? stripMarkdownFences(markdown);
+      renderNotes();
+      const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      setNotesStatus(`${time} 更新`);
+      if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
       assistant.wrap.classList.remove("loading");
       streaming = false;
       setEnabled(true);
@@ -398,6 +576,8 @@ async function summarizeToMarkdown() {
   );
 }
 
+tabMetricsBtn?.addEventListener("click", () => switchReviewTab("metrics"));
+tabNotesBtn?.addEventListener("click", () => switchReviewTab("notes"));
 newButton?.addEventListener("click", createSession);
 sendButton?.addEventListener("click", sendMessage);
 summarizeButton?.addEventListener("click", summarizeToMarkdown);
@@ -411,6 +591,8 @@ inputEl?.addEventListener("input", () => {
   inputEl.style.height = "auto";
   inputEl.style.height = `${Math.min(inputEl.scrollHeight, 160)}px`;
 });
+
+renderNotes();
 
 export function setStockReviewContext(ticker, snapshot) {
   if (!panel) return;
