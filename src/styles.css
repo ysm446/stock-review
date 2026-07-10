@@ -2168,29 +2168,38 @@ select:focus {
   font-size: 0.82rem;
 }
 
-/* 会話が空のときのテンプレート質問チップ */
+/* 入力欄の上に常時表示するテンプレート質問チップ */
 .stock-chat-suggestions {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  justify-content: center;
-  padding: 4px 12px;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.stock-chat-suggestions.is-hidden {
+  display: none;
 }
 
 .stock-chat-suggestion {
-  height: 30px;
-  padding: 0 12px;
+  height: 26px;
+  padding: 0 11px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel-raised);
   color: var(--text-soft);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   cursor: pointer;
 }
 
-.stock-chat-suggestion:hover {
+.stock-chat-suggestion:hover:not(:disabled) {
   background: var(--control-bg-hover);
   color: var(--text);
+}
+
+.stock-chat-suggestion:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .stock-chat-footer {

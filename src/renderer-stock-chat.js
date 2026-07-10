@@ -7,6 +7,7 @@ const newButton = document.getElementById("stock-chat-new");
 const summarizeButton = document.getElementById("stock-chat-summarize");
 const sessionList = document.getElementById("stock-chat-sessions");
 const notePath = document.getElementById("stock-chat-note-path");
+const suggestionsEl = document.getElementById("stock-chat-suggestions");
 const messagesEl = document.getElementById("stock-chat-messages");
 const inputEl = document.getElementById("stock-chat-input");
 const sendButton = document.getElementById("stock-chat-send");
@@ -111,6 +112,11 @@ function setEnabled(enabled) {
   sendButton.disabled = !canChat;
   newButton.disabled = !enabled || streaming;
   summarizeButton.disabled = !canChat || history.length === 0;
+  // テンプレート質問は銘柄が表示されていれば常時表示（応答中は押せない）
+  suggestionsEl?.classList.toggle("is-hidden", !activeTicker);
+  suggestionsEl
+    ?.querySelectorAll(".stock-chat-suggestion")
+    .forEach((btn) => (btn.disabled = !enabled || streaming));
 }
 
 function formatDate(ms) {
@@ -126,7 +132,7 @@ function clearMessages(text = "新しい会話を作成してください") {
   messagesEl.appendChild(empty);
 }
 
-// 会話が空のときに表示するテンプレート質問
+// 入力欄の上に常時表示するテンプレート質問
 const TEMPLATE_QUESTIONS = [
   "最近のニュースを教えて",
   "直近の決算のポイントは？",
@@ -134,10 +140,8 @@ const TEMPLATE_QUESTIONS = [
   "バリュエーションは割安？割高？",
 ];
 
-function showSuggestions() {
-  messagesEl.querySelectorAll(".stock-chat-suggestions").forEach((el) => el.remove());
-  const wrap = document.createElement("div");
-  wrap.className = "stock-chat-suggestions";
+function renderSuggestions() {
+  if (!suggestionsEl) return;
   TEMPLATE_QUESTIONS.forEach((question) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -150,13 +154,12 @@ function showSuggestions() {
       inputEl.value = question;
       sendMessage();
     });
-    wrap.appendChild(btn);
+    suggestionsEl.appendChild(btn);
   });
-  messagesEl.appendChild(wrap);
 }
 
 function appendMessage(role, content, createdAt = Date.now()) {
-  messagesEl.querySelectorAll(".chat-empty-hint, .stock-chat-suggestions").forEach((el) => el.remove());
+  messagesEl.querySelectorAll(".chat-empty-hint").forEach((el) => el.remove());
   const wrap = document.createElement("div");
   wrap.className = `chat-message ${role}`;
 
@@ -393,7 +396,6 @@ async function loadTicker(ticker, snapshot) {
       await selectSession(sessions[0].id);
     } else {
       setEnabled(true);
-      showSuggestions();
     }
   } catch (error) {
     clearMessages(`銘柄チャットの初期化に失敗しました: ${error.message}`);
@@ -422,10 +424,7 @@ async function selectSession(sessionId) {
     history.push({ id: message.id, role: message.role, content: message.content });
     appendMessage(message.role, message.content, message.created_at);
   });
-  if (!messages.length) {
-    clearMessages("この銘柄について質問できます");
-    showSuggestions();
-  }
+  if (!messages.length) clearMessages("この銘柄について質問できます");
   setEnabled(true);
 }
 
@@ -449,7 +448,6 @@ async function deleteSession(session) {
     activeSessionId = null;
     history = [];
     clearMessages("会話を選択するか、新しい会話を作成してください");
-    showSuggestions();
   }
   await refreshSessions();
   setEnabled(true);
@@ -593,6 +591,7 @@ inputEl?.addEventListener("input", () => {
 });
 
 renderNotes();
+renderSuggestions();
 
 export function setStockReviewContext(ticker, snapshot) {
   if (!panel) return;

@@ -12,9 +12,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+import socket
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib import request as urllib_request
 
@@ -117,6 +119,14 @@ def _kill_pid(pid) -> None:
 
 
 def is_ready(role: str) -> bool:
+    # まず素の TCP 接続で待ち受けの有無を確認する。Windows では待ち受けの無い
+    # ポートへの SYN が拒否（RST）されずに破棄されることがあり、いきなり HTTP
+    # プローブするとサーバー停止中は毎回タイムアウト（2秒）まで待たされるため。
+    try:
+        with socket.create_connection(("127.0.0.1", ROLES[role]["port"]), timeout=0.3):
+            pass
+    except OSError:
+        return False
     try:
         with urllib_request.urlopen(f"{role_base_url(role)}/health", timeout=2) as resp:
             return resp.status == 200
@@ -143,6 +153,10 @@ def chat_role() -> str | None:
 
 def get_roles_status() -> dict:
     paths = _get_paths()
+    # 死活確認は全役割を並列で1回ずつだけ行い、chat_role の判定にも使い回す
+    # （逐次 + chat_role() での再プローブだと停止中ポートのタイムアウトが積み上がる）
+    with ThreadPoolExecutor(max_workers=len(ROLES)) as pool:
+        ready_map = dict(zip(ROLES, pool.map(is_ready, ROLES)))
     roles = {}
     for role, config in ROLES.items():
         state = (paths.get("roles") or {}).get(role, {})
@@ -151,13 +165,14 @@ def get_roles_status() -> dict:
             "role": role,
             "label": config["label"],
             "port": config["port"],
-            "ready": is_ready(role),
+            "ready": ready_map[role],
             "model_path": model_path,
             "model_name": Path(model_path).name if model_path else "",
             "ctx_size": int(state.get("ctx_size") or config["default_ctx"]),
             "autostart": bool(state.get("autostart")),
         }
-    active = chat_role()
+    # deep 優先・standard フォールバック（chat_role() と同じ優先順位）
+    active = next((r for r in ("deep", "standard") if ready_map.get(r)), None)
     return {
         "roles": roles,
         "chat_role": active,

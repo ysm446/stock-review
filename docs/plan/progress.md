@@ -11,7 +11,13 @@
   - 「会話をMarkdownにまとめる」も保存後にノート表示へ反映するよう変更。
   - AUTOSHOT にノートタブ撮影（`-review-notes`）を追加し、実起動で指標タブ・ノートタブ両方の描画を目視確認。
   - **注意**: 自動更新は standard（または deep フォールバック）モデルが起動していないと 503 → ステータスに「自動更新に失敗」と出るだけでチャットは阻害しない。マージプロンプトの品質（既存内容の保持・推測禁止）は実モデルでの運用で要チューニング。
-  - **同日追記**: 「会話をMarkdownにまとめる」→「ノートを作り直す」に改名（全面再生成の役割を明確化）。会話が空のとき（無セッション銘柄・新規会話・削除後）にテンプレート質問チップ4種（`TEMPLATE_QUESTIONS`）を表示、クリックで送信（無セッション時は `createSession` から自動実行）。表示は `showSuggestions()`、送信時に `appendMessage` が hint と一緒に除去。実CSSを読むハーネスで見た目確認済み（scratchpad）。
+  - **同日追記**: 「会話をMarkdownにまとめる」→「ノートを作り直す」に改名（全面再生成の役割を明確化）。テンプレート質問チップ4種（`TEMPLATE_QUESTIONS`）を追加。当初は会話が空のときだけ表示だったが、**入力欄の上の固定行（`#stock-chat-suggestions`）に常時表示へ変更**（会話開始後も使える。streaming 中は disabled、銘柄未選択時は行ごと非表示。無セッション時のクリックは `createSession` から自動実行）。実起動スクリーンショットで会話中の常時表示を確認。
+
+- **2026-07-10: モデル設定モーダルの表示遅延（約4秒）を修正**。
+  - 原因: このマシンでは待ち受けの無いループバックポートへの SYN が拒否（RST）されず破棄されるため（Hyper-V 除外レンジ・ファイアウォールの明示ルールは該当なし。OS/セキュリティソフトのステルス挙動と推定）、deep 停止中の `is_ready("deep")` が毎回 HTTP タイムアウト2秒まで待っていた。さらに `get_roles_status` が逐次プローブ + `chat_role()` で再プローブし計約4秒。
+  - 修正（`chat_llama_manager.py`）: `is_ready` は HTTP の前に `socket.create_connection(timeout=0.3)` の TCP チェックを挟む。`get_roles_status` は ThreadPoolExecutor で全役割を並列に1回だけプローブし、`chat_role` 判定にも使い回す（deep 優先・standard フォールバックの優先順位は維持）。フロント（`renderer-chat.js`）は `/models` と `/llama/roles` を `Promise.all` で並列取得。実測 4.03秒 → 0.31秒。
+  - 波及効果: ステータスバーの10秒ポーリング、`/chat/agent-stream` 開始時の deep→standard フォールバック判定、`/chat/stream` の `_summary_base_url()`（ノート自動更新で毎回呼ばれる）も同じ短縮が効く。
+  - 注意: TCP チェックの 0.3秒は「SYN が破棄される環境で停止中ポートを諦めるまでの時間」。llama-server はモデルロード中でも即 LISTEN するため、ロード中判定は従来どおり HTTP `/health`（503）側で行われる。
 
 - **2026-07-07: 常駐 LLM の自動起動をトグル化**。`ensure_standard()` は `roles.standard.autostart`（既定 OFF）が真のときだけ起動。`save_role_settings`/`get_roles_status`/`PUT /llama/{role}/settings` に `autostart` を追加。モデル設定モーダルの standard カードにチェックボックスを追加（`renderer-chat.js`）。ノートPC 等で非常駐運用・小型モデル切替を想定。deep は従来どおり要求時ロード。
 

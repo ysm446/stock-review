@@ -1177,8 +1177,7 @@ async function renderModelModal() {
   let models;
   let status;
   try {
-    models = await api("GET", "/models");
-    status = await refreshModelStatus();
+    [models, status] = await Promise.all([api("GET", "/models"), refreshModelStatus()]);
   } catch (err) {
     chatModelList.innerHTML = `<p style="padding:16px;color:var(--muted)">取得失敗: ${err.message}</p>`;
     return;
