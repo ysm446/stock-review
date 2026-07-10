@@ -29,7 +29,7 @@
 2. **フェーズ2: セキュリティ** — chat_server の CORS 制限＋トークン認証、ニュース描画の XSS エスケープ、`setWindowOpenHandler` / `will-navigate` ガード、Electron のメジャー更新。
 3. **フェーズ3: F12 スクリーンショット + 1920x1080** — `useContentSize:true` でコンテンツ領域 1920x1080、F12（`before-input-event`）→ `capturePage()` → `data/screenshots/YYYYMMDD-HHmmss.png`。
 4. **フェーズ4: LLM チャット再設計（Ornith 移行、news-picker の実証パターンを移植）**
-   - 役割ベース2ポート運用: standard（Ornith 9B、:8081 常駐）/ deep（Ornith 35B、:8082、ロード/アンロード）。GGUF 自動発見と設定画面での役割別選択。
+   - ~~役割ベース2ポート運用: standard（Ornith 9B、:8081 常駐）/ deep（Ornith 35B、:8082、ロード/アンロード）。GGUF 自動発見と設定画面での役割別選択。~~ → **2026-07-10 に単一サーバー構成へ変更**（:8091 のみ。一覧から選んでロードした1つのモデルが全処理を担当。役割・常駐・フォールバックは廃止）。
    - llama-server は `--jinja` 必須。sampling {temp 0.6, top_p 0.95, top_k 20}。チャットは thinking ON + max_tokens 4096、背景処理は `enable_thinking:false` + json_schema（Ornith は思考に ~1000 トークン消費するため）。
    - エージェンティックループ（MAX_TOOL_STEPS=8、ツール失敗は error をモデルへ返却、上限時は tools=None で最終回答強制）。ツール: web_search / news_search（ddgs、region jp-jp、timelimit "w"）+ stock_context + notes_search。
    - system メッセージは1つに結合（Qwen3 系は複数で 400）。SSE イベント語彙は news-picker 互換。

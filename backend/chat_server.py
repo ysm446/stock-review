@@ -40,8 +40,6 @@ async def lifespan(app: FastAPI):
     llama.migrate_legacy_state()
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, embed_warmup)
-    # standard（常駐モデル）が設定済みなら自動起動（時間がかかるためバックグラウンドで）
-    loop.run_in_executor(None, llama.ensure_standard)
     yield
     try:
         llama.stop_all()
@@ -176,22 +174,15 @@ def _find_gguf_files() -> list[dict]:
     return results
 
 
-class RoleStartRequest(BaseModel):
+class LlamaStartRequest(BaseModel):
     model_path: str | None = None
     ctx_size: int | None = None
     n_gpu_layers: int = -1
 
 
-class RoleSettingsRequest(BaseModel):
+class LlamaSettingsRequest(BaseModel):
     model_path: str | None = None
     ctx_size: int | None = None
-    autostart: bool | None = None
-
-
-def _validate_role(role: str) -> str:
-    if role not in llama.ROLES:
-        raise HTTPException(404, f"Unknown role: {role}")
-    return role
 
 
 def _validate_ctx_size(ctx_size: int | None) -> int | None:
@@ -207,37 +198,34 @@ def get_models():
     return _find_gguf_files()
 
 
-@app.get("/llama/roles")
-def llama_roles():
-    return llama.get_roles_status()
+@app.get("/llama/status")
+def llama_status():
+    return llama.get_status()
 
 
-@app.post("/llama/{role}/start")
-async def llama_role_start(role: str, req: RoleStartRequest):
-    _validate_role(role)
+@app.post("/llama/start")
+async def llama_start(req: LlamaStartRequest):
     try:
         await asyncio.to_thread(
-            llama.start, role, req.model_path, _validate_ctx_size(req.ctx_size), req.n_gpu_layers
+            llama.start, req.model_path, _validate_ctx_size(req.ctx_size), req.n_gpu_layers
         )
-        return llama.get_roles_status()
+        return llama.get_status()
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
-@app.post("/llama/{role}/stop")
-async def llama_role_stop(role: str):
-    _validate_role(role)
-    await asyncio.to_thread(llama.stop, role)
-    return llama.get_roles_status()
+@app.post("/llama/stop")
+async def llama_stop():
+    await asyncio.to_thread(llama.stop)
+    return llama.get_status()
 
 
-@app.put("/llama/{role}/settings")
-def llama_role_settings(role: str, req: RoleSettingsRequest):
-    _validate_role(role)
-    llama.save_role_settings(role, req.model_path, _validate_ctx_size(req.ctx_size), req.autostart)
-    return llama.get_roles_status()
+@app.put("/llama/settings")
+def llama_settings(req: LlamaSettingsRequest):
+    llama.save_settings(req.model_path, _validate_ctx_size(req.ctx_size))
+    return llama.get_status()
 
 
 # ── llama-server runtime (download / update) ──────────────
@@ -543,22 +531,15 @@ class ChatRequest(BaseModel):
     system_prompt: str | None = None
 
 
-def _summary_base_url() -> str | None:
-    """要約など背景処理は standard（軽量モデル）優先。無ければチャット用にフォールバック。"""
-    if llama.is_ready("standard"):
-        return llama.role_base_url("standard")
-    return llama.chat_base_url()
-
-
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest):
     """ツール無しの単発ストリーム（銘柄ノート要約などの背景処理用）。
 
-    standard 役割を優先し、思考（thinking）は無効化して高速に返す。
+    思考（thinking）は無効化して高速に返す。
     """
-    base_url = _summary_base_url()
-    if not base_url:
+    if not llama.is_ready():
         raise HTTPException(503, "モデルが読み込まれていません")
+    base_url = llama.base_url()
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     user_content = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
@@ -616,14 +597,13 @@ async def chat_stream(req: ChatRequest):
 async def chat_agent_stream(req: ChatRequest):
     """ツール（Web検索・ニュース検索・銘柄指標）を使うエージェンティックチャット。
 
-    deep 役割を優先し、落ちていれば standard で応答する（使用モデルは model イベントで通知）。
+    使用モデルは model イベントで通知する。
     """
-    chat_role = llama.chat_role()
-    if chat_role is None:
+    status = llama.get_status()
+    if not status["ready"]:
         raise HTTPException(503, "モデルが読み込まれていません")
-    base_url = llama.role_base_url(chat_role)
-    status = llama.get_roles_status()
-    model_name = status["roles"][chat_role]["model_name"]
+    base_url = llama.base_url()
+    model_name = status["model_name"]
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
     user_content = messages[-1]["content"] if messages and messages[-1]["role"] == "user" else ""
@@ -651,7 +631,7 @@ async def chat_agent_stream(req: ChatRequest):
 
     def generate():
         final_text = ""
-        yield f"data: {json.dumps({'type': 'model', 'name': model_name, 'role': chat_role}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'model', 'name': model_name}, ensure_ascii=False)}\n\n"
         try:
             for event in chat_agent.run_chat_agent(llm_messages, base_url=base_url):
                 if event.get("type") == "_final":

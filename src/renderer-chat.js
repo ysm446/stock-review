@@ -103,15 +103,13 @@ let serverLoaded     = false;
 let loadingModel     = false;
 let streaming        = false;
 let currentModelName = "";
-let rolesStatus      = null;   // GET /llama/roles の結果
 
 const CHAT_SIDEBAR_WIDTH_KEY = "stock-review.chatSidebarWidth";
 const CHAT_DOC_EXPANDED_KEY = "stock-review.chatDocumentsExpanded";
 const CHAT_SIDEBAR_DEFAULT_WIDTH = 220;
 const CHAT_SIDEBAR_MIN_WIDTH = 180;
 const CHAT_SIDEBAR_MAX_WIDTH = 440;
-const ROLE_CTX_OPTIONS = [4096, 8192, 16384, 32768, 65536];
-const ROLE_ORDER = ["deep", "standard"];
+const CTX_OPTIONS = [4096, 8192, 16384, 32768, 65536];
 
 let treeDragState = null;
 
@@ -202,14 +200,12 @@ function initChatSidebarResize() {
 }
 
 async function refreshModelStatus() {
-  const status = await api("GET", "/llama/roles");
-  rolesStatus = status;
-  serverLoaded = Boolean(status.chat_role);
-  currentModelName = status.chat_model_name || "";
+  const status = await api("GET", "/llama/status");
+  serverLoaded = Boolean(status.ready);
+  currentModelName = status.model_name || "";
 
   if (serverLoaded) {
-    const roleLabel = status.roles?.[status.chat_role]?.label || status.chat_role;
-    setModelStatus("is-loaded", `${roleLabel}: ${currentModelName || "読み込み済み"}`);
+    setModelStatus("is-loaded", currentModelName || "読み込み済み");
     if (activeSessionId !== null && !streaming) setInputEnabled(true);
   } else {
     setModelStatus("", "モデルを設定");
@@ -1166,7 +1162,7 @@ async function refreshSession(sessionId) {
   }
 }
 
-// ── Model picker（役割ベース: deep=チャット優先 / standard=常駐・フォールバック） ──
+// ── Model picker（単一サーバー: 一覧から選んでロード、その1台が全処理を担当） ──
 async function openModelPicker() {
   chatModelModalBackdrop.classList.remove("is-hidden");
   await renderModelModal();
@@ -1188,112 +1184,88 @@ async function renderModelModal() {
     return;
   }
 
-  for (const roleKey of ROLE_ORDER) {
-    const role = status.roles?.[roleKey];
-    if (!role) continue;
-    chatModelList.appendChild(buildRoleCard(roleKey, role, models));
-  }
-}
-
-function buildRoleCard(roleKey, role, models) {
-  const card = document.createElement("div");
-  card.className = "chat-role-card";
-
+  // ヘッダー: 現在の状態 + コンテキスト長 + 停止ボタン
   const head = document.createElement("div");
-  head.className = "chat-role-head";
-  const title = document.createElement("strong");
-  title.textContent = `${role.label}モデル`;
+  head.className = "chat-model-head";
   const state = document.createElement("span");
-  state.className = `chat-role-state${role.ready ? " is-ready" : ""}`;
-  state.textContent = role.ready ? `稼働中 (:${role.port})` : "停止中";
-  head.append(title, state);
-
-  const modelSelect = document.createElement("select");
-  modelSelect.className = "chat-role-select";
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "モデルを選択...";
-  modelSelect.appendChild(placeholder);
-  models.forEach(({ name, path, relative_path }) => {
-    const option = document.createElement("option");
-    option.value = path;
-    option.textContent = relative_path || name;
-    if (path === role.model_path) option.selected = true;
-    modelSelect.appendChild(option);
-  });
+  state.className = `chat-role-state${status.ready ? " is-ready" : ""}`;
+  state.textContent = status.ready
+    ? `稼働中: ${status.model_name} (:${status.port})`
+    : "モデル未ロード";
 
   const ctxSelect = document.createElement("select");
   ctxSelect.className = "chat-role-select chat-role-ctx";
-  ROLE_CTX_OPTIONS.forEach(size => {
+  CTX_OPTIONS.forEach(size => {
     const option = document.createElement("option");
     option.value = String(size);
     option.textContent = `ctx ${ctxLabel(size)}`;
-    if (size === role.ctx_size) option.selected = true;
+    if (size === status.ctx_size) option.selected = true;
     ctxSelect.appendChild(option);
   });
-
-  const saveSettings = () => {
-    api("PUT", `/llama/${roleKey}/settings`, {
-      model_path: modelSelect.value || null,
-      ctx_size: Number(ctxSelect.value) || null,
-    }).catch(() => {});
-  };
-  modelSelect.addEventListener("change", saveSettings);
-  ctxSelect.addEventListener("change", saveSettings);
-
-  const actionBtn = document.createElement("button");
-  actionBtn.type = "button";
-  actionBtn.className = "accent-button chat-role-action";
-  actionBtn.textContent = role.ready ? "停止" : "起動";
-  actionBtn.addEventListener("click", async () => {
-    if (loadingModel) return;
-    loadingModel = true;
-    actionBtn.disabled = true;
-    try {
-      if (role.ready) {
-        await api("POST", `/llama/${roleKey}/stop`);
-      } else {
-        if (!modelSelect.value) {
-          actionBtn.disabled = false;
-          loadingModel = false;
-          return;
-        }
-        actionBtn.textContent = "起動中...";
-        await api("POST", `/llama/${roleKey}/start`, {
-          model_path: modelSelect.value,
-          ctx_size: Number(ctxSelect.value) || null,
-        });
-      }
-    } catch (err) {
-      window.alert(`${role.label}モデルの操作に失敗しました: ${err.message}`);
-    } finally {
-      loadingModel = false;
-      await renderModelModal();
-    }
+  ctxSelect.addEventListener("change", () => {
+    api("PUT", "/llama/settings", { ctx_size: Number(ctxSelect.value) || null }).catch(() => {});
   });
 
-  const controls = document.createElement("div");
-  controls.className = "chat-role-controls";
-  controls.append(modelSelect, ctxSelect, actionBtn);
-  card.append(head, controls);
+  head.append(state, ctxSelect);
 
-  // 常駐（standard）のみ「自動起動」トグル。既定 OFF＝必要なときだけ起動する。
-  if (roleKey === "standard") {
-    const autostart = document.createElement("label");
-    autostart.className = "chat-role-autostart";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = Boolean(role.autostart);
-    const text = document.createElement("span");
-    text.textContent = "バックエンド起動時に自動起動（常駐）";
-    checkbox.addEventListener("change", () => {
-      api("PUT", `/llama/${roleKey}/settings`, { autostart: checkbox.checked }).catch(() => {});
+  if (status.ready) {
+    const stopBtn = document.createElement("button");
+    stopBtn.type = "button";
+    stopBtn.className = "ghost-button chat-role-action";
+    stopBtn.textContent = "停止";
+    stopBtn.addEventListener("click", async () => {
+      if (loadingModel) return;
+      loadingModel = true;
+      stopBtn.disabled = true;
+      try {
+        await api("POST", "/llama/stop");
+      } catch (err) {
+        window.alert(`モデルの停止に失敗しました: ${err.message}`);
+      } finally {
+        loadingModel = false;
+        await renderModelModal();
+      }
     });
-    autostart.append(checkbox, text);
-    card.append(autostart);
+    head.appendChild(stopBtn);
   }
+  chatModelList.appendChild(head);
 
-  return card;
+  // モデル一覧: クリックでロード
+  models.forEach(({ name, path, relative_path }) => {
+    const isCurrent = path === status.model_path;
+    const isRunning = isCurrent && status.ready;
+
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `chat-model-item${isRunning ? " is-running" : ""}`;
+    const label = document.createElement("span");
+    label.className = "chat-model-item-name";
+    label.textContent = relative_path || name;
+    const badge = document.createElement("span");
+    badge.className = "chat-model-item-state";
+    badge.textContent = isRunning ? "稼働中" : "ロード";
+    item.append(label, badge);
+
+    item.addEventListener("click", async () => {
+      if (loadingModel || isRunning) return;
+      loadingModel = true;
+      badge.textContent = "ロード中...";
+      item.classList.add("is-loading");
+      try {
+        await api("POST", "/llama/start", {
+          model_path: path,
+          ctx_size: Number(ctxSelect.value) || null,
+        });
+      } catch (err) {
+        window.alert(`モデルのロードに失敗しました: ${err.message}`);
+      } finally {
+        loadingModel = false;
+        await renderModelModal();
+      }
+    });
+
+    chatModelList.appendChild(item);
+  });
 }
 
 function closeModelPicker() {

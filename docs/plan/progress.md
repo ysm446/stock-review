@@ -4,6 +4,15 @@
 
 ## 完了済み
 
+- **2026-07-10: LLM を単一サーバー構成へシンプル化（役割ベース廃止）+ ノート出典ルール + 指標単位バグ修正**。
+  - `chat_llama_manager.py` を単一サーバー（:8091 のみ、`llama_paths.json` の `server` キー）に全面書き換え。`is_ready()`/`base_url()`/`get_status()`/`save_settings()`/`start()`/`stop()`。ensure_standard / autostart / chat_role / フォールバックは廃止。**:8092 は解放**（ポートメモリ更新済み）。
+  - 移行: `migrate_legacy_state()` が roles 構成 → server へ変換。旧 standard が稼働中（pid あり + 8091 ready）ならそのまま採用してモデルを落とさない。deep は停止。最旧 :8080 形式も server へ。`main.js stopLlamaServer` は server/roles/legacy の全 PID に対応。
+  - API: `GET /llama/status`、`POST /llama/start|stop`、`PUT /llama/settings`（旧 `/llama/roles`・`/llama/{role}/*` は廃止）。`/chat/agent-stream`・`/chat/stream` は単一サーバーを使用（model イベントは名前のみ送出）。
+  - フロント: モーダルを「状態 + ctx 選択 + 停止」+「GGUF 一覧（クリックでロード、稼働中バッジ）」に刷新（`renderModelModal`）。ステータスバーはモデル名のみ表示。隔離 config での移行テスト（採用/コールド両パス）と AUTOSHOT（モーダル撮影 `-model-modal` を追加）で確認済み。
+  - ノートのマージ・作り直し両プロンプトに「出典URLの羅列を書かない（重要な1〜2件を本文に添えるのは可）」ルールを追加（出典が会話ごとに蓄積する問題への対処）。
+  - **単位バグ修正**: `buildStockSystemPrompt` が yfinance の生値（ROE 0.519 等）を渡していて LLM が「0.519%」と誤読していた（実際のノートで「低資本効率」と誤分析）。`formatMaybePercent`/`formatMaybeMultiple`/`formatMaybeCurrency` で表示と同じ整形済み値を渡すよう修正 + Yahoo Finance 参考値の注意書きを追加。
+  - **注意**: 単一化によりノート自動更新もチャットと同じサーバーに並ぶ。大型モデルでは応答直後の次質問が更新完了まで待たされることがある（気になれば更新頻度の調整を検討）。
+
 - **2026-07-10: レビュー左カラムに「ノート」タブ + 会話からのノート自動更新**。
   - 左カラム上部に「指標 / ノート」タブ（`review-left-tabs`、sticky）。ノートタブは `stocks/<ticker>/notes.md` を `renderMarkdown` で描画（`#review-notes-pane`）。実装は `renderer-stock-chat.js` に集約（チャットのライフサイクルと密結合のため）。
   - 銘柄チャットの応答完了ごとに `queueNotesUpdate` → `processNotesQueue` が背景で `/chat/stream`（standard 優先・thinking 無効）に「既存ノート + 新やり取り」のマージプロンプトを投げ、結果を PATCH `/stocks/{ticker}/notes` で保存して表示を更新。キュー方式（更新中に来た分はまとめて次回処理）、銘柄切替時は結果破棄・キュークリア。LLM がコードフェンスで包んだ場合は `stripMarkdownFences` で除去。

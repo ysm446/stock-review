@@ -1,5 +1,6 @@
 import { apiFetch, createActivityRenderer } from "./chat-api.js";
 import { renderMarkdown } from "./chat-markdown.js";
+import { formatMaybeCurrency, formatMaybeMultiple, formatMaybePercent } from "./renderer-utils.js";
 
 const panel = document.getElementById("stock-chat-panel");
 const subtitle = document.getElementById("stock-chat-subtitle");
@@ -227,6 +228,8 @@ function buildStockSystemPrompt() {
   const valuation = snapshot.valuation || {};
   const profitability = snapshot.profitability || {};
   const analyst = snapshot.analyst || {};
+  // 指標は画面表示と同じ整形済みの値で渡す（yfinance の ROE 等は小数（0.519 = 51.9%）
+  // で返るため、生の値を渡すと LLM が「0.519%」のように単位を誤読する）
   return [
     "あなたは個別銘柄レビュー用の投資調査アシスタントです。",
     "事実、推測、意見を分け、断定しすぎず、必要なら追加確認事項を提示してください。",
@@ -235,12 +238,12 @@ function buildStockSystemPrompt() {
     `セクター: ${overview.sector || "-"}`,
     `業種: ${overview.industry || "-"}`,
     `現在値: ${overview.currentPrice ?? "-"} ${snapshot.currency || ""}`,
-    `時価総額: ${overview.marketCap ?? "-"}`,
-    `PER: ${valuation.trailingPE ?? "-"}`,
-    `PBR: ${valuation.priceToBook ?? "-"}`,
-    `ROE: ${profitability.returnOnEquity ?? "-"}`,
+    `時価総額: ${formatMaybeCurrency(overview.marketCap, snapshot.currency || "JPY", true)}`,
+    `PER: ${formatMaybeMultiple(valuation.trailingPE)}（トレーリング）`,
+    `PBR: ${formatMaybeMultiple(valuation.priceToBook)}`,
+    `ROE: ${formatMaybePercent(profitability.returnOnEquity, 1)}`,
     `推奨: ${analyst.recommendationKey || "-"}`,
-    "Markdown保存が必要なときは、会話内で要約案を作ってください。保存自体は画面のボタンで実行されます。",
+    "上記の指標は Yahoo Finance 由来の参考値で、日本株では更新が遅い・不正確なことがあります。重要な判断に関わる場合は一次情報（決算短信・会社IR）での確認を促してください。",
   ].join("\n");
 }
 
@@ -290,6 +293,7 @@ function buildNotesUpdatePrompt(exchanges) {
     "- 出力は更新後のノート全文（Markdown本文）のみ。前置き・説明・コードフェンスは書かない。",
     "- 既存の内容は保持し、新しい情報の追記や古い記述の修正だけを行う。",
     "- 会話に出ていない情報を推測で補わない。",
+    "- 出典URLの羅列（リンク集・「出典」セクション）はノートに書かない。特に重要な出典を本文中に1〜2件添える程度にとどめ、既存ノートに出典リストが残っていれば削除する。",
     `- ノートが空のときは「# ${activeTicker} ${name}」「## 投資仮説」「## 強み」「## リスク」「## 確認事項」「## メモ」の構成で新規作成する。該当する内容がない見出しは省略してよい。`,
     "",
     "【現在のノート】",
@@ -532,6 +536,7 @@ async function summarizeToMarkdown() {
     `${activeTicker} の会話内容を、投資レビュー用のMarkdownノートに整理してください。`,
     "見出しは # 銘柄コード 銘柄名, ## 投資仮説, ## 強み, ## リスク, ## 確認事項, ## 会話メモ を基本にしてください。",
     "会話にない情報は推測で補わず、不明と書いてください。",
+    "出典URLの羅列（リンク集・「出典」セクション）は含めないでください。特に重要な出典を本文中に1〜2件添える程度は構いません。",
     "",
     history.map((m) => `${m.role === "user" ? "User" : "Assistant"}:\n${m.content}`).join("\n\n"),
   ].join("\n");

@@ -1,11 +1,10 @@
-"""llama-server の役割ベース管理（news-picker の llama_manager パターンを移植）。
+"""llama-server の管理（単一サーバー構成）。
 
-- standard（:8081）: 常駐向けの軽量モデル。ノート要約などの背景処理と、
-  deep が落ちているときのチャットのフォールバック先。
-- deep（:8082）: チャット用の高性能モデル。VRAM 節約のため手動でロード/アンロードする。
+起動直後は何もロードされていない。ユーザーがモデル設定から GGUF を選んで
+ロードすると、その1台がチャット・ノート要約などすべての処理を担当する。
 
-設定と PID は data/llama_paths.json に保存する:
-  {"roles": {"standard": {"model_path": ..., "ctx_size": ..., "pid": ...}, "deep": {...}}}
+設定と PID は llama_paths.json に保存する:
+  {"server": {"model_path": ..., "ctx_size": ..., "pid": ...}}
 """
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ import socket
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib import request as urllib_request
 
@@ -31,16 +29,14 @@ _RUNTIME_DIR = _ROOT / "runtime" / "llama-server"
 _LEGACY_BIN_DIR = _ROOT / "bin" / "llama-server"
 
 # 注意: news-picker が同一マシンで 8081/8082 を使うため、衝突しないポートを選ぶこと
-ROLES: dict[str, dict] = {
-    "standard": {"port": 8091, "default_ctx": 16384, "label": "常駐"},
-    "deep": {"port": 8092, "default_ctx": 32768, "label": "深堀り"},
-}
+PORT = 8091
+DEFAULT_CTX = 16384
 
 CTX_OPTIONS = (4096, 8192, 16384, 32768, 65536)
 
 
-def role_base_url(role: str) -> str:
-    return f"http://127.0.0.1:{ROLES[role]['port']}"
+def base_url() -> str:
+    return f"http://127.0.0.1:{PORT}"
 
 
 def _find_latest_exe() -> Path:
@@ -74,31 +70,60 @@ def _save_paths(paths: dict) -> None:
     atomic_write_text(_PATHS_FILE, json.dumps(paths, indent=2, ensure_ascii=False))
 
 
-def _role_state(paths: dict, role: str) -> dict:
-    return paths.setdefault("roles", {}).setdefault(role, {})
+def _server_state(paths: dict) -> dict:
+    return paths.setdefault("server", {})
 
 
 def migrate_legacy_state() -> None:
-    """旧・単一サーバー構成（:8080、active_model_path/llama_server_pid）からの移行。
+    """旧構成からの移行。
 
-    旧キーが残っていれば、稼働中の旧サーバーを止め、選択されていたモデルを
-    deep（チャット役割）に引き継ぐ。
+    - 役割ベース（roles.standard / roles.deep、2026-07 世代）: 稼働中のサーバーを
+      止め、deep（無ければ standard）のモデル選択を単一サーバーへ引き継ぐ。
+    - 旧・単一サーバー構成（:8080、active_model_path/llama_server_pid）: 同様に
+      モデル選択を引き継ぐ。
     """
     paths = _get_paths()
-    if "llama_server_pid" not in paths and "active_model_path" not in paths:
-        return
-    legacy_pid = paths.pop("llama_server_pid", None)
-    legacy_model = paths.pop("active_model_path", "")
-    legacy_ctx = paths.pop("ctx_size", None)
-    if legacy_pid:
+    changed = False
+
+    roles = paths.pop("roles", None)
+    if isinstance(roles, dict):
+        server = _server_state(paths)
+        standard = roles.get("standard") or {}
+        deep = roles.get("deep") or {}
+        # 旧 standard は新構成と同じポート（8091）なので、稼働中ならそのまま引き継ぐ
+        # （アップグレード直後にロード済みモデルを落とさない）。deep（8092）は停止する。
+        _kill_pid(deep.get("pid"))
+        if standard.get("pid") and is_ready():
+            server["model_path"] = standard.get("model_path", "")
+            if standard.get("ctx_size"):
+                server["ctx_size"] = int(standard["ctx_size"])
+            server["pid"] = standard["pid"]
+            logger.info("Adopted running standard server as the single server")
+        else:
+            _kill_pid(standard.get("pid"))
+            for state in (deep, standard):
+                if state.get("model_path") and not server.get("model_path"):
+                    server["model_path"] = state["model_path"]
+                    if state.get("ctx_size"):
+                        server["ctx_size"] = int(state["ctx_size"])
+        changed = True
+        logger.info("Migrated role-based llama state (deep/standard → server)")
+
+    if "llama_server_pid" in paths or "active_model_path" in paths:
+        legacy_pid = paths.pop("llama_server_pid", None)
+        legacy_model = paths.pop("active_model_path", "")
+        legacy_ctx = paths.pop("ctx_size", None)
         _kill_pid(legacy_pid)
-    deep = _role_state(paths, "deep")
-    if legacy_model and not deep.get("model_path"):
-        deep["model_path"] = legacy_model
-        if legacy_ctx:
-            deep["ctx_size"] = int(legacy_ctx)
-    _save_paths(paths)
-    logger.info("Migrated legacy llama state (model → deep role)")
+        server = _server_state(paths)
+        if legacy_model and not server.get("model_path"):
+            server["model_path"] = legacy_model
+            if legacy_ctx:
+                server["ctx_size"] = int(legacy_ctx)
+        changed = True
+        logger.info("Migrated legacy llama state (:8080 → server)")
+
+    if changed:
+        _save_paths(paths)
 
 
 def _kill_pid(pid) -> None:
@@ -118,108 +143,69 @@ def _kill_pid(pid) -> None:
             pass
 
 
-def is_ready(role: str) -> bool:
+def is_ready() -> bool:
     # まず素の TCP 接続で待ち受けの有無を確認する。Windows では待ち受けの無い
     # ポートへの SYN が拒否（RST）されずに破棄されることがあり、いきなり HTTP
     # プローブするとサーバー停止中は毎回タイムアウト（2秒）まで待たされるため。
     try:
-        with socket.create_connection(("127.0.0.1", ROLES[role]["port"]), timeout=0.3):
+        with socket.create_connection(("127.0.0.1", PORT), timeout=0.3):
             pass
     except OSError:
         return False
     try:
-        with urllib_request.urlopen(f"{role_base_url(role)}/health", timeout=2) as resp:
+        with urllib_request.urlopen(f"{base_url()}/health", timeout=2) as resp:
             return resp.status == 200
     except Exception:
         return False
 
 
-def chat_base_url() -> str | None:
-    """チャットに使うサーバー。deep 優先、落ちていれば standard にフォールバック。"""
-    if is_ready("deep"):
-        return role_base_url("deep")
-    if is_ready("standard"):
-        return role_base_url("standard")
-    return None
-
-
-def chat_role() -> str | None:
-    if is_ready("deep"):
-        return "deep"
-    if is_ready("standard"):
-        return "standard"
-    return None
-
-
-def get_roles_status() -> dict:
+def get_status() -> dict:
     paths = _get_paths()
-    # 死活確認は全役割を並列で1回ずつだけ行い、chat_role の判定にも使い回す
-    # （逐次 + chat_role() での再プローブだと停止中ポートのタイムアウトが積み上がる）
-    with ThreadPoolExecutor(max_workers=len(ROLES)) as pool:
-        ready_map = dict(zip(ROLES, pool.map(is_ready, ROLES)))
-    roles = {}
-    for role, config in ROLES.items():
-        state = (paths.get("roles") or {}).get(role, {})
-        model_path = state.get("model_path", "")
-        roles[role] = {
-            "role": role,
-            "label": config["label"],
-            "port": config["port"],
-            "ready": ready_map[role],
-            "model_path": model_path,
-            "model_name": Path(model_path).name if model_path else "",
-            "ctx_size": int(state.get("ctx_size") or config["default_ctx"]),
-            "autostart": bool(state.get("autostart")),
-        }
-    # deep 優先・standard フォールバック（chat_role() と同じ優先順位）
-    active = next((r for r in ("deep", "standard") if ready_map.get(r)), None)
+    state = paths.get("server") or {}
+    model_path = state.get("model_path", "")
     return {
-        "roles": roles,
-        "chat_role": active,
-        "chat_model_name": roles[active]["model_name"] if active else "",
+        "ready": is_ready(),
+        "port": PORT,
+        "model_path": model_path,
+        "model_name": Path(model_path).name if model_path else "",
+        "ctx_size": int(state.get("ctx_size") or DEFAULT_CTX),
     }
 
 
-def save_role_settings(role: str, model_path: str | None = None, ctx_size: int | None = None,
-                       autostart: bool | None = None) -> None:
+def save_settings(model_path: str | None = None, ctx_size: int | None = None) -> None:
     paths = _get_paths()
-    state = _role_state(paths, role)
+    state = _server_state(paths)
     if model_path is not None:
         state["model_path"] = model_path
     if ctx_size is not None:
         state["ctx_size"] = int(ctx_size)
-    if autostart is not None:
-        state["autostart"] = bool(autostart)
     _save_paths(paths)
 
 
-def _wait_for_server(role: str, timeout: int = 120) -> None:
+def _wait_for_server(timeout: int = 120) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if is_ready(role):
+        if is_ready():
             return
         time.sleep(1.5)
-    raise TimeoutError(f"llama-server ({role}) did not start within the timeout")
+    raise TimeoutError("llama-server did not start within the timeout")
 
 
-def start(role: str, model_path: str | None = None, ctx_size: int | None = None,
+def start(model_path: str | None = None, ctx_size: int | None = None,
           n_gpu_layers: int = -1) -> None:
-    """役割のサーバーを起動する。既に起動済みで同じモデルなら何もしない。"""
-    if role not in ROLES:
-        raise ValueError(f"Unknown role: {role}")
-
+    """サーバーを起動する。既に同じモデル・同じ ctx で起動済みなら何もしない。"""
     paths = _get_paths()
-    state = _role_state(paths, role)
+    state = _server_state(paths)
     target_path = model_path or state.get("model_path", "")
     if not target_path:
         raise ValueError("モデルが設定されていません")
-    target_ctx = int(ctx_size or state.get("ctx_size") or ROLES[role]["default_ctx"])
+    target_ctx = int(ctx_size or state.get("ctx_size") or DEFAULT_CTX)
 
-    if is_ready(role) and state.get("model_path") == target_path and int(state.get("ctx_size") or 0) == target_ctx:
-        logger.info("llama-server (%s) already running: %s", role, Path(target_path).name)
+    if is_ready() and state.get("model_path") == target_path and int(state.get("ctx_size") or 0) == target_ctx:
+        logger.info("llama-server already running: %s", Path(target_path).name)
         return
 
-    stop(role)
+    stop()
     time.sleep(1)
 
     exe = _find_latest_exe()
@@ -233,7 +219,7 @@ def start(role: str, model_path: str | None = None, ctx_size: int | None = None,
         str(exe),
         "--model", str(model_p),
         "--host", "127.0.0.1",
-        "--port", str(ROLES[role]["port"]),
+        "--port", str(PORT),
         "--ctx-size", str(target_ctx),
         "--n-gpu-layers", str(n_gpu_layers),
         # チャットテンプレートによるツールコール解析と reasoning_content の分離に必須
@@ -247,26 +233,26 @@ def start(role: str, model_path: str | None = None, ctx_size: int | None = None,
     if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
 
-    logger.info("Starting llama-server (%s): %s", role, model_p.name)
+    logger.info("Starting llama-server: %s", model_p.name)
     proc = subprocess.Popen(cmd, cwd=exe.parent, **kwargs)
     time.sleep(1)
     if proc.poll() is not None:
         raise RuntimeError("llama-server exited immediately after launch")
 
     paths = _get_paths()
-    state = _role_state(paths, role)
+    state = _server_state(paths)
     state["model_path"] = str(model_p)
     state["ctx_size"] = target_ctx
     state["pid"] = proc.pid
     _save_paths(paths)
 
-    _wait_for_server(role)
-    logger.info("llama-server (%s) ready: %s", role, model_p.name)
+    _wait_for_server()
+    logger.info("llama-server ready: %s", model_p.name)
 
 
-def stop(role: str) -> None:
+def stop() -> None:
     paths = _get_paths()
-    state = _role_state(paths, role)
+    state = _server_state(paths)
     pid = state.get("pid")
     if pid:
         _kill_pid(pid)
@@ -275,23 +261,7 @@ def stop(role: str) -> None:
 
 
 def stop_all() -> None:
-    for role in ROLES:
-        try:
-            stop(role)
-        except Exception:
-            pass
-
-
-def ensure_standard() -> None:
-    """standard が「自動起動 ON」かつモデル設定済みのときだけ起動する。
-
-    既定は自動起動しない（ノートPC 等では常駐させず、必要なときに手動起動 /
-    要求時ロードする）。設定は roles.standard.autostart（マシン固有）。
-    """
     try:
-        paths = _get_paths()
-        state = (paths.get("roles") or {}).get("standard", {})
-        if state.get("model_path") and state.get("autostart"):
-            start("standard")
-    except Exception as e:
-        logger.warning("ensure_standard failed: %s", e)
+        stop()
+    except Exception:
+        pass

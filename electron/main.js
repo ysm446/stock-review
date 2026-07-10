@@ -102,8 +102,11 @@ function stopLlamaServer() {
     console.warn("Failed to read llama server state:", error);
   }
 
-  // 役割ベース（roles.standard / roles.deep）と旧形式（llama_server_pid）の両方の PID を止める
+  // 単一サーバー（server）・役割ベース（roles.*、旧）・最旧形式（llama_server_pid）の PID を止める
   const pids = [];
+  const serverPid = Number(paths.server?.pid);
+  if (Number.isInteger(serverPid) && serverPid > 0) pids.push(serverPid);
+  if (paths.server && typeof paths.server === "object") paths.server.pid = null;
   if (paths.roles && typeof paths.roles === "object") {
     for (const role of Object.values(paths.roles)) {
       const pid = Number(role?.pid);
@@ -223,7 +226,14 @@ function createWindow() {
           );
           setTimeout(async () => {
             await captureScreenshot(win, "-review-notes");
-            setTimeout(() => app.quit(), 500);
+            // モデル設定モーダルも撮影する
+            await win.webContents.executeJavaScript(
+              `document.getElementById('chat-model-bar')?.click()`
+            );
+            setTimeout(async () => {
+              await captureScreenshot(win, "-model-modal");
+              setTimeout(() => app.quit(), 500);
+            }, 1500);
           }, 800);
         }, 9000);
       }, 6000);
