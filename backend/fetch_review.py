@@ -1,10 +1,12 @@
 import json
+import sqlite3
 import sys
 from datetime import datetime
 
 import yfinance as yf
 
 from shared import to_float
+from paths import DB_FILE
 
 MAX_FINANCIAL_SUMMARY_PERIODS = 4
 
@@ -88,11 +90,52 @@ def load_fast_info_safe(ticker):
         return {}
 
 
-def get_history_fallback_prices(ticker):
+def load_price_history(ticker):
     try:
         history = ticker.history(period="1y", interval="1d", auto_adjust=False)
     except Exception:
-        return {}
+        return None
+    if history is None or getattr(history, "empty", True):
+        return None
+    return history
+
+
+def store_and_load_candles(symbol, history):
+    """取得した日足を追記し、これまで蓄積した全OHLCVを返す。"""
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    conn.execute("""CREATE TABLE IF NOT EXISTS review_price_history (
+        ticker TEXT NOT NULL, trade_date TEXT NOT NULL, open REAL, high REAL,
+        low REAL, close REAL, volume INTEGER, updated_at TEXT NOT NULL,
+        PRIMARY KEY (ticker, trade_date))""")
+    now = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    if history is not None:
+        rows = []
+        for index, row in history.iterrows():
+            close = to_float(row.get("Close"))
+            if close is None:
+                continue
+            volume = to_float(row.get("Volume"))
+            rows.append((symbol, index.strftime("%Y-%m-%d"), to_float(row.get("Open")),
+                to_float(row.get("High")), to_float(row.get("Low")), close,
+                int(volume) if volume is not None else None, now))
+        conn.executemany("""INSERT INTO review_price_history
+            (ticker, trade_date, open, high, low, close, volume, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ticker, trade_date) DO UPDATE SET open=excluded.open,
+            high=excluded.high, low=excluded.low, close=excluded.close,
+            volume=excluded.volume, updated_at=excluded.updated_at""", rows)
+        conn.commit()
+    stored = conn.execute("""SELECT trade_date, open, high, low, close, volume
+        FROM review_price_history WHERE ticker = ? ORDER BY trade_date""", (symbol,)).fetchall()
+    conn.close()
+    return [{"date": r[0], "open": r[1], "high": r[2], "low": r[3],
+             "close": r[4], "volume": r[5]} for r in stored]
+
+
+def get_history_fallback_prices(history):
     if history is None or getattr(history, "empty", True):
         return {}
 
@@ -206,7 +249,9 @@ def build_payload(symbol: str):
     ticker = yf.Ticker(symbol)
     info = load_info_safe(ticker)
     fast_info = load_fast_info_safe(ticker)
-    history_fallback = get_history_fallback_prices(ticker)
+    history = load_price_history(ticker)
+    history_fallback = get_history_fallback_prices(history)
+    price_history = store_and_load_candles(symbol, history)
 
     overview = build_overview(info, fast_info, history_fallback)
     valuation = {key: info.get(field) for key, field in VALUATION_FIELDS.items()}
@@ -227,6 +272,7 @@ def build_payload(symbol: str):
         "analyst": analyst,
         "financialSummary": extract_financial_summary(ticker),
         "news": extract_news(ticker),
+        "priceHistory": price_history,
     }
 
 

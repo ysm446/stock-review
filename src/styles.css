@@ -1860,6 +1860,14 @@ select:focus {
   align-items: stretch;
 }
 
+.review-candlestick-panel { grid-column: 1 / -1; min-height: 330px; }
+.review-chart-head { align-items: center; }
+.review-chart-head p { margin: 4px 0 0; color: var(--muted); font-size: 0.72rem; }
+.review-candlestick-wrap { position: relative; height: 270px; min-width: 0; }
+#review-candlestick-chart { display: block; width: 100%; height: 100%; }
+.review-chart-tooltip { position: absolute; top: 6px; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 16px); padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-raised); color: var(--text); font-size: 0.7rem; white-space: nowrap; pointer-events: none; }
+.review-chart-tooltip.is-hidden { display: none; }
+
 .review-panel {
   padding: 14px 16px;
   height: 100%;

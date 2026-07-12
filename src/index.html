@@ -246,6 +246,11 @@
               <button type="button" class="review-notes-restore is-hidden" id="review-notes-restore" title="ノートを直前の保存前の状態に戻します。もう一度押すと戻す前の内容に戻ります">元に戻す</button>
             </div>
             <div class="review-grid-layout" id="review-metrics-pane">
+              <article class="panel review-panel review-candlestick-panel">
+                <div class="panel-head review-chart-head"><div><h2>株価チャート</h2><p id="review-chart-summary">銘柄を選択してください</p></div>
+                  <select id="review-chart-range" class="chart-color-select" title="表示期間"><option value="1m">1か月</option><option value="3m">3か月</option><option value="6m">6か月</option><option value="1y" selected>1年</option><option value="all">全期間</option></select></div>
+                <div class="review-candlestick-wrap" id="review-candlestick-wrap"><canvas id="review-candlestick-chart" width="1200" height="430"></canvas><div class="review-chart-tooltip is-hidden" id="review-chart-tooltip"></div></div>
+              </article>
               <article class="panel review-panel review-overview-panel">
                 <div class="review-symbol" id="review-symbol">-</div>
                 <div class="review-divider"></div>

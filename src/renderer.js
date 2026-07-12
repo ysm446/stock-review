@@ -33,6 +33,11 @@ import {
   priceStatus,
   refreshPricesButton,
   reviewAnalystGrid,
+  reviewCandlestickChart,
+  reviewCandlestickWrap,
+  reviewChartRange,
+  reviewChartSummary,
+  reviewChartTooltip,
   reviewChipRow,
   reviewFinancialBody,
   reviewHistoryButton,
@@ -143,6 +148,8 @@ const ALLOCATION_GROUPED_KEY = "stock-review.allocationGrouped";
 const ALLOCATION_COLOR_MODE_KEY = "stock-review.allocationColorMode";
 const TREND_RANGE_KEY = "stock-review.trendRange";
 const TREND_YAXIS_MODE_KEY = "stock-review.trendYAxisMode";
+const REVIEW_CHART_RANGE_KEY = "stock-review.reviewChartRange";
+let reviewCandleModel = null;
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -2373,6 +2380,100 @@ function renderReviewFinancials(rows) {
   });
 }
 
+function getReviewCandles() {
+  const rows = (Array.isArray(reviewSnapshot?.priceHistory) ? reviewSnapshot.priceHistory : [])
+    .filter((row) => [row.open, row.high, row.low, row.close].every((value) => Number.isFinite(Number(value))));
+  if (!rows.length || reviewChartRange.value === "all") return rows;
+  const months = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 }[reviewChartRange.value] || 12;
+  const start = new Date(`${rows[rows.length - 1].date}T00:00:00`);
+  start.setMonth(start.getMonth() - months);
+  return rows.filter((row) => new Date(`${row.date}T00:00:00`) >= start);
+}
+
+function getNicePriceStep(range, targetIntervals = 5) {
+  const roughStep = Math.max(range / targetIntervals, Number.EPSILON);
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalized = roughStep / magnitude;
+  const niceFactor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return niceFactor * magnitude;
+}
+
+function drawReviewCandlestickChart() {
+  const { ctx, width, height } = prepareHiDPICanvas(reviewCandlestickChart);
+  ctx.clearRect(0, 0, width, height);
+  const rows = getReviewCandles();
+  reviewCandleModel = null;
+  reviewChartTooltip.classList.add("is-hidden");
+  if (!rows.length) {
+    reviewChartSummary.textContent = reviewSnapshot ? "株価履歴を取得できませんでした" : "銘柄を選択してください";
+    ctx.fillStyle = "rgba(148, 163, 184, 0.85)"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("表示できる株価データがありません", width / 2, height / 2); return;
+  }
+  const padding = { left: 62, right: 16, top: 16, bottom: 28 };
+  const volumeHeight = Math.max(44, height * 0.18), gap = 14;
+  const priceBottom = height - padding.bottom - volumeHeight - gap;
+  const plotWidth = width - padding.left - padding.right, priceHeight = priceBottom - padding.top;
+  const lows = rows.map((r) => Number(r.low)).filter(Number.isFinite);
+  const highs = rows.map((r) => Number(r.high)).filter(Number.isFinite);
+  let minPrice = Math.min(...lows), maxPrice = Math.max(...highs);
+  const pricePad = Math.max((maxPrice - minPrice) * 0.06, maxPrice * 0.002);
+  const priceStep = getNicePriceStep(maxPrice - minPrice + pricePad * 2);
+  minPrice = Math.floor((minPrice - pricePad) / priceStep) * priceStep;
+  maxPrice = Math.ceil((maxPrice + pricePad) / priceStep) * priceStep;
+  const priceRange = Math.max(0.000001, maxPrice - minPrice);
+  const maxVolume = Math.max(1, ...rows.map((r) => Number(r.volume) || 0));
+  const step = plotWidth / rows.length, bodyWidth = Math.max(1, Math.min(9, step * 0.68));
+  const yFor = (value) => padding.top + (maxPrice - value) / priceRange * priceHeight;
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.16)"; ctx.fillStyle = "rgba(148, 163, 184, 0.8)";
+  ctx.font = "11px sans-serif"; ctx.textAlign = "right";
+  const priceDecimals = priceStep < 1 ? Math.min(4, Math.ceil(-Math.log10(priceStep))) : 0;
+  for (let value = maxPrice; value >= minPrice - priceStep * 0.001; value -= priceStep) {
+    const y = yFor(value);
+    ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(width - padding.right, y); ctx.stroke();
+    ctx.fillText(value.toLocaleString(undefined, {
+      minimumFractionDigits: priceDecimals,
+      maximumFractionDigits: priceDecimals
+    }), padding.left - 7, y + 4);
+  }
+  rows.forEach((row, index) => {
+    const x = padding.left + step * (index + 0.5);
+    const open = Number(row.open), high = Number(row.high), low = Number(row.low), close = Number(row.close);
+    if (![open, high, low, close].every(Number.isFinite)) return;
+    const color = close >= open ? "#ef4444" : "#22c55e"; ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(x, yFor(high)); ctx.lineTo(x, yFor(low)); ctx.stroke();
+    const top = Math.min(yFor(open), yFor(close)), bodyHeight = Math.max(1, Math.abs(yFor(open) - yFor(close)));
+    ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, bodyHeight);
+    const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
+    ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
+  });
+  ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
+  const labelCount = Math.min(5, rows.length);
+  for (let i = 0; i < labelCount; i += 1) {
+    const index = Math.round(i * (rows.length - 1) / Math.max(1, labelCount - 1));
+    ctx.fillText(rows[index].date.slice(5).replace("-", "/"), padding.left + step * (index + 0.5), height - 7);
+  }
+  const first = rows[0], last = rows[rows.length - 1], change = Number(last.close) - Number(first.close);
+  const percent = Number(first.close) ? change / Number(first.close) * 100 : 0;
+  reviewChartSummary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）`;
+  reviewCandleModel = { rows, padding, step };
+}
+
+reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
+reviewChartRange.addEventListener("change", () => {
+  localStorage.setItem(REVIEW_CHART_RANGE_KEY, reviewChartRange.value); drawReviewCandlestickChart();
+});
+reviewCandlestickWrap.addEventListener("mousemove", (event) => {
+  if (!reviewCandleModel) return;
+  const rect = reviewCandlestickWrap.getBoundingClientRect(), x = event.clientX - rect.left;
+  const { rows, padding, step } = reviewCandleModel, index = Math.floor((x - padding.left) / step);
+  if (index < 0 || index >= rows.length) { reviewChartTooltip.classList.add("is-hidden"); return; }
+  const row = rows[index], fmt = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  reviewChartTooltip.textContent = `${row.date}　始 ${fmt(row.open)}　高 ${fmt(row.high)}　安 ${fmt(row.low)}　終 ${fmt(row.close)}　出来高 ${(Number(row.volume) || 0).toLocaleString()}`;
+  reviewChartTooltip.style.left = `${Math.min(rect.width - 20, Math.max(20, x))}px`;
+  reviewChartTooltip.classList.remove("is-hidden");
+});
+reviewCandlestickWrap.addEventListener("mouseleave", () => reviewChartTooltip.classList.add("is-hidden"));
+
 function renderReviewSnapshot() {
   renderReviewChips();
 
@@ -2383,6 +2484,7 @@ function renderReviewSnapshot() {
     renderReviewKeyValueGrid(reviewProfitabilityGrid, []);
     renderReviewKeyValueGrid(reviewAnalystGrid, []);
     renderReviewFinancials([]);
+    drawReviewCandlestickChart();
     return;
   }
 
@@ -2421,6 +2523,7 @@ function renderReviewSnapshot() {
   ]);
 
   renderReviewFinancials(financialSummary || []);
+  drawReviewCandlestickChart();
 }
 
 const REVIEW_HISTORY_KEY = "review-history";
