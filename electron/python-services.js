@@ -5,6 +5,7 @@ const fs = require("fs");
 const ROOT_DIR = path.join(__dirname, "..");
 const PORTFOLIO_STORE = path.join(ROOT_DIR, "backend", "portfolio_store.py");
 const REVIEW_FETCHER = path.join(ROOT_DIR, "backend", "fetch_review.py");
+const REVIEW_CACHE = path.join(ROOT_DIR, "backend", "review_cache.py");
 const DIVIDEND_FETCHER = path.join(ROOT_DIR, "backend", "fetch_dividends.py");
 const SECTOR_FETCHER = path.join(ROOT_DIR, "backend", "fetch_sectors.py");
 
@@ -107,6 +108,12 @@ function runReviewFetcher(ticker) {
   return runPythonJson(REVIEW_FETCHER, [normalizedTicker], null, "review fetcher");
 }
 
+function loadCachedReview(ticker) {
+  const normalizedTicker = String(ticker || "").trim();
+  if (!normalizedTicker) return Promise.reject(new Error("Ticker is required"));
+  return runPythonJson(REVIEW_CACHE, [normalizedTicker], null, "review cache");
+}
+
 function runDividendFetcher(holdings) {
   return runPythonJson(DIVIDEND_FETCHER, [], { holdings }, "dividend fetcher");
 }
@@ -117,6 +124,7 @@ function runSectorFetcher(tickers) {
 
 module.exports = {
   getPythonCommand,
+  loadCachedReview,
   normalizeTickers,
   runDividendFetcher,
   runPortfolioStore,

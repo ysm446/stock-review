@@ -14,6 +14,7 @@ const {
   writePortfolio
 } = require("./data-files");
 const {
+  loadCachedReview,
   normalizeTickers,
   runDividendFetcher,
   runPortfolioStore,
@@ -318,6 +319,7 @@ ipcMain.handle("portfolio:sectors", async (_event, tickers) =>
 );
 
 ipcMain.handle("stock-master:load", async () => readStockMaster());
+ipcMain.handle("review:load-cache", async (_event, ticker) => loadCachedReview(ticker));
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
 
 // ── データルートフォルダ IPC ─────────────────────────────

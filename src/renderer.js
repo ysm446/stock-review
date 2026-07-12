@@ -227,6 +227,8 @@ let hoveredTrendIndex = null;
 let resizeTimer = null;
 let activeReviewTicker = "";
 let reviewSnapshot = null;
+let reviewLoadRequestId = 0;
+let reviewRefreshPending = false;
 let holdingSectorMap = {};
 let holdingsDayChangeMode = "perShare";
 let holdingsTableMode = "positions";
@@ -2470,7 +2472,7 @@ function drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, pri
     const y = yFor(point.value) + (point.type === "high" ? -7 : 13);
     const label = point.value.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, priceDecimals) });
     ctx.strokeStyle = "rgba(15, 23, 42, 0.9)"; ctx.strokeText(label, x, y);
-    ctx.fillStyle = point.type === "high" ? "#fca5a5" : "#86efac"; ctx.fillText(label, x, y);
+    ctx.fillStyle = point.type === "high" ? "#86efac" : "#fca5a5"; ctx.fillText(label, x, y);
   });
   ctx.lineWidth = 1;
 }
@@ -2483,9 +2485,11 @@ function drawReviewCandlestickChart() {
   reviewCandleModel = null;
   reviewChartTooltip.classList.add("is-hidden");
   if (!rows.length) {
-    reviewChartSummary.textContent = reviewSnapshot ? "株価履歴を取得できませんでした" : "銘柄を選択してください";
+    reviewChartSummary.textContent = reviewRefreshPending
+      ? "最新データを取得中..."
+      : reviewSnapshot ? "株価履歴を取得できませんでした" : "銘柄を選択してください";
     ctx.fillStyle = "rgba(148, 163, 184, 0.85)"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("表示できる株価データがありません", width / 2, height / 2); return;
+    ctx.fillText(reviewRefreshPending ? "株価データを取得中..." : "表示できる株価データがありません", width / 2, height / 2); return;
   }
   const padding = { left: 62, right: 16, top: 16, bottom: 28 };
   const volumeHeight = Math.max(44, height * 0.18), gap = 14;
@@ -2534,7 +2538,7 @@ function drawReviewCandlestickChart() {
   }
   const first = rows[0], last = rows[rows.length - 1], change = Number(last.close) - Number(first.close);
   const percent = Number(first.close) ? change / Number(first.close) * 100 : 0;
-  reviewChartSummary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）`;
+  reviewChartSummary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）${reviewRefreshPending ? "　最新データを取得中..." : ""}`;
   reviewCandleModel = { rows, padding, step };
 }
 
@@ -2691,26 +2695,42 @@ document.addEventListener("click", (e) => {
 
 async function loadReviewSnapshot(rawTicker) {
   const ticker = String(rawTicker || "").trim().toUpperCase();
-  if (!ticker) {
-    return;
-  }
+  if (!ticker) return;
 
+  const requestId = ++reviewLoadRequestId;
   activeReviewTicker = ticker;
   reviewTickerInput.value = ticker;
   hideReviewTickerSuggestions();
   renderReviewChips();
+  reviewRefreshPending = true;
+
+  let cachedSnapshot = null;
+  try {
+    cachedSnapshot = await window.stockReviewApi.loadCachedReview(ticker);
+  } catch (_error) {
+    // キャッシュ読込失敗はオンライン取得で回復できるため継続する。
+  }
+  if (requestId !== reviewLoadRequestId) return;
+
+  reviewSnapshot = cachedSnapshot;
+  if (cachedSnapshot) addToReviewHistory(ticker, cachedSnapshot.name || "");
+  renderReviewSnapshot();
 
   try {
     const snapshot = await window.stockReviewApi.fetchReview(ticker);
+    if (requestId !== reviewLoadRequestId) return;
+    reviewRefreshPending = false;
     reviewSnapshot = snapshot;
     addToReviewHistory(ticker, snapshot.name || "");
     renderReviewSnapshot();
     setStockReviewContext(ticker, snapshot);
   } catch (error) {
-    reviewSnapshot = null;
+    if (requestId !== reviewLoadRequestId) return;
+    reviewRefreshPending = false;
+    reviewSnapshot = cachedSnapshot;
     renderReviewSnapshot();
-    setStockReviewContext(ticker, null);
-    setStatus(`レビュー取得エラー: ${error.message}`, "error");
+    setStockReviewContext(ticker, cachedSnapshot);
+    setStatus(`レビュー更新エラー: ${error.message}${cachedSnapshot ? "（保存済みデータを表示）" : ""}`, "error");
   }
 }
 

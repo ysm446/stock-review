@@ -1,7 +1,7 @@
 import json
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import yfinance as yf
 
@@ -110,7 +110,7 @@ def store_and_load_candles(symbol, history):
         ticker TEXT NOT NULL, trade_date TEXT NOT NULL, open REAL, high REAL,
         low REAL, close REAL, volume INTEGER, updated_at TEXT NOT NULL,
         PRIMARY KEY (ticker, trade_date))""")
-    now = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     if history is not None:
         rows = []
         for index, row in history.iterrows():
@@ -133,6 +133,24 @@ def store_and_load_candles(symbol, history):
     conn.close()
     return [{"date": r[0], "open": r[1], "high": r[2], "low": r[3],
              "close": r[4], "volume": r[5]} for r in stored]
+
+
+def store_review_snapshot(symbol, payload):
+    snapshot = {key: value for key, value in payload.items() if key != "priceHistory"}
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
+    conn.execute("""CREATE TABLE IF NOT EXISTS review_snapshots (
+        ticker TEXT PRIMARY KEY, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    conn.execute(
+        """INSERT INTO review_snapshots (ticker, payload_json, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(ticker) DO UPDATE SET
+             payload_json=excluded.payload_json, updated_at=excluded.updated_at""",
+        (symbol, json.dumps(snapshot, ensure_ascii=False), now),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_history_fallback_prices(history):
@@ -262,7 +280,7 @@ def build_payload(symbol: str):
     total_revenue = to_float(info.get("totalRevenue"))
     profitability["fcfMargin"] = (free_cashflow / total_revenue) if free_cashflow and total_revenue else None
 
-    return {
+    payload = {
         "ticker": symbol,
         "name": normalize_text(info.get("longName") or info.get("shortName") or symbol),
         "currency": normalize_text(info.get("currency") or fast_info.get("currency") or "JPY").upper(),
@@ -274,6 +292,8 @@ def build_payload(symbol: str):
         "news": extract_news(ticker),
         "priceHistory": price_history,
     }
+    store_review_snapshot(symbol, payload)
+    return payload
 
 
 def main():
