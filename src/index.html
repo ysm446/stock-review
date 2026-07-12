@@ -239,15 +239,8 @@
 
             <div class="review-main-grid">
             <div class="review-metrics-col">
-            <div class="review-left-tabs">
-              <button type="button" class="review-left-tab is-active" id="review-tab-metrics">指標</button>
-              <button type="button" class="review-left-tab" id="review-tab-notes">ノート<span class="review-notes-dot is-hidden" id="review-notes-dot"></span></button>
-              <span class="review-notes-status" id="review-notes-status"></span>
-              <button type="button" class="review-notes-restore is-hidden" id="review-notes-restore" title="ノートを直前の保存前の状態に戻します。もう一度押すと戻す前の内容に戻ります">元に戻す</button>
-            </div>
-            <div class="review-grid-layout" id="review-metrics-pane">
               <article class="panel review-panel review-candlestick-panel">
-                <div class="panel-head review-chart-head"><div><h2>株価チャート</h2><p id="review-chart-summary">銘柄を選択してください</p></div>
+                <div class="panel-head review-chart-head"><div><h2>株価チャート</h2><div class="review-chart-quote"><strong id="review-chart-price">-</strong><span id="review-chart-change">前日比 -</span></div><p id="review-chart-summary">銘柄を選択してください</p></div>
                   <div class="review-chart-controls">
                     <div class="review-ma-toggles" aria-label="移動平均線">
                       <label><input class="review-ma-toggle" type="checkbox" value="25" checked><span class="review-ma-swatch is-ma25"></span>MA25</label>
@@ -258,6 +251,15 @@
                   </div></div>
                 <div class="review-candlestick-wrap" id="review-candlestick-wrap"><canvas id="review-candlestick-chart" width="1200" height="430"></canvas><div class="review-chart-tooltip is-hidden" id="review-chart-tooltip"></div></div>
               </article>
+            <div class="review-left-tabs">
+              <button type="button" class="review-left-tab is-active" id="review-tab-metrics">指標</button>
+              <button type="button" class="review-left-tab" id="review-tab-notes">ノート<span class="review-notes-dot is-hidden" id="review-notes-dot"></span></button>
+              <span class="review-notes-status" id="review-notes-status"></span>
+              <button type="button" class="review-notes-restore is-hidden" id="review-notes-restore" title="ノートを直前の保存前の状態に戻します。もう一度押すと戻す前の内容に戻ります">元に戻す</button>
+            </div>
+            <div class="review-lower-scroll">
+            <div class="review-grid-layout" id="review-metrics-pane">
+
               <article class="panel review-panel review-overview-panel">
                 <div class="review-symbol" id="review-symbol">-</div>
                 <div class="review-divider"></div>
@@ -316,6 +318,7 @@
             <article class="panel review-notes-pane is-hidden" id="review-notes-pane">
               <div class="chat-message-text review-notes-body" id="review-notes-body"></div>
             </article>
+            </div>
             </div>
 
             <section class="stock-chat-panel" id="stock-chat-panel">

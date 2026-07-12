@@ -37,6 +37,8 @@ import {
   reviewCandlestickWrap,
   reviewChartRange,
   reviewChartSummary,
+  reviewChartPrice,
+  reviewChartChange,
   reviewChartTooltip,
   reviewMaToggles,
   reviewChipRow,
@@ -2472,7 +2474,7 @@ function drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, pri
     const y = yFor(point.value) + (point.type === "high" ? -7 : 13);
     const label = point.value.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, priceDecimals) });
     ctx.strokeStyle = "rgba(15, 23, 42, 0.9)"; ctx.strokeText(label, x, y);
-    ctx.fillStyle = point.type === "high" ? "#86efac" : "#fca5a5"; ctx.fillText(label, x, y);
+    ctx.fillStyle = "#e5e7eb"; ctx.fillText(label, x, y);
   });
   ctx.lineWidth = 1;
 }
@@ -2574,8 +2576,43 @@ reviewCandlestickWrap.addEventListener("mousemove", (event) => {
 });
 reviewCandlestickWrap.addEventListener("mouseleave", () => reviewChartTooltip.classList.add("is-hidden"));
 
+function formatReviewQuote(value, currency, signed = false) {
+  const numeric = toFiniteNumber(value);
+  if (numeric === null) return "-";
+  return new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: currency || "JPY",
+    signDisplay: signed ? "always" : "auto",
+    maximumFractionDigits: currency === "JPY" ? 0 : 2
+  }).format(numeric);
+}
+
+function renderReviewChartQuote() {
+  reviewChartChange.classList.remove("is-positive", "is-negative");
+  if (!reviewSnapshot) {
+    reviewChartPrice.textContent = "-";
+    reviewChartChange.textContent = "前日比 -";
+    return;
+  }
+  const history = Array.isArray(reviewSnapshot.priceHistory) ? reviewSnapshot.priceHistory : [];
+  const overview = reviewSnapshot.overview || {};
+  const currency = reviewSnapshot.currency || "JPY";
+  const currentPrice = toFiniteNumber(overview.currentPrice) ?? toFiniteNumber(history.at(-1)?.close);
+  const previousClose = toFiniteNumber(overview.previousClose) ?? toFiniteNumber(history.at(-2)?.close);
+  reviewChartPrice.textContent = formatReviewQuote(currentPrice, currency);
+  if (currentPrice === null || previousClose === null || previousClose === 0) {
+    reviewChartChange.textContent = "前日比 -";
+    return;
+  }
+  const change = currentPrice - previousClose;
+  const rate = change / previousClose * 100;
+  reviewChartChange.textContent = `前日比 ${formatReviewQuote(change, currency, true)} (${formatSignedPercent(rate)})`;
+  reviewChartChange.classList.add(change >= 0 ? "is-positive" : "is-negative");
+}
+
 function renderReviewSnapshot() {
   renderReviewChips();
+  renderReviewChartQuote();
 
   if (!reviewSnapshot) {
     reviewSymbol.textContent = "銘柄を選択してください";

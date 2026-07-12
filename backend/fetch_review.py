@@ -174,6 +174,7 @@ def get_history_fallback_prices(history):
 
     result = {
         "currentPrice": to_float(closes.iloc[-1]),
+        "previousClose": to_float(closes.iloc[-2]) if len(closes) >= 2 else None,
         "fiftyTwoWeekHigh": to_float(history["High"].max()) if "High" in history else None,
         "fiftyTwoWeekLow": to_float(history["Low"].min()) if "Low" in history else None,
         "fiftyTwoWeekHighDate": high_date,
@@ -189,6 +190,11 @@ def build_overview(info, fast_info, history_fallback):
         or fast_info.get("lastPrice")
         or fast_info.get("regularMarketPrice")
         or history_fallback.get("currentPrice")
+    )
+    overview["previousClose"] = (
+        info.get("previousClose")
+        or fast_info.get("previousClose")
+        or history_fallback.get("previousClose")
     )
     overview["fiftyTwoWeekHigh"] = (
         overview.get("fiftyTwoWeekHigh")
