@@ -1,8 +1,13 @@
 # Progress
 
-最終更新: 2026-07-10
+最終更新: 2026-07-12
 
 ## 完了済み
+
+- **2026-07-12: ノートの最終更新日時を常時表示**。
+  - `chat_store.get_stock_notes` が `updated_at`（`notes.md` の mtime、ローカルタイムゾーン付き ISO）を返すように変更。空ノートでは None（`get_stock_notes` が空ファイルを作成するため、mtime だけでは「更新された」ことを意味しない）。
+  - フロント（`renderer-stock-chat.js`）: `formatNotesUpdatedAt` を追加し、銘柄読み込み時（`loadTicker`）にステータスへ表示。自動更新・「ノートを作り直す」の保存後も PATCH レスポンスの `updated_at` を使うよう統一（従来はフロントで `new Date()` を整形していた）。当日は「HH:MM 更新」、それ以外は「YYYY/M/D HH:MM 更新」。
+  - 隔離 DATA_DIR で空→None / 保存後→ISO 日時を確認済み。
 
 - **2026-07-10: LLM を単一サーバー構成へシンプル化（役割ベース廃止）+ ノート出典ルール + 指標単位バグ修正**。
   - `chat_llama_manager.py` を単一サーバー（:8091 のみ、`llama_paths.json` の `server` キー）に全面書き換え。`is_ready()`/`base_url()`/`get_status()`/`save_settings()`/`start()`/`stop()`。ensure_standard / autostart / chat_role / フォールバックは廃止。**:8092 は解放**（ポートメモリ更新済み）。

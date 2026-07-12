@@ -253,6 +253,16 @@ function setNotesStatus(text, isError = false) {
   notesStatus.classList.toggle("is-error", isError);
 }
 
+// ISO 日時 → 「HH:MM 更新」（当日以外は日付付き）。不正値は空文字
+function formatNotesUpdatedAt(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = date.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  if (date.toDateString() === new Date().toDateString()) return `${time} 更新`;
+  return `${date.toLocaleDateString("ja-JP")} ${time} 更新`;
+}
+
 function renderNotes() {
   if (!notesBody) return;
   if (!notesContent.trim()) {
@@ -351,8 +361,7 @@ async function processNotesQueue() {
       if (activeTicker !== ticker) break;
       notesContent = saved.content ?? stripMarkdownFences(markdown);
       renderNotes();
-      const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-      setNotesStatus(`${time} 更新`);
+      setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
       if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
     } catch (error) {
       setNotesStatus("ノートの保存に失敗しました", true);
@@ -395,6 +404,7 @@ async function loadTicker(ticker, snapshot) {
     notePath.textContent = data.notes?.relative_path ? `保存先: ${data.notes.relative_path}` : "";
     notesContent = data.notes?.content || "";
     renderNotes();
+    setNotesStatus(formatNotesUpdatedAt(data.notes?.updated_at));
     renderSessions();
     if (sessions.length) {
       await selectSession(sessions[0].id);
@@ -562,8 +572,7 @@ async function summarizeToMarkdown() {
       });
       notesContent = saved.content ?? stripMarkdownFences(markdown);
       renderNotes();
-      const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-      setNotesStatus(`${time} 更新`);
+      setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
       if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
       assistant.wrap.classList.remove("loading");
       streaming = false;

@@ -7,6 +7,7 @@ import sqlite3
 import struct
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from shared import atomic_write_text
@@ -323,11 +324,16 @@ def get_stock_notes(ticker: str) -> dict:
     if not path.exists():
         path.write_text("", encoding="utf-8")
     content = path.read_text(encoding="utf-8") if path.exists() else ""
+    # 空ノートは「作成しただけ」なので更新日時を返さない
+    updated_at = None
+    if content.strip():
+        updated_at = datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(timespec="seconds")
     return {
         "ticker": normalized,
         "content": content,
         "path": str(path),
         "relative_path": str(path.relative_to(DATA_DIR)),
+        "updated_at": updated_at,
     }
 
 
