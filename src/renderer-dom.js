@@ -28,6 +28,7 @@ export const reviewCandlestickWrap = document.getElementById("review-candlestick
 export const reviewChartRange = document.getElementById("review-chart-range");
 export const reviewChartSummary = document.getElementById("review-chart-summary");
 export const reviewChartTooltip = document.getElementById("review-chart-tooltip");
+export const reviewMaToggles = document.querySelectorAll(".review-ma-toggle");
 export const allocationGroupToggle = document.getElementById("allocation-group-toggle");
 export const allocationColorScheme = document.getElementById("allocation-color-scheme");
 export const allocationLegend = document.getElementById("allocation-legend");

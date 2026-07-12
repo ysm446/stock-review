@@ -38,6 +38,7 @@ import {
   reviewChartRange,
   reviewChartSummary,
   reviewChartTooltip,
+  reviewMaToggles,
   reviewChipRow,
   reviewFinancialBody,
   reviewHistoryButton,
@@ -149,6 +150,8 @@ const ALLOCATION_COLOR_MODE_KEY = "stock-review.allocationColorMode";
 const TREND_RANGE_KEY = "stock-review.trendRange";
 const TREND_YAXIS_MODE_KEY = "stock-review.trendYAxisMode";
 const REVIEW_CHART_RANGE_KEY = "stock-review.reviewChartRange";
+const REVIEW_MA_KEY = "stock-review.reviewMovingAverages";
+const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa" };
 let reviewCandleModel = null;
 
 const REVIEW_LABEL_HELP = {
@@ -2380,9 +2383,13 @@ function renderReviewFinancials(rows) {
   });
 }
 
-function getReviewCandles() {
-  const rows = (Array.isArray(reviewSnapshot?.priceHistory) ? reviewSnapshot.priceHistory : [])
+function getAllReviewCandles() {
+  return (Array.isArray(reviewSnapshot?.priceHistory) ? reviewSnapshot.priceHistory : [])
     .filter((row) => [row.open, row.high, row.low, row.close].every((value) => Number.isFinite(Number(value))));
+}
+
+function getReviewCandles() {
+  const rows = getAllReviewCandles();
   if (!rows.length || reviewChartRange.value === "all") return rows;
   const months = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 }[reviewChartRange.value] || 12;
   const start = new Date(`${rows[rows.length - 1].date}T00:00:00`);
@@ -2398,10 +2405,81 @@ function getNicePriceStep(range, targetIntervals = 5) {
   return niceFactor * magnitude;
 }
 
+function calculateMovingAverage(rows, period) {
+  const values = new Map();
+  let sum = 0;
+  rows.forEach((row, index) => {
+    sum += Number(row.close);
+    if (index >= period) sum -= Number(rows[index - period].close);
+    if (index >= period - 1) values.set(row.date, sum / period);
+  });
+  return values;
+}
+
+function getReviewTurningPoints(rows) {
+  if (!rows.length) return [];
+  const windowSize = Math.max(2, Math.floor(rows.length / 25));
+  const candidates = [];
+  for (let index = windowSize; index < rows.length - windowSize; index += 1) {
+    const neighbors = rows.slice(index - windowSize, index + windowSize + 1);
+    const high = Number(rows[index].high), low = Number(rows[index].low);
+    const otherHighs = neighbors.filter((_, offset) => offset !== windowSize).map((row) => Number(row.high));
+    const otherLows = neighbors.filter((_, offset) => offset !== windowSize).map((row) => Number(row.low));
+    if (high >= Math.max(...otherHighs)) {
+      candidates.push({ index, type: "high", value: high, prominence: high - Math.min(...otherLows) });
+    }
+    if (low <= Math.min(...otherLows)) {
+      candidates.push({ index, type: "low", value: low, prominence: Math.max(...otherHighs) - low });
+    }
+  }
+  const highIndex = rows.reduce((best, row, index) => Number(row.high) > Number(rows[best].high) ? index : best, 0);
+  const lowIndex = rows.reduce((best, row, index) => Number(row.low) < Number(rows[best].low) ? index : best, 0);
+  const selected = [
+    { index: highIndex, type: "high", value: Number(rows[highIndex].high), prominence: Infinity },
+    { index: lowIndex, type: "low", value: Number(rows[lowIndex].low), prominence: Infinity }
+  ].filter((point, index, list) => list.findIndex((other) => other.index === point.index && other.type === point.type) === index);
+  const minDistance = Math.max(3, Math.floor(rows.length / 10));
+  candidates.sort((a, b) => b.prominence - a.prominence).forEach((candidate) => {
+    if (selected.length >= 6) return;
+    if (selected.every((point) => Math.abs(point.index - candidate.index) >= minDistance)) selected.push(candidate);
+  });
+  return selected.sort((a, b) => a.index - b.index);
+}
+
+function drawReviewMovingAverages(ctx, rows, allRows, padding, step, yFor) {
+  const enabled = new Set([...reviewMaToggles].filter((toggle) => toggle.checked).map((toggle) => Number(toggle.value)));
+  enabled.forEach((period) => {
+    const averages = calculateMovingAverage(allRows, period);
+    ctx.strokeStyle = REVIEW_MA_COLORS[period]; ctx.lineWidth = 1.7; ctx.globalAlpha = 0.95;
+    ctx.beginPath(); let started = false;
+    rows.forEach((row, index) => {
+      const value = averages.get(row.date);
+      if (!Number.isFinite(value)) return;
+      const x = padding.left + step * (index + 0.5), y = yFor(value);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    if (started) ctx.stroke();
+  });
+  ctx.lineWidth = 1; ctx.globalAlpha = 1;
+}
+
+function drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals) {
+  ctx.font = "600 10px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 3;
+  getReviewTurningPoints(rows).forEach((point) => {
+    const x = Math.max(padding.left + 24, Math.min(width - padding.right - 24, padding.left + step * (point.index + 0.5)));
+    const y = yFor(point.value) + (point.type === "high" ? -7 : 13);
+    const label = point.value.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, priceDecimals) });
+    ctx.strokeStyle = "rgba(15, 23, 42, 0.9)"; ctx.strokeText(label, x, y);
+    ctx.fillStyle = point.type === "high" ? "#fca5a5" : "#86efac"; ctx.fillText(label, x, y);
+  });
+  ctx.lineWidth = 1;
+}
+
 function drawReviewCandlestickChart() {
   const { ctx, width, height } = prepareHiDPICanvas(reviewCandlestickChart);
   ctx.clearRect(0, 0, width, height);
   const rows = getReviewCandles();
+  const allRows = getAllReviewCandles();
   reviewCandleModel = null;
   reviewChartTooltip.classList.add("is-hidden");
   if (!rows.length) {
@@ -2446,6 +2524,8 @@ function drawReviewCandlestickChart() {
     const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
     ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
   });
+  drawReviewMovingAverages(ctx, rows, allRows, padding, step, yFor);
+  drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals);
   ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
   const labelCount = Math.min(5, rows.length);
   for (let i = 0; i < labelCount; i += 1) {
@@ -2457,6 +2537,22 @@ function drawReviewCandlestickChart() {
   reviewChartSummary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）`;
   reviewCandleModel = { rows, padding, step };
 }
+
+try {
+  let savedMovingAverages = JSON.parse(localStorage.getItem(REVIEW_MA_KEY) || "[25,50]");
+  if (Array.isArray(savedMovingAverages) && savedMovingAverages.includes(5)) {
+    savedMovingAverages = [...new Set(savedMovingAverages.map((period) => period === 5 ? 50 : period))];
+    localStorage.setItem(REVIEW_MA_KEY, JSON.stringify(savedMovingAverages));
+  }
+  reviewMaToggles.forEach((toggle) => { toggle.checked = savedMovingAverages.includes(Number(toggle.value)); });
+} catch (_error) {
+  // ????????????HTML????????????
+}
+reviewMaToggles.forEach((toggle) => toggle.addEventListener("change", () => {
+  const enabled = [...reviewMaToggles].filter((item) => item.checked).map((item) => Number(item.value));
+  localStorage.setItem(REVIEW_MA_KEY, JSON.stringify(enabled));
+  drawReviewCandlestickChart();
+}));
 
 reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
 reviewChartRange.addEventListener("change", () => {

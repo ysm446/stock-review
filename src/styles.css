@@ -1862,6 +1862,14 @@ select:focus {
 
 .review-candlestick-panel { grid-column: 1 / -1; min-height: 330px; }
 .review-chart-head { align-items: center; }
+.review-chart-controls { display: flex; align-items: center; gap: 12px; }
+.review-ma-toggles { display: flex; align-items: center; gap: 8px; }
+.review-ma-toggles label { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 0.7rem; cursor: pointer; user-select: none; }
+.review-ma-toggles input { margin: 0; accent-color: var(--accent); }
+.review-ma-swatch { width: 12px; height: 2px; border-radius: 2px; }
+.review-ma-swatch.is-ma25 { background: #f59e0b; }
+.review-ma-swatch.is-ma50 { background: #06b6d4; }
+.review-ma-swatch.is-ma75 { background: #a78bfa; }
 .review-chart-head p { margin: 4px 0 0; color: var(--muted); font-size: 0.72rem; }
 .review-candlestick-wrap { position: relative; height: 270px; min-width: 0; }
 #review-candlestick-chart { display: block; width: 100%; height: 100%; }
