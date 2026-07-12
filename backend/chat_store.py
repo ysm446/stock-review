@@ -317,6 +317,10 @@ def stock_notes_path(ticker: str) -> Path:
     return STOCKS_DIR / _stock_dir_name(ticker) / "notes.md"
 
 
+def stock_notes_backup_path(ticker: str) -> Path:
+    return STOCKS_DIR / _stock_dir_name(ticker) / "notes.md.bak"
+
+
 def get_stock_notes(ticker: str) -> dict:
     normalized = normalize_stock_ticker(ticker)
     path = stock_notes_path(normalized)
@@ -328,12 +332,15 @@ def get_stock_notes(ticker: str) -> dict:
     updated_at = None
     if content.strip():
         updated_at = datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+    backup = stock_notes_backup_path(normalized)
+    has_backup = backup.exists() and bool(backup.read_text(encoding="utf-8").strip())
     return {
         "ticker": normalized,
         "content": content,
         "path": str(path),
         "relative_path": str(path.relative_to(DATA_DIR)),
         "updated_at": updated_at,
+        "has_backup": has_backup,
     }
 
 
@@ -341,7 +348,25 @@ def save_stock_notes(ticker: str, content: str) -> dict:
     normalized = normalize_stock_ticker(ticker)
     path = stock_notes_path(normalized)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # 上書き前の内容を1世代だけ退避する（空のときと内容が変わらないときは残さない）
+    previous = path.read_text(encoding="utf-8") if path.exists() else ""
+    if previous.strip() and previous != (content or ""):
+        atomic_write_text(stock_notes_backup_path(normalized), previous)
     atomic_write_text(path, content or "")
+    return get_stock_notes(normalized)
+
+
+def restore_stock_notes(ticker: str) -> dict:
+    """notes.md と notes.md.bak を入れ替える（もう一度呼ぶと元に戻る）。"""
+    normalized = normalize_stock_ticker(ticker)
+    path = stock_notes_path(normalized)
+    backup = stock_notes_backup_path(normalized)
+    backup_content = backup.read_text(encoding="utf-8") if backup.exists() else ""
+    if not backup_content.strip():
+        raise ValueError("戻せるバックアップがありません")
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    atomic_write_text(path, backup_content)
+    atomic_write_text(backup, current)
     return get_stock_notes(normalized)
 
 

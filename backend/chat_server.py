@@ -387,6 +387,14 @@ def patch_stock_notes(ticker: str, body: NotesBody):
     return store.save_stock_notes(ticker, body.content)
 
 
+@app.post("/stocks/{ticker}/notes/restore")
+def restore_stock_notes(ticker: str):
+    try:
+        return store.restore_stock_notes(ticker)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/workspaces/{workspace_id}/documents")
 def get_documents(workspace_id: int):
     return store.list_documents(workspace_id)

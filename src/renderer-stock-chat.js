@@ -17,6 +17,7 @@ const tabMetricsBtn = document.getElementById("review-tab-metrics");
 const tabNotesBtn = document.getElementById("review-tab-notes");
 const notesDot = document.getElementById("review-notes-dot");
 const notesStatus = document.getElementById("review-notes-status");
+const notesRestoreBtn = document.getElementById("review-notes-restore");
 const metricsPane = document.getElementById("review-metrics-pane");
 const notesPane = document.getElementById("review-notes-pane");
 const notesBody = document.getElementById("review-notes-body");
@@ -28,9 +29,10 @@ let activeSessionId = null;
 let history = [];
 let streaming = false;
 
-// ノート（notes.md）の表示と会話からの自動更新
+// ノート（notes.md）の表示と「ノートに反映」ボタンからの更新
 let notesContent = "";
-let notesQueue = []; // 未反映の会話やり取り [{user, assistant}]
+let notesHasBackup = false;
+let notesQueue = []; // 反映待ちのやり取り [{user, assistant, btn}]
 let notesUpdating = false;
 
 async function api(method, path, body = null) {
@@ -253,6 +255,18 @@ function setNotesStatus(text, isError = false) {
   notesStatus.classList.toggle("is-error", isError);
 }
 
+function updateNotesRestoreButton() {
+  notesRestoreBtn?.classList.toggle("is-hidden", !notesHasBackup || !activeTicker);
+}
+
+// 保存/復元 API のレスポンスをノート表示へ反映する共通処理
+function applyNotesResponse(saved) {
+  notesContent = saved?.content || "";
+  notesHasBackup = Boolean(saved?.has_backup);
+  renderNotes();
+  updateNotesRestoreButton();
+}
+
 // ISO 日時 → 「HH:MM 更新」（当日以外は日付付き）。不正値は空文字
 function formatNotesUpdatedAt(iso) {
   if (!iso) return "";
@@ -303,6 +317,7 @@ function buildNotesUpdatePrompt(exchanges) {
     "- 出力は更新後のノート全文（Markdown本文）のみ。前置き・説明・コードフェンスは書かない。",
     "- 既存の内容は保持し、新しい情報の追記や古い記述の修正だけを行う。",
     "- 会話に出ていない情報を推測で補わない。",
+    "- この銘柄の投資判断・企業分析に関係しない話題（雑談、アプリの操作の話、別銘柄だけの話など）はノートに書かない。反映すべき内容が無ければ既存のノートをそのまま出力する。",
     "- 出典URLの羅列（リンク集・「出典」セクション）はノートに書かない。特に重要な出典を本文中に1〜2件添える程度にとどめ、既存ノートに出典リストが残っていれば削除する。",
     `- ノートが空のときは「# ${activeTicker} ${name}」「## 投資仮説」「## 強み」「## リスク」「## 確認事項」「## メモ」の構成で新規作成する。該当する内容がない見出しは省略してよい。`,
     "",
@@ -316,10 +331,46 @@ function buildNotesUpdatePrompt(exchanges) {
   ].join("\n");
 }
 
-function queueNotesUpdate(userText, assistantText) {
+function queueNotesUpdate(userText, assistantText, btn = null) {
   if (!activeTicker || !activeSessionId) return;
-  notesQueue.push({ user: userText, assistant: assistantText });
+  notesQueue.push({ user: userText, assistant: assistantText, btn });
   processNotesQueue();
+}
+
+// アシスタント回答の下に「ノートに反映」ボタンを付ける
+function addReflectButton(wrap, getExchange) {
+  const actions = document.createElement("div");
+  actions.className = "chat-message-actions";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "chat-reflect-btn";
+  btn.textContent = "ノートに反映";
+  btn.title = "このやり取りの内容をノートに反映します";
+  btn.addEventListener("click", () => {
+    const ex = getExchange();
+    if (!ex || !activeSessionId) return;
+    btn.disabled = true;
+    btn.textContent = "反映中...";
+    queueNotesUpdate(ex.user, ex.assistant, btn);
+  });
+  actions.appendChild(btn);
+  wrap.appendChild(actions);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return btn;
+}
+
+function markReflectResult(exchanges, succeeded) {
+  exchanges.forEach(({ btn }) => {
+    if (!btn) return;
+    if (succeeded) {
+      btn.textContent = "反映済み";
+      btn.disabled = true;
+      btn.classList.add("is-done");
+    } else {
+      btn.textContent = "ノートに反映";
+      btn.disabled = false;
+    }
+  });
 }
 
 async function processNotesQueue() {
@@ -350,7 +401,8 @@ async function processNotesQueue() {
     if (activeTicker !== ticker) break;
 
     if (failed !== null || !stripMarkdownFences(markdown)) {
-      setNotesStatus("ノートの自動更新に失敗しました", true);
+      setNotesStatus("ノートへの反映に失敗しました", true);
+      markReflectResult(exchanges, false);
       continue;
     }
 
@@ -359,12 +411,13 @@ async function processNotesQueue() {
         content: stripMarkdownFences(markdown),
       });
       if (activeTicker !== ticker) break;
-      notesContent = saved.content ?? stripMarkdownFences(markdown);
-      renderNotes();
+      applyNotesResponse(saved);
       setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
+      markReflectResult(exchanges, true);
       if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
     } catch (error) {
       setNotesStatus("ノートの保存に失敗しました", true);
+      markReflectResult(exchanges, false);
     }
   }
 
@@ -379,10 +432,12 @@ async function loadTicker(ticker, snapshot) {
   activeSessionId = null;
   history = [];
   notesContent = "";
+  notesHasBackup = false;
   notesQueue = [];
   setNotesStatus("");
   notesDot?.classList.add("is-hidden");
   renderNotes();
+  updateNotesRestoreButton();
 
   if (!activeTicker) {
     subtitle.textContent = "銘柄を表示すると会話できます";
@@ -402,8 +457,7 @@ async function loadTicker(ticker, snapshot) {
     const data = await api("GET", `/stocks/${encodeURIComponent(activeTicker)}/workspace`);
     sessions = data.sessions || [];
     notePath.textContent = data.notes?.relative_path ? `保存先: ${data.notes.relative_path}` : "";
-    notesContent = data.notes?.content || "";
-    renderNotes();
+    applyNotesResponse(data.notes);
     setNotesStatus(formatNotesUpdatedAt(data.notes?.updated_at));
     renderSessions();
     if (sessions.length) {
@@ -434,9 +488,16 @@ async function selectSession(sessionId) {
   clearMessages();
   renderSessions();
   const messages = await api("GET", `/sessions/${sessionId}/messages`);
+  let prevUserContent = null;
   messages.forEach((message) => {
     history.push({ id: message.id, role: message.role, content: message.content });
-    appendMessage(message.role, message.content, message.created_at);
+    const rendered = appendMessage(message.role, message.content, message.created_at);
+    // 過去のやり取りもノートに反映できるようにする
+    if (message.role === "assistant" && prevUserContent !== null) {
+      const user = prevUserContent;
+      addReflectButton(rendered.wrap, () => ({ user, assistant: message.content }));
+    }
+    prevUserContent = message.role === "user" ? message.content : null;
   });
   if (!messages.length) clearMessages("この銘柄について質問できます");
   setEnabled(true);
@@ -518,7 +579,7 @@ async function sendMessage() {
       history[history.length - 1].id = userId;
       history.push({ id: assistantId, role: "assistant", content: accumulated });
       streaming = false;
-      queueNotesUpdate(text, accumulated);
+      addReflectButton(assistant.wrap, () => ({ user: text, assistant: accumulated }));
       await refreshSessions();
       setEnabled(true);
       inputEl.focus();
@@ -570,8 +631,7 @@ async function summarizeToMarkdown() {
       const saved = await api("PATCH", `/stocks/${encodeURIComponent(activeTicker)}/notes`, {
         content: stripMarkdownFences(markdown),
       });
-      notesContent = saved.content ?? stripMarkdownFences(markdown);
-      renderNotes();
+      applyNotesResponse(saved);
       setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
       if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
       assistant.wrap.classList.remove("loading");
@@ -590,6 +650,19 @@ async function summarizeToMarkdown() {
 
 tabMetricsBtn?.addEventListener("click", () => switchReviewTab("metrics"));
 tabNotesBtn?.addEventListener("click", () => switchReviewTab("notes"));
+notesRestoreBtn?.addEventListener("click", async () => {
+  if (!activeTicker) return;
+  const ticker = activeTicker;
+  try {
+    const saved = await api("POST", `/stocks/${encodeURIComponent(ticker)}/notes/restore`);
+    if (activeTicker !== ticker) return;
+    applyNotesResponse(saved);
+    setNotesStatus("前のノートに戻しました");
+    switchReviewTab("notes");
+  } catch (error) {
+    setNotesStatus(`戻せませんでした: ${error.message}`, true);
+  }
+});
 newButton?.addEventListener("click", createSession);
 sendButton?.addEventListener("click", sendMessage);
 summarizeButton?.addEventListener("click", summarizeToMarkdown);

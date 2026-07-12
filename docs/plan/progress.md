@@ -4,6 +4,14 @@
 
 ## 完了済み
 
+- **2026-07-12: ノート反映を手動選択化 + 1世代バックアップ**。
+  - 応答完了時の `queueNotesUpdate` 自動呼び出しを廃止し、各アシスタント回答の下に「ノートに反映」ボタン（`addReflectButton`、過去の会話の履歴読み込み時にも user/assistant ペアで付与）。クリックで既存のキュー（`notesQueue`）に積む方式は維持。成功で「反映済み」、失敗で再クリック可能に戻す（`markReflectResult`）。
+  - `save_stock_notes` が上書き前の内容を `notes.md.bak` へ退避（空・内容不変のときは退避しない）。`restore_stock_notes` は notes.md と .bak を**入れ替える**（もう一度呼ぶと戻せる）。`POST /stocks/{ticker}/notes/restore` 追加。`get_stock_notes` に `has_backup` を追加。
+  - ノートタブ右端に「元に戻す」ボタン（`#review-notes-restore`、has_backup のときだけ表示、押すとノートタブへ切替）。
+  - マージプロンプトに「投資判断に関係しない話題は書かない・反映すべき内容が無ければ既存ノートをそのまま出力」ルールを追加。
+  - 検証: 隔離 DATA_DIR で 初回保存→bak無し / 2回目→bak=v1 / 同一内容→bak温存 / restore 2回で往復 / bak無し restore は 400、を確認。AUTOSHOT で回答下の反映ボタン表示を目視確認。
+  - **注意**: バックアップは1世代のみ。反映を連続で行うと bak も進むため、2つ前には戻れない。
+
 - **2026-07-12: ノートの最終更新日時を常時表示**。
   - `chat_store.get_stock_notes` が `updated_at`（`notes.md` の mtime、ローカルタイムゾーン付き ISO）を返すように変更。空ノートでは None（`get_stock_notes` が空ファイルを作成するため、mtime だけでは「更新された」ことを意味しない）。
   - フロント（`renderer-stock-chat.js`）: `formatNotesUpdatedAt` を追加し、銘柄読み込み時（`loadTicker`）にステータスへ表示。自動更新・「ノートを作り直す」の保存後も PATCH レスポンスの `updated_at` を使うよう統一（従来はフロントで `new Date()` を整形していた）。当日は「HH:MM 更新」、それ以外は「YYYY/M/D HH:MM 更新」。

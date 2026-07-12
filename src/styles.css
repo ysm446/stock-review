@@ -1775,6 +1775,57 @@ select:focus {
   color: var(--neg-soft);
 }
 
+.review-notes-restore {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.review-notes-restore:hover {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+.review-notes-restore.is-hidden {
+  display: none;
+}
+
+/* アシスタント回答下の「ノートに反映」ボタン */
+.chat-message-actions {
+  margin-top: 6px;
+}
+
+.chat-reflect-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.chat-reflect-btn:hover:not(:disabled) {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+.chat-reflect-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.chat-reflect-btn.is-done {
+  border-color: transparent;
+  background: none;
+}
+
 /* ノート表示パネル（notes.md の描画） */
 .review-notes-pane {
   padding: 16px 18px;
