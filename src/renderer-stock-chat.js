@@ -140,7 +140,7 @@ const TEMPLATE_QUESTIONS = [
   "最近のニュースを教えて",
   "直近の決算のポイントは？",
   "強みと競合優位性を整理して",
-  "バリュエーションは割安？割高？",
+  "ここ数年の会社の経緯と変化を整理して",
 ];
 
 function renderSuggestions() {
@@ -249,6 +249,18 @@ function buildStockSystemPrompt() {
   ].join("\n");
 }
 
+function buildNotesSystemPrompt() {
+  return [
+    "あなたは、個別銘柄の会話を長期的に蓄積する投資レビューノートの編集者です。",
+    "出力は更新後のMarkdownノート本文のみとし、前置き・説明・コードフェンスは書かないでください。",
+    "事実、推測、意見を区別し、会話にない情報は推測で補わないでください。",
+    "投資判断・企業分析に関係しない雑談やアプリ操作はノートに含めないでください。",
+    "出典URLの羅列や「出典」セクションは作らず、重要な出典は本文中に1〜2件添える程度にしてください。",
+    "基本構成は「# 銘柄コード 銘柄名」「## 投資仮説」「## ここ数年の経緯」「## 強み」「## リスク」「## 確認事項」「## メモ」とし、情報がない見出しは省略できます。",
+    "「ここ数年の経緯」は、事業構成、業績、経営方針、重要イベントの変化を、年や時期がわかる範囲で時系列に整理してください。",
+  ].join("\n");
+}
+
 function setNotesStatus(text, isError = false) {
   if (!notesStatus) return;
   notesStatus.textContent = text;
@@ -314,12 +326,12 @@ function buildNotesUpdatePrompt(exchanges) {
     `${activeTicker}（${name}）の投資レビューノート（Markdown）を、新しい会話のやり取りを踏まえて更新してください。`,
     "",
     "ルール:",
-    "- 出力は更新後のノート全文（Markdown本文）のみ。前置き・説明・コードフェンスは書かない。",
     "- 既存の内容は保持し、新しい情報の追記や古い記述の修正だけを行う。",
     "- 会話に出ていない情報を推測で補わない。",
     "- この銘柄の投資判断・企業分析に関係しない話題（雑談、アプリの操作の話、別銘柄だけの話など）はノートに書かない。反映すべき内容が無ければ既存のノートをそのまま出力する。",
     "- 出典URLの羅列（リンク集・「出典」セクション）はノートに書かない。特に重要な出典を本文中に1〜2件添える程度にとどめ、既存ノートに出典リストが残っていれば削除する。",
-    `- ノートが空のときは「# ${activeTicker} ${name}」「## 投資仮説」「## 強み」「## リスク」「## 確認事項」「## メモ」の構成で新規作成する。該当する内容がない見出しは省略してよい。`,
+    `- ノートが空のときは「# ${activeTicker} ${name}」を先頭にし、システムプロンプトの基本構成で新規作成する。`,
+    "- ここ数年の経緯に追加できる事業・業績・経営方針・重要イベントの変化があれば、時系列に反映する。",
     "",
     "【現在のノート】",
     notesContent.trim() || "(空)",
@@ -387,7 +399,7 @@ async function processNotesQueue() {
     await streamChat(
       sessionId,
       [{ role: "user", content: buildNotesUpdatePrompt(exchanges) }],
-      { persistUser: false, persistAssistant: false },
+      { persistUser: false, persistAssistant: false, systemPrompt: buildNotesSystemPrompt() },
       (chunk) => {
         markdown += chunk;
       },
@@ -605,9 +617,8 @@ async function summarizeToMarkdown() {
 
   const prompt = [
     `${activeTicker} の会話内容を、投資レビュー用のMarkdownノートに整理してください。`,
-    "見出しは # 銘柄コード 銘柄名, ## 投資仮説, ## 強み, ## リスク, ## 確認事項, ## 会話メモ を基本にしてください。",
-    "会話にない情報は推測で補わず、不明と書いてください。",
-    "出典URLの羅列（リンク集・「出典」セクション）は含めないでください。特に重要な出典を本文中に1〜2件添える程度は構いません。",
+    "システムプロンプトの基本構成に従い、会話全体からノート全文を作り直してください。",
+    "ここ数年の経緯に該当する内容は、時系列に整理してください。",
     "",
     history.map((m) => `${m.role === "user" ? "User" : "Assistant"}:\n${m.content}`).join("\n\n"),
   ].join("\n");
@@ -619,7 +630,7 @@ async function summarizeToMarkdown() {
     {
       persistUser: false,
       persistAssistant: false,
-      systemPrompt: buildStockSystemPrompt(),
+      systemPrompt: [buildStockSystemPrompt(), buildNotesSystemPrompt()].join("\n\n"),
     },
     (chunk) => {
       assistant.wrap.classList.remove("loading");
