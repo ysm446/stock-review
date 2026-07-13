@@ -40,6 +40,8 @@ import {
   reviewChartPrice,
   reviewChartChange,
   reviewChartTooltip,
+  reviewChartCrosshair,
+  reviewChartCrosshairPrice,
   reviewMaToggles,
   reviewChipRow,
   reviewFinancialBody,
@@ -2486,6 +2488,7 @@ function drawReviewCandlestickChart() {
   const allRows = getAllReviewCandles();
   reviewCandleModel = null;
   reviewChartTooltip.classList.add("is-hidden");
+  reviewChartCrosshair.classList.add("is-hidden");
   if (!rows.length) {
     reviewChartSummary.textContent = reviewRefreshPending
       ? "最新データを取得中..."
@@ -2541,7 +2544,7 @@ function drawReviewCandlestickChart() {
   const first = rows[0], last = rows[rows.length - 1], change = Number(last.close) - Number(first.close);
   const percent = Number(first.close) ? change / Number(first.close) * 100 : 0;
   reviewChartSummary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）${reviewRefreshPending ? "　最新データを取得中..." : ""}`;
-  reviewCandleModel = { rows, padding, step };
+  reviewCandleModel = { rows, padding, step, width, priceBottom, priceHeight, minPrice, maxPrice, priceRange, priceDecimals };
 }
 
 try {
@@ -2566,15 +2569,33 @@ reviewChartRange.addEventListener("change", () => {
 });
 reviewCandlestickWrap.addEventListener("mousemove", (event) => {
   if (!reviewCandleModel) return;
-  const rect = reviewCandlestickWrap.getBoundingClientRect(), x = event.clientX - rect.left;
-  const { rows, padding, step } = reviewCandleModel, index = Math.floor((x - padding.left) / step);
+  const rect = reviewCandlestickWrap.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
+  const { rows, padding, step, width, priceBottom, priceHeight, maxPrice, priceRange, priceDecimals } = reviewCandleModel;
+  const isInPricePlot = x >= padding.left && x <= width - padding.right && y >= padding.top && y <= priceBottom;
+  if (isInPricePlot) {
+    const price = maxPrice - ((y - padding.top) / priceHeight) * priceRange;
+    reviewChartCrosshair.style.left = `${padding.left}px`;
+    reviewChartCrosshair.style.right = `${padding.right}px`;
+    reviewChartCrosshair.style.top = `${y}px`;
+    reviewChartCrosshairPrice.textContent = price.toLocaleString(undefined, {
+      minimumFractionDigits: priceDecimals,
+      maximumFractionDigits: priceDecimals
+    });
+    reviewChartCrosshair.classList.remove("is-hidden");
+  } else {
+    reviewChartCrosshair.classList.add("is-hidden");
+  }
+  const index = Math.floor((x - padding.left) / step);
   if (index < 0 || index >= rows.length) { reviewChartTooltip.classList.add("is-hidden"); return; }
   const row = rows[index], fmt = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
   reviewChartTooltip.textContent = `${row.date}　始 ${fmt(row.open)}　高 ${fmt(row.high)}　安 ${fmt(row.low)}　終 ${fmt(row.close)}　出来高 ${(Number(row.volume) || 0).toLocaleString()}`;
   reviewChartTooltip.style.left = `${Math.min(rect.width - 20, Math.max(20, x))}px`;
   reviewChartTooltip.classList.remove("is-hidden");
 });
-reviewCandlestickWrap.addEventListener("mouseleave", () => reviewChartTooltip.classList.add("is-hidden"));
+reviewCandlestickWrap.addEventListener("mouseleave", () => {
+  reviewChartTooltip.classList.add("is-hidden");
+  reviewChartCrosshair.classList.add("is-hidden");
+});
 
 function formatReviewQuote(value, currency, signed = false) {
   const numeric = toFiniteNumber(value);

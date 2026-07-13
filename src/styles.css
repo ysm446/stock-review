@@ -1887,6 +1887,9 @@ select:focus {
 .review-chart-quote span.is-negative { color: #22c55e; }
 .review-candlestick-wrap { position: relative; height: 240px; min-width: 0; }
 #review-candlestick-chart { display: block; width: 100%; height: 100%; }
+.review-chart-crosshair { position: absolute; z-index: 2; height: 0; border-top: 1px dashed rgba(226, 232, 240, 0.72); pointer-events: none; }
+.review-chart-crosshair.is-hidden { display: none; }
+.review-chart-crosshair span { position: absolute; right: 0; top: 0; min-width: 54px; padding: 2px 5px; transform: translateY(-50%); border: 1px solid rgba(226, 232, 240, 0.6); border-radius: 4px; background: var(--panel-raised); color: var(--text-strong); font-size: 0.68rem; font-variant-numeric: tabular-nums; line-height: 1.2; text-align: right; white-space: nowrap; }
 .review-chart-tooltip { position: absolute; top: 6px; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 16px); padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-raised); color: var(--text); font-size: 0.7rem; white-space: nowrap; pointer-events: none; }
 .review-chart-tooltip.is-hidden { display: none; }
 
