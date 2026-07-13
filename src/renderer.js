@@ -318,6 +318,7 @@ let draggingWatchlistIndex = null;
 let trendChartModel = null;
 let hoveredTrendIndex = null;
 let resizeTimer = null;
+const pendingChartFrames = new Map();
 let activeReviewTicker = "";
 let reviewSnapshot = null;
 let reviewLoadRequestId = 0;
@@ -338,12 +339,51 @@ function activateView(view) {
   navButtons.forEach((item) => item.classList.toggle("is-active", item.dataset.view === view));
   views.forEach((panel) => panel.classList.toggle("is-visible", panel.id === `view-${view}`));
   if (view === "portfolio") {
-    // 非表示中に描画されたキャンバスはサイズ 0 で潰れているため、表示後に再描画する
-    requestAnimationFrame(() => {
-      drawTrendChart();
-      drawAllocationChart();
-    });
+    scheduleChartDraw(drawTrendChart, true);
+    scheduleChartDraw(drawAllocationChart, true);
+  } else if (view === "review") {
+    scheduleChartDraw(drawReviewCandlestickChart, true);
   }
+}
+
+function scheduleChartDraw(draw, waitForLayout = false) {
+  const pendingFrame = pendingChartFrames.get(draw);
+  if (pendingFrame) {
+    cancelAnimationFrame(pendingFrame);
+  }
+
+  const drawWhenVisible = () => {
+    pendingChartFrames.delete(draw);
+    draw();
+  };
+  const frame = requestAnimationFrame(() => {
+    if (waitForLayout) {
+      pendingChartFrames.set(draw, requestAnimationFrame(drawWhenVisible));
+      return;
+    }
+    drawWhenVisible();
+  });
+  pendingChartFrames.set(draw, frame);
+}
+
+function observeChartSizes() {
+  if (typeof ResizeObserver !== "function") return;
+
+  const chartTargets = [
+    [trendChartWrap, drawTrendChart],
+    [allocationChart.parentElement, drawAllocationChart],
+    [reviewCandlestickChart.parentElement, drawReviewCandlestickChart]
+  ];
+  const observer = new ResizeObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.contentRect.width <= 0 || entry.contentRect.height <= 0) return;
+      const target = chartTargets.find(([element]) => element === entry.target);
+      if (target) scheduleChartDraw(target[1]);
+    });
+  });
+  chartTargets.forEach(([element]) => {
+    if (element) observer.observe(element);
+  });
 }
 
 function getDayChangeToggleButton() {
@@ -556,8 +596,10 @@ window.addEventListener("resize", () => {
     hideTrendTooltip();
     drawTrendChart();
     drawAllocationChart();
+    drawReviewCandlestickChart();
   }, 80);
 });
+observeChartSizes();
 closeHoldingModalButton.addEventListener("click", closeHoldingModal);
 cancelHoldingModalButton.addEventListener("click", closeHoldingModal);
 holdingModalBackdrop.addEventListener("click", (event) => {
