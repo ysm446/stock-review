@@ -16,18 +16,17 @@
     <div class="app-shell">
       <aside class="sidebar">
         <nav class="sidebar-nav">
-          <button class="nav-button is-active" data-view="portfolio" title="Portfolio" aria-label="Portfolio">
+          <button class="nav-button is-active" data-view="portfolio" title="ポートフォリオ" aria-label="ポートフォリオ">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 18.5V10.5"></path>
-              <path d="M12 18.5V6.5"></path>
-              <path d="M19 18.5V13.5"></path>
-              <path d="M3.5 18.5h17"></path>
+              <circle cx="12" cy="12" r="8.5"></circle>
+              <path d="M12 3.5V12h8.5"></path>
             </svg>
           </button>
-          <button class="nav-button" data-view="review" title="Review" aria-label="Review">
+          <button class="nav-button" data-view="review" title="個別銘柄" aria-label="個別銘柄">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 4h8l4 4v12H6zm8 1.5V9h3.5"></path>
-              <path d="M9 13h6m-6 3h6"></path>
+              <path d="M4 4v16h16"></path>
+              <path d="m6.5 16.5 4-4 3 2 4.5-7"></path>
+              <path d="M15.5 7.5H18V10"></path>
             </svg>
           </button>
           <button class="nav-button" data-view="chat" title="チャット" aria-label="チャット">
@@ -49,7 +48,6 @@
           <span class="chat-model-indicator" id="chat-model-indicator"></span>
           <span id="chat-model-name">モデルを選択</span>
         </button>
-        <div class="resource-monitor is-hidden" id="resource-monitor" aria-hidden="true"></div>
       </div>
 
       <main class="main-panel">
@@ -62,8 +60,6 @@
               <button class="ghost-button" id="refresh-prices">価格を更新</button>
             </div>
           </header>
-
-          <p class="status-banner is-hidden" id="price-status"></p>
 
           <section class="stats-grid" id="stats-grid"></section>
 
@@ -395,6 +391,13 @@
           </div>
         </section>
       </main>
+      <footer class="app-statusbar" aria-label="アプリケーションの状態">
+        <div class="app-status-message" id="app-status-message" role="status" aria-live="polite">
+          <span class="app-status-indicator" aria-hidden="true"></span>
+          <span class="app-status-text" id="app-status-text">準備完了</span>
+        </div>
+        <div class="resource-monitor is-hidden" id="resource-monitor" aria-hidden="true"></div>
+      </footer>
     </div>
 
     <template id="holding-row-template">
@@ -620,7 +623,7 @@
               <div class="settings-section">
                 <label class="settings-checkbox">
                   <input type="checkbox" id="resource-monitor-toggle" />
-                  <span>リソースモニターを表示（上部バーに CPU / RAM / GPU / VRAM）</span>
+                  <span>リソースモニターを表示（下部ステータスバーに CPU / RAM / GPU / VRAM）</span>
                 </label>
                 <p class="settings-hint">使用状況を1秒ごとに更新します。GPU / VRAM は NVIDIA GPU（pynvml）が必要です。psutil / pynvml が未導入の場合は表示できません。</p>
               </div>

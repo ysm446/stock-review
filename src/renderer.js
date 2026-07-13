@@ -2,6 +2,7 @@ import "./renderer-chat.js";
 import "./renderer-settings.js";
 import "./renderer-resources.js";
 import { setStockReviewContext } from "./renderer-stock-chat.js";
+import { setAppStatus } from "./renderer-status.js";
 import {
   allocationChart,
   allocationColorScheme,
@@ -30,7 +31,6 @@ import {
   metricHelpPopupTitle,
   navButtons,
   performanceChart,
-  priceStatus,
   refreshPricesButton,
   reviewAnalystGrid,
   reviewCandlestickChart,
@@ -217,7 +217,6 @@ function writeStoredChoice(key, value) {
   }
 }
 
-let statusTimer = null;
 let trendRange = readStoredChoice(TREND_RANGE_KEY, ["1m", "3m", "6m", "1y"], "3m");
 let trendYAxisMode = readStoredChoice(TREND_YAXIS_MODE_KEY, ["relative", "absolute"], "relative");
 let editingAnnotationId = null;
@@ -1062,39 +1061,6 @@ async function ensureHoldingMetricsLoaded() {
   }
 }
 
-function setStatus(message, tone = "neutral") {
-  if (tone === "neutral" || !message) {
-    priceStatus.textContent = "";
-    priceStatus.classList.remove("is-error", "is-success");
-    priceStatus.classList.add("is-hidden");
-    if (statusTimer) {
-      clearTimeout(statusTimer);
-      statusTimer = null;
-    }
-    return;
-  }
-
-  priceStatus.textContent = message;
-  priceStatus.classList.remove("is-hidden");
-  priceStatus.classList.remove("is-error", "is-success");
-  if (tone === "error") {
-    priceStatus.classList.add("is-error");
-  }
-  if (tone === "success") {
-    priceStatus.classList.add("is-success");
-  }
-
-  if (statusTimer) {
-    clearTimeout(statusTimer);
-    statusTimer = null;
-  }
-
-  if (tone !== "neutral") {
-    statusTimer = setTimeout(() => {
-      setStatus("", "neutral");
-    }, 4000);
-  }
-}
 
 async function persistPortfolio({ silent = false } = {}) {
   const result = await window.stockReviewApi.savePortfolio({
@@ -1105,7 +1071,7 @@ async function persistPortfolio({ silent = false } = {}) {
   appState.trendHistory = Array.isArray(result?.trendHistory) ? result.trendHistory : [];
   renderPortfolioSummary();
   if (!silent) {
-    setStatus("保存しました。", "success");
+    setAppStatus("保存しました。", "success");
   }
 }
 
@@ -1179,7 +1145,7 @@ function queueAutosave() {
   autosaveTimer = setTimeout(() => {
     autosaveTimer = null;
     persistPortfolio({ silent: true }).catch((error) => {
-      setStatus(`保存エラー: ${error.message}`, "error");
+      setAppStatus(`保存エラー: ${error.message}`, "error");
     });
   }, 250);
 }
@@ -1684,7 +1650,7 @@ function saveHoldingFromModal() {
   const buyPrice = parseWholeNumber(holdingBuyPriceInput.value);
 
   if (!ticker || shares <= 0 || buyPrice <= 0) {
-    setStatus("銘柄コード、株数、買値を正しく入力してください。", "error");
+    setAppStatus("銘柄コード、株数、買値を正しく入力してください。", "error");
     return;
   }
 
@@ -1734,7 +1700,7 @@ function closeWatchlistModal() {
 function saveWatchlistFromModal() {
   const ticker = watchlistTickerInput.value.trim();
   if (!ticker) {
-    setStatus("ウォッチする銘柄コードを入力してください。", "error");
+    setAppStatus("ウォッチする銘柄コードを入力してください。", "error");
     return;
   }
 
@@ -2509,7 +2475,7 @@ function drawReviewCandlestickChart() {
   maxPrice = Math.ceil((maxPrice + pricePad) / priceStep) * priceStep;
   const priceRange = Math.max(0.000001, maxPrice - minPrice);
   const maxVolume = Math.max(1, ...rows.map((r) => Number(r.volume) || 0));
-  const step = plotWidth / rows.length, bodyWidth = Math.max(1, Math.min(9, step * 0.68));
+  const step = plotWidth / rows.length, bodyWidth = Math.max(1, Math.min(12, step * 0.68));
   const yFor = (value) => padding.top + (maxPrice - value) / priceRange * priceHeight;
   ctx.strokeStyle = "rgba(148, 163, 184, 0.16)"; ctx.fillStyle = "rgba(148, 163, 184, 0.8)";
   ctx.font = "11px sans-serif"; ctx.textAlign = "right";
@@ -2761,6 +2727,7 @@ async function loadReviewSnapshot(rawTicker) {
   hideReviewTickerSuggestions();
   renderReviewChips();
   reviewRefreshPending = true;
+  setAppStatus(`${ticker} のレビューを更新しています...`, "active");
 
   let cachedSnapshot = null;
   try {
@@ -2782,13 +2749,14 @@ async function loadReviewSnapshot(rawTicker) {
     addToReviewHistory(ticker, snapshot.name || "");
     renderReviewSnapshot();
     setStockReviewContext(ticker, snapshot);
+    setAppStatus(`${ticker} のレビューを更新しました。`, "success");
   } catch (error) {
     if (requestId !== reviewLoadRequestId) return;
     reviewRefreshPending = false;
     reviewSnapshot = cachedSnapshot;
     renderReviewSnapshot();
     setStockReviewContext(ticker, cachedSnapshot);
-    setStatus(`レビュー更新エラー: ${error.message}${cachedSnapshot ? "（保存済みデータを表示）" : ""}`, "error");
+    setAppStatus(`レビュー更新エラー: ${error.message}${cachedSnapshot ? "（保存済みデータを表示）" : ""}`, "error");
   }
 }
 
@@ -2994,14 +2962,14 @@ async function refreshPrices() {
     .filter(Boolean);
 
   if (!tickers.length) {
-    setStatus("先に銘柄コードを入力してください。", "error");
+    setAppStatus("先に銘柄コードを入力してください。", "error");
     return;
   }
 
   refreshPricesButton.disabled = true;
   const previousText = refreshPricesButton.textContent;
   refreshPricesButton.textContent = "取得中...";
-  setStatus("", "neutral");
+  setAppStatus("株価を取得しています...", "active");
 
   try {
     const result = await window.stockReviewApi.refreshPrices(tickers);
@@ -3052,17 +3020,17 @@ async function refreshPrices() {
 
     const errorTickers = Object.keys(errors);
     if (updatedCount === 0) {
-      setStatus("価格を取得できませんでした。銘柄コードや通信状態を確認してください。", "error");
+      setAppStatus("価格を取得できませんでした。銘柄コードや通信状態を確認してください。", "error");
       return;
     }
 
     if (errorTickers.length) {
-      setStatus(`価格更新: ${updatedCount}件成功、${errorTickers.length}件失敗。外貨は円換算で反映しました。`, "success");
+      setAppStatus(`価格更新: ${updatedCount}件成功、${errorTickers.length}件失敗。外貨は円換算で反映しました。`, "success");
     } else {
-      setStatus(`価格を ${updatedCount} 件更新しました。外貨は円換算で反映しました。`, "success");
+      setAppStatus(`価格を ${updatedCount} 件更新しました。外貨は円換算で反映しました。`, "success");
     }
   } catch (error) {
-    setStatus(`価格取得エラー: ${error.message}`, "error");
+    setAppStatus(`価格取得エラー: ${error.message}`, "error");
   } finally {
     refreshPricesButton.disabled = false;
     refreshPricesButton.textContent = previousText;

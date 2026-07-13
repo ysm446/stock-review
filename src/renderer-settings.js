@@ -2,6 +2,7 @@
 // GitHub への通信は CSP の都合でレンダラから直接できないため、すべて
 // バックエンド（chat_server, :8001）経由で行う。
 import { apiFetch } from "./chat-api.js";
+import { setAppStatus } from "./renderer-status.js";
 
 const settingsButton          = document.getElementById("settings-button");
 const settingsBackdrop        = document.getElementById("settings-modal-backdrop");
@@ -144,6 +145,7 @@ async function downloadVariant(variant) {
   llamaCheckUpdate.disabled = true;
   llamaVariantList.querySelectorAll("button").forEach(b => (b.disabled = true));
   setProgress(0, `${variant.label} をダウンロード中…`);
+  setAppStatus(`${variant.label} をダウンロードしています...`, "active");
 
   try {
     let finished = false;
@@ -162,8 +164,10 @@ async function downloadVariant(variant) {
 
     if (!finished) setProgress(100, "完了");
     await refreshLlamaStatus();
+    setAppStatus(`${variant.label} をインストールしました。`, "success");
   } catch (err) {
     setProgress(0, `失敗: ${err.message}`);
+    setAppStatus(`llama-server の更新に失敗しました: ${err.message}`, "error");
   } finally {
     downloading = false;
     llamaCheckUpdate.disabled = false;
@@ -230,10 +234,13 @@ async function downloadEmbedding() {
   downloading = true;
   embedDownloadBtn.disabled = true;
   setEmbedProgress(0, "モデルをダウンロード中…（初回は数百MB）");
+  setAppStatus("埋め込みモデルをダウンロードしています...", "active");
   try {
     await runEmbeddingDownload();
+    setAppStatus("埋め込みモデルを取得しました。", "success");
   } catch (err) {
     setEmbedProgress(0, `失敗: ${err.message}`);
+    setAppStatus(`埋め込みモデルの取得に失敗しました: ${err.message}`, "error");
   } finally {
     downloading = false;
     await refreshEmbeddingStatus();
@@ -245,6 +252,7 @@ async function installEmbeddingDeps() {
   downloading = true;
   embedDownloadBtn.disabled = true;
   setEmbedProgress(0, "依存をインストール中…（PyTorch を含む大容量。数分かかります）", true);
+  setAppStatus("埋め込み機能の依存関係をインストールしています...", "active");
   try {
     await streamPost("/embedding/install-deps", {}, evt => {
       if (evt.type === "log") {
@@ -256,8 +264,10 @@ async function installEmbeddingDeps() {
     // 依存導入に成功したら、続けてモデルを取得する。
     setEmbedProgress(0, "依存のインストール完了。モデルを取得します…", true);
     await runEmbeddingDownload();
+    setAppStatus("埋め込み機能の準備が完了しました。", "success");
   } catch (err) {
     setEmbedProgress(0, `失敗: ${err.message}`);
+    setAppStatus(`埋め込み機能の準備に失敗しました: ${err.message}`, "error");
   } finally {
     downloading = false;
     await refreshEmbeddingStatus();
@@ -307,18 +317,22 @@ async function changeDataDir() {
     return;
   }
   dataDirChangeBtn.disabled = true;
+  setAppStatus("データフォルダを切り替えています...", "active");
   try {
     const result = await window.stockReviewApi.chooseDataDir();
     if (result?.canceled) {
       if (dataDirStatus) dataDirStatus.textContent = "変更をキャンセルしました。";
+      setAppStatus("データフォルダの変更をキャンセルしました。", "neutral", 3000);
       return;
     }
     dataDirCurrent.textContent = result.dataDir;
     if (dataDirStatus) dataDirStatus.textContent = "切り替えました。再読み込みします…";
+    setAppStatus("データフォルダを切り替えました。", "success");
     // 新しいデータルートで全体を読み込み直す（backend は main 側で再起動済み）。
     setTimeout(() => window.location.reload(), 600);
   } catch (err) {
     if (dataDirStatus) dataDirStatus.textContent = `変更に失敗しました: ${err.message}`;
+    setAppStatus(`データフォルダの変更に失敗しました: ${err.message}`, "error");
   } finally {
     dataDirChangeBtn.disabled = false;
   }
@@ -363,5 +377,6 @@ if (resourceMonitorToggle) {
     const enabled = resourceMonitorToggle.checked;
     localStorage.setItem(RESOURCE_MONITOR_KEY, enabled ? "1" : "0");
     window.dispatchEvent(new CustomEvent("stock-review:resource-monitor", { detail: { enabled } }));
+    setAppStatus(enabled ? "リソースモニターを表示します。" : "リソースモニターを非表示にしました。", enabled ? "active" : "success", enabled ? 0 : 3000);
   });
 }

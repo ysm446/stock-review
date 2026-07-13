@@ -1,7 +1,8 @@
-// 上部バーのリソースモニター。設定の「表示」タブで ON のとき、
+// 下部ステータスバーのリソースモニター。設定の「表示」タブで ON のとき、
 // CPU / RAM / GPU / VRAM の使用量を 1 秒ごとにバーで表示する。
 // 値はバックエンド（chat_server, :8001）の /system/resources から取得。
 import { apiFetch } from "./chat-api.js";
+import { setAppStatus } from "./renderer-status.js";
 
 export const RESOURCE_MONITOR_KEY = "stock-review.resourceMonitor";
 
@@ -69,6 +70,7 @@ async function ensureDepsAndStart() {
     data = await res.json();
   } catch {
     monitor.innerHTML = '<span class="resource-unavailable">バックエンド接続不可</span>';
+    setAppStatus("リソース情報を取得できませんでした。", "error");
     return;
   }
 
@@ -76,11 +78,13 @@ async function ensureDepsAndStart() {
     if (installing) return;
     installing = true;
     monitor.innerHTML = '<span class="resource-unavailable">準備中…（psutil を導入）</span>';
+    setAppStatus("リソースモニターを準備しています...", "active");
     try {
       const res = await apiFetch("/system/install-deps", { method: "POST" });
       if (!res.ok) throw new Error();
     } catch {
       monitor.innerHTML = '<span class="resource-unavailable">導入に失敗しました</span>';
+      setAppStatus("リソースモニターの準備に失敗しました。", "error");
       installing = false;
       return;
     }
@@ -88,11 +92,13 @@ async function ensureDepsAndStart() {
   }
 
   startPolling();
+  setAppStatus("リソースモニターを表示しました。", "success");
 }
 
 export function setResourceMonitorEnabled(enabled) {
   if (!monitor) return;
   monitor.classList.toggle("is-hidden", !enabled);
+  monitor.setAttribute("aria-hidden", enabled ? "false" : "true");
   if (enabled) {
     ensureDepsAndStart();
   } else {

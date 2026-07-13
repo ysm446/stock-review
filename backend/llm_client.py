@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
@@ -28,12 +29,13 @@ def chat_stream(
     timeout: int = 600,
     enable_thinking: bool | None = None,
 ):
-    """ストリーミングで ("reasoning"|"content", text) を yield し、
-    ツール呼び出しがあれば最後に ("tool_calls", list) を yield する。"""
+    """ストリーミングで content / reasoning / tool_calls を yield し、
+    最後に usage・timings・終了理由をまとめた metrics を yield する。"""
     payload: dict = {
         "model": "local",
         "messages": messages,
         "stream": True,
+        "stream_options": {"include_usage": True},
         "max_tokens": max_tokens,
         **DEFAULT_SAMPLING,
     }
@@ -51,6 +53,11 @@ def chat_stream(
 
     # ストリーミングのツール呼び出し断片は index ごとに name / arguments を連結して復元する
     tool_calls: list[dict] = []
+    usage: dict = {}
+    timings: dict = {}
+    finish_reason = ""
+    stop_type = ""
+    started_at = time.perf_counter()
     try:
         with urllib_request.urlopen(req, timeout=timeout) as resp:
             for raw_line in resp:
@@ -65,6 +72,14 @@ def chat_stream(
                 except json.JSONDecodeError:
                     continue
                 choices = data.get("choices") or [{}]
+                if data.get("usage"):
+                    usage = data["usage"]
+                if data.get("timings"):
+                    timings = data["timings"]
+                if data.get("stop_type"):
+                    stop_type = str(data["stop_type"])
+                if choices[0].get("finish_reason"):
+                    finish_reason = str(choices[0]["finish_reason"])
                 delta = choices[0].get("delta") or {}
                 reasoning = delta.get("reasoning_content")
                 if reasoning:
@@ -97,3 +112,27 @@ def chat_stream(
 
     if tool_calls:
         yield ("tool_calls", tool_calls)
+
+    elapsed = max(0.0, time.perf_counter() - started_at)
+    completion_tokens = usage.get("completion_tokens")
+    if completion_tokens is None:
+        completion_tokens = timings.get("predicted_n")
+    duration_seconds = (
+        float(timings["predicted_ms"]) / 1000
+        if timings.get("predicted_ms") is not None
+        else elapsed
+    )
+    tokens_per_second = timings.get("predicted_per_second")
+    if tokens_per_second is None and completion_tokens is not None and duration_seconds > 0:
+        tokens_per_second = float(completion_tokens) / duration_seconds
+    yield (
+        "metrics",
+        {
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": completion_tokens,
+            "total_tokens": usage.get("total_tokens"),
+            "duration_seconds": duration_seconds,
+            "tokens_per_second": tokens_per_second,
+            "finish_reason": finish_reason or stop_type or "stop",
+        },
+    )

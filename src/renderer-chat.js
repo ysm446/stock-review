@@ -1,5 +1,7 @@
 import { apiFetch, createActivityRenderer } from "./chat-api.js";
 import { renderMarkdown } from "./chat-markdown.js";
+import { appendGenerationMetrics } from "./chat-metrics.js";
+import { setAppStatus } from "./renderer-status.js";
 
 // ── HTTP helpers ─────────────────────────────────────────
 async function api(method, path, body = null) {
@@ -997,6 +999,7 @@ async function regenerateFromUserMessage(messageId) {
 
   streaming = true;
   setInputEnabled(false);
+  setAppStatus("回答を再生成しています...", "active");
 
   const wrap = document.createElement("div");
   wrap.className = "chat-message assistant loading";
@@ -1032,9 +1035,11 @@ async function regenerateFromUserMessage(messageId) {
         wrap.dataset.messageId = assistantId;
         appendMessageActions(wrap, "assistant", assistantId, accumulated);
       }
+      appendGenerationMetrics(wrap, evt?.metrics);
       refreshSession(sidAtSend);
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
+      setAppStatus("回答を生成しました。", "success");
       if (serverLoaded) chatInput.focus();
     },
     err => {
@@ -1043,6 +1048,7 @@ async function regenerateFromUserMessage(messageId) {
       bubble.textContent = `エラー: ${err}`;
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
+      setAppStatus(`回答の生成に失敗しました: ${err}`, "error");
     },
     {
       persistUser: false,
@@ -1072,6 +1078,7 @@ async function sendMessage() {
   chatInput.style.height = "auto";
   streaming = true;
   setInputEnabled(false);
+  setAppStatus("回答を生成しています...", "active");
 
   chatHistory.push({ role: "user", content: text });
   const userWrap = appendBubble("user", text);
@@ -1117,10 +1124,12 @@ async function sendMessage() {
         wrap.dataset.messageId = assistantId;
         appendMessageActions(wrap, "assistant", assistantId, accumulated);
       }
+      appendGenerationMetrics(wrap, evt?.metrics);
       // Refresh session title in sidebar (auto-title was applied server-side)
       refreshSession(sidAtSend);
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
+      setAppStatus("回答を生成しました。", "success");
       if (serverLoaded) chatInput.focus();
     },
     err => {
@@ -1130,6 +1139,7 @@ async function sendMessage() {
       bubble.textContent = `エラー: ${err}`;
       streaming = false;
       setInputEnabled(serverLoaded && activeSessionId !== null);
+      setAppStatus(`回答の生成に失敗しました: ${err}`, "error");
     },
     {
       endpoint: "/chat/agent-stream",
@@ -1217,9 +1227,12 @@ async function renderModelModal() {
       if (loadingModel) return;
       loadingModel = true;
       stopBtn.disabled = true;
+      setAppStatus("モデルを停止しています...", "active");
       try {
         await api("POST", "/llama/stop");
+        setAppStatus("モデルを停止しました。", "success");
       } catch (err) {
+        setAppStatus(`モデルの停止に失敗しました: ${err.message}`, "error");
         window.alert(`モデルの停止に失敗しました: ${err.message}`);
       } finally {
         loadingModel = false;
@@ -1251,12 +1264,15 @@ async function renderModelModal() {
       loadingModel = true;
       badge.textContent = "ロード中...";
       item.classList.add("is-loading");
+      setAppStatus(`${relative_path || name} をロードしています...`, "active");
       try {
         await api("POST", "/llama/start", {
           model_path: path,
           ctx_size: Number(ctxSelect.value) || null,
         });
+        setAppStatus(`${relative_path || name} をロードしました。`, "success");
       } catch (err) {
+        setAppStatus(`モデルのロードに失敗しました: ${err.message}`, "error");
         window.alert(`モデルのロードに失敗しました: ${err.message}`);
       } finally {
         loadingModel = false;

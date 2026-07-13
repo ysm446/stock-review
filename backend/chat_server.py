@@ -575,6 +575,7 @@ async def chat_stream(req: ChatRequest):
 
     def generate():
         accumulated = ""
+        generation_metrics = {}
         try:
             for kind, data in llm_client.chat_stream(
                 base_url, llm_messages, max_tokens=4096, enable_thinking=False
@@ -582,6 +583,8 @@ async def chat_stream(req: ChatRequest):
                 if kind == "content":
                     accumulated += data
                     yield f"data: {json.dumps({'type': 'token', 'content': data}, ensure_ascii=False)}\n\n"
+                elif kind == "metrics":
+                    generation_metrics = data
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
             return
@@ -592,7 +595,7 @@ async def chat_stream(req: ChatRequest):
             if user_content:
                 store.save_turn_memory(req.session_id, user_content, accumulated)
 
-        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message, 'metrics': generation_metrics})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -639,11 +642,13 @@ async def chat_agent_stream(req: ChatRequest):
 
     def generate():
         final_text = ""
+        final_metrics = {}
         yield f"data: {json.dumps({'type': 'model', 'name': model_name}, ensure_ascii=False)}\n\n"
         try:
             for event in chat_agent.run_chat_agent(llm_messages, base_url=base_url):
                 if event.get("type") == "_final":
                     final_text = event.get("content") or ""
+                    final_metrics = event.get("metrics") or {}
                     continue
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -656,7 +661,7 @@ async def chat_agent_stream(req: ChatRequest):
             if user_content:
                 store.save_turn_memory(req.session_id, user_content, final_text)
 
-        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'message': assistant_message, 'user_message': user_message, 'metrics': final_metrics}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         generate(),

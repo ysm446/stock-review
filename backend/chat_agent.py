@@ -105,12 +105,33 @@ def _dispatch_tool(name: str, args: dict):
     return {"error": f"unknown tool: {name}"}
 
 
+def _merge_generation_metrics(total: dict, current: dict | None) -> None:
+    if not current:
+        return
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens", "duration_seconds"):
+        value = current.get(key)
+        if isinstance(value, (int, float)):
+            total[key] = total.get(key, 0) + value
+    if current.get("finish_reason"):
+        total["finish_reason"] = current["finish_reason"]
+
+
+def _finalize_generation_metrics(metrics: dict) -> dict:
+    result = dict(metrics)
+    tokens = result.get("completion_tokens")
+    duration = result.get("duration_seconds")
+    if isinstance(tokens, (int, float)) and isinstance(duration, (int, float)) and duration > 0:
+        result["tokens_per_second"] = tokens / duration
+    return result
+
+
 def run_chat_agent(llm_messages: list[dict], *, base_url: str):
-    """イベント dict を順に yield する。最後に {'type': '_final', 'content': 最終回答} を yield。
+    """イベント dict を順に yield する。最後に最終回答と生成メトリクスを _final で返す。
 
     '_final' は呼び出し側（chat_server）が永続化に使う内部イベントで、SSE には流さない。
     """
     msgs = list(llm_messages)
+    generation_metrics: dict = {}
 
     for _step in range(MAX_TOOL_STEPS):
         content_parts: list[str] = []
@@ -127,13 +148,15 @@ def run_chat_agent(llm_messages: list[dict], *, base_url: str):
                 reasoning_parts.append(data)
             elif kind == "tool_calls":
                 tool_calls = data
+            elif kind == "metrics":
+                _merge_generation_metrics(generation_metrics, data)
 
         if reasoning_parts:
             yield {"type": "thinking", "content": "".join(reasoning_parts)}
 
         content = "".join(content_parts)
         if not tool_calls:
-            yield {"type": "_final", "content": content}
+            yield {"type": "_final", "content": content, "metrics": _finalize_generation_metrics(generation_metrics)}
             return
 
         # ツールターンなのに content が流れていたら UI 側で破棄させる
@@ -179,4 +202,6 @@ def run_chat_agent(llm_messages: list[dict], *, base_url: str):
             yield {"type": "token", "content": data}
         elif kind == "reasoning":
             pass
-    yield {"type": "_final", "content": "".join(content_parts)}
+        elif kind == "metrics":
+            _merge_generation_metrics(generation_metrics, data)
+    yield {"type": "_final", "content": "".join(content_parts), "metrics": _finalize_generation_metrics(generation_metrics)}

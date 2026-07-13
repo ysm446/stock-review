@@ -1,6 +1,8 @@
 import { apiFetch, createActivityRenderer } from "./chat-api.js";
 import { renderMarkdown } from "./chat-markdown.js";
+import { appendGenerationMetrics } from "./chat-metrics.js";
 import { formatMaybeCurrency, formatMaybeMultiple, formatMaybePercent } from "./renderer-utils.js";
+import { setAppStatus } from "./renderer-status.js";
 
 const panel = document.getElementById("stock-chat-panel");
 const subtitle = document.getElementById("stock-chat-subtitle");
@@ -394,6 +396,7 @@ async function processNotesQueue() {
   while (notesQueue.length && activeTicker === ticker) {
     const exchanges = notesQueue.splice(0, notesQueue.length);
     setNotesStatus("ノートを更新中...");
+    setAppStatus(`${ticker} のノートへ反映しています...`, "active");
     let markdown = "";
     let failed = null;
     await streamChat(
@@ -414,6 +417,7 @@ async function processNotesQueue() {
 
     if (failed !== null || !stripMarkdownFences(markdown)) {
       setNotesStatus("ノートへの反映に失敗しました", true);
+      setAppStatus("ノートへの反映に失敗しました。", "error");
       markReflectResult(exchanges, false);
       continue;
     }
@@ -426,9 +430,11 @@ async function processNotesQueue() {
       applyNotesResponse(saved);
       setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
       markReflectResult(exchanges, true);
+      setAppStatus(`${ticker} のノートへ反映しました。`, "success");
       if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
     } catch (error) {
       setNotesStatus("ノートの保存に失敗しました", true);
+      setAppStatus(`ノートの保存に失敗しました: ${error.message}`, "error");
       markReflectResult(exchanges, false);
     }
   }
@@ -548,6 +554,7 @@ async function sendMessage() {
   inputEl.style.height = "auto";
   streaming = true;
   setEnabled(true);
+  setAppStatus(`${activeTicker} の回答を生成しています...`, "active");
 
   history.push({ role: "user", content: text });
   appendMessage("user", text);
@@ -592,8 +599,10 @@ async function sendMessage() {
       history.push({ id: assistantId, role: "assistant", content: accumulated });
       streaming = false;
       addReflectButton(assistant.wrap, () => ({ user: text, assistant: accumulated }));
+      appendGenerationMetrics(assistant.wrap, event?.metrics);
       await refreshSessions();
       setEnabled(true);
+      setAppStatus("回答を生成しました。", "success");
       inputEl.focus();
     },
     (error) => {
@@ -603,6 +612,7 @@ async function sendMessage() {
       assistant.body.textContent = `エラー: ${error}`;
       streaming = false;
       setEnabled(true);
+      setAppStatus(`回答の生成に失敗しました: ${error}`, "error");
     }
   );
 }
@@ -614,6 +624,7 @@ async function summarizeToMarkdown() {
   setEnabled(true);
   const assistant = appendMessage("assistant", "Markdownを作成しています...");
   assistant.wrap.classList.add("loading");
+  setAppStatus(`${activeTicker} のノートを作り直しています...`, "active");
 
   const prompt = [
     `${activeTicker} の会話内容を、投資レビュー用のMarkdownノートに整理してください。`,
@@ -638,7 +649,7 @@ async function summarizeToMarkdown() {
       assistant.body.innerHTML = renderMarkdown(markdown);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
-    async () => {
+    async (event) => {
       const saved = await api("PATCH", `/stocks/${encodeURIComponent(activeTicker)}/notes`, {
         content: stripMarkdownFences(markdown),
       });
@@ -648,6 +659,8 @@ async function summarizeToMarkdown() {
       assistant.wrap.classList.remove("loading");
       streaming = false;
       setEnabled(true);
+      setAppStatus(`${activeTicker} のノートを作り直しました。`, "success");
+      appendGenerationMetrics(assistant.wrap, event?.metrics);
     },
     (error) => {
       assistant.wrap.classList.remove("loading");
@@ -655,6 +668,7 @@ async function summarizeToMarkdown() {
       assistant.body.textContent = `保存に失敗しました: ${error}`;
       streaming = false;
       setEnabled(true);
+      setAppStatus(`ノートの作り直しに失敗しました: ${error}`, "error");
     }
   );
 }
@@ -664,14 +678,17 @@ tabNotesBtn?.addEventListener("click", () => switchReviewTab("notes"));
 notesRestoreBtn?.addEventListener("click", async () => {
   if (!activeTicker) return;
   const ticker = activeTicker;
+  setAppStatus(`${ticker} のノートを元に戻しています...`, "active");
   try {
     const saved = await api("POST", `/stocks/${encodeURIComponent(ticker)}/notes/restore`);
     if (activeTicker !== ticker) return;
     applyNotesResponse(saved);
     setNotesStatus("前のノートに戻しました");
+    setAppStatus(`${ticker} のノートを元に戻しました。`, "success");
     switchReviewTab("notes");
   } catch (error) {
     setNotesStatus(`戻せませんでした: ${error.message}`, true);
+    setAppStatus(`ノートを元に戻せませんでした: ${error.message}`, "error");
   }
 });
 newButton?.addEventListener("click", createSession);

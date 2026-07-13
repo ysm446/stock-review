@@ -16,6 +16,10 @@
   - `start.bat` はpipを `.venv` 作成時または `requirements.txt` の内容変更時のみ実行。導入済みのrequirementsコピーを `.venv/.requirements-installed.txt` に保持して比較する。
   - レビュー左カラムを上部の固定チャートと下部のスクロール領域に分割。指標／ノートは下部に統合し、チャート見出しに現在値・前日比・前日比率を追加。
   - ローソク足の価格エリアでは、マウス位置に水平ガイド線を表示し、その高さの価格を右端のラベルで確認可能。
+  - 横長に見えすぎないようチャート高を290pxへ拡大し、ローソク足の最大幅を12pxへ調整。
+  - 全画面共通の下部ステータスバーを追加。主要アクションの進行中・完了・エラーを共通表示し、CPU / RAM / GPU / VRAM のリソースモニターを右端へ移動。狭い画面ではメーターのバーを省略して数値を維持。
+  - 左サイドバーのポートフォリオを円グラフ、個別銘柄レビューを株価チャート風のSVGアイコンへ変更。
+  - llama-server のストリーム使用量・timings・終了理由を取得し、通常チャット／個別銘柄チャットの回答末尾に tok/秒・生成tokens・秒数・終了理由を表示。エージェントの複数モデル呼び出しはトークン数と生成時間を集計し、速度を再計算。
   - ノート編集専用の `buildNotesSystemPrompt` を追加し、部分反映・全面再生成で共通利用。基本見出しに「ここ数年の経緯」を追加し、会社の変化を時系列で整理。
   - テンプレート質問のバリュエーション質問を会社の経緯・変化の質問に置換。`docs/design/stock-review-note-prompt.md` に実行時プロンプトとノート構成を文書化。
   - 隔離 DATA_DIR で、既存日足の保持・同日データの更新・重複防止を確認。Python / JavaScript 構文検証、`git diff --check` 済み。実データの画面表示は未確認。
@@ -131,7 +135,7 @@
 - 左ナビ最下部に設定アイコンを追加し、設定ウィンドウ（タブ構成）を新設。第1タブで llama-cpp（llama-server）の最新バージョン確認と Windows ビルド（CPU/CUDA/Vulkan を毎回選択）のダウンロード・展開に対応。バイナリ保存先を `bin/llama-server/` から `runtime/llama-server/` へ移行（旧 `bin/` も後方互換で参照）。
 - 設定ウィンドウに「埋め込み」タブを追加。埋め込みモデル（ruri-v3-310m）の状態表示（sentence-transformers / sqlite-vec の有無、取得済み/未取得）と手動ダウンロード（HuggingFace 経由、進捗バー付き）に対応。`backend/embed_manager.py` 新設。
 - 埋め込み依存（sentence-transformers / sqlite-vec、PyTorch を含む大容量）が未導入のとき、設定画面のボタンが「依存をインストール」に変化。押すと `.venv` へ pip 導入（出力をストリーム表示）→ 続けてモデル取得まで自動実行。`POST /embedding/install-deps` 追加。`importlib.invalidate_caches()` で再起動なしに新規パッケージを認識。
-- 設定ウィンドウに「表示」タブを追加し、「リソースモニターを表示」チェックボックスを新設（lm-chat を参考）。ON のとき上部バー（株ステータスバー）に CPU / RAM / GPU / VRAM の使用量を1秒間隔のバーで表示。`GET /system/resources`（psutil + nvidia-ml-py、無ければ available:false / GPU 無しは gpus:[] でグレースフル）と `src/renderer-resources.js` を追加。設定は localStorage 永続化。
+- 設定ウィンドウに「表示」タブを追加し、「リソースモニターを表示」チェックボックスを新設（lm-chat を参考）。ON のとき下部ステータスバー右端に CPU / RAM / GPU / VRAM の使用量を1秒間隔のバーで表示。`GET /system/resources`（psutil + nvidia-ml-py、無ければ available:false / GPU 無しは gpus:[] でグレースフル）と `src/renderer-resources.js` を追加。設定は localStorage 永続化。
 - リソースモニターの依存（psutil / nvidia-ml-py）が未導入のとき、ON にすると `POST /system/install-deps` で `.venv` へ自動インストールしてから表示開始（埋め込みと同様の自動導入）。`system_resources` は遅延 import 化し、インストール後に再起動なしで認識。requirements.txt に psutil / nvidia-ml-py を追加。
 - チャットの入力欄が見切れる問題を修正。アプリ全体を `app-shell` でビューポート高に固定（`height:100vh; overflow:hidden`）し、`main-panel` を内部スクロール化。チャットビューは `height:100%` で main-panel いっぱいに収め、会話（メッセージ）と会話ツリーだけが内部スクロール、入力欄は常に表示。スクロールバーは外枠ではなく会話部分に付く。狭い画面（760px）はページスクロールに戻す。
 - 後続CSSの `#view-chat.is-visible` が `height: calc(100vh - 40px)` で上書きしていたため、`height:100%` / `min-height:0` に揃えて入力欄が画面内に収まるよう再修正。

@@ -40,7 +40,6 @@ export const allocationChart = document.getElementById("allocation-chart");
 export const performanceChart = document.getElementById("performance-chart");
 export const holdingRowTemplate = document.getElementById("holding-row-template");
 export const watchlistRowTemplate = document.getElementById("watchlist-row-template");
-export const priceStatus = document.getElementById("price-status");
 export const refreshPricesButton = document.getElementById("refresh-prices");
 export const trendRangeSelect = document.getElementById("trend-range");
 export const trendYAxisSelect = document.getElementById("trend-yaxis");
