@@ -125,6 +125,96 @@ const appState = {
   annotations: []
 };
 
+let activeRowActionMenu = null;
+let rowActionMenuSequence = 0;
+
+function closeRowActionMenu({ restoreFocus = false } = {}) {
+  if (!activeRowActionMenu) {
+    return;
+  }
+  const { element, trigger } = activeRowActionMenu;
+  activeRowActionMenu = null;
+  element.remove();
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.removeAttribute("aria-controls");
+  if (restoreFocus && trigger.isConnected) {
+    trigger.focus();
+  }
+}
+
+function positionRowActionMenu(menu, trigger) {
+  const triggerRect = trigger.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const edgeGap = 8;
+  const menuGap = 6;
+  const left = Math.min(
+    window.innerWidth - menuRect.width - edgeGap,
+    Math.max(edgeGap, triggerRect.right - menuRect.width)
+  );
+  const fitsBelow = triggerRect.bottom + menuGap + menuRect.height <= window.innerHeight - edgeGap;
+  const top = fitsBelow
+    ? triggerRect.bottom + menuGap
+    : Math.max(edgeGap, triggerRect.top - menuRect.height - menuGap);
+  menu.style.left = left + "px";
+  menu.style.top = top + "px";
+}
+
+function openRowActionMenu(trigger, actions) {
+  if (activeRowActionMenu?.trigger === trigger) {
+    closeRowActionMenu({ restoreFocus: true });
+    return;
+  }
+  closeRowActionMenu();
+
+  const menu = document.createElement("div");
+  const menuId = "row-action-menu-" + (++rowActionMenuSequence);
+  menu.id = menuId;
+  menu.className = "row-action-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "銘柄の操作");
+
+  actions.forEach(({ label, onSelect, danger = false }) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "row-action-menu-item";
+    item.classList.toggle("is-danger", danger);
+    item.setAttribute("role", "menuitem");
+    item.textContent = label;
+    item.addEventListener("click", () => {
+      closeRowActionMenu();
+      onSelect();
+    });
+    menu.appendChild(item);
+  });
+
+  document.body.appendChild(menu);
+  activeRowActionMenu = { element: menu, trigger };
+  trigger.setAttribute("aria-expanded", "true");
+  trigger.setAttribute("aria-controls", menuId);
+  positionRowActionMenu(menu, trigger);
+  menu.querySelector(".row-action-menu-item")?.focus();
+}
+
+document.addEventListener("pointerdown", (event) => {
+  if (!activeRowActionMenu) {
+    return;
+  }
+  const { element, trigger } = activeRowActionMenu;
+  if (!element.contains(event.target) && !trigger.contains(event.target)) {
+    closeRowActionMenu();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeRowActionMenu) {
+    event.preventDefault();
+    closeRowActionMenu({ restoreFocus: true });
+  }
+});
+
+document.addEventListener("scroll", () => closeRowActionMenu(), true);
+window.addEventListener("resize", () => closeRowActionMenu());
+
 const stockMaster = {};
 
 const CHART_COLOR_HUES = [210, 330, 180, 270];
@@ -2019,6 +2109,7 @@ function drawTrendChart() {
 }
 
 function renderHoldingsTable() {
+  closeRowActionMenu();
   holdingsBody.innerHTML = "";
   if (holdingsTableMode === "metrics") {
     renderHoldingsMetricsTable();
@@ -2080,13 +2171,21 @@ function renderHoldingsTable() {
       row.querySelector(".row-actions").textContent = "";
     } else {
       attachHoldingDragEvents(row, index);
-      row.querySelector('[data-action="edit-holding"]').addEventListener("click", () => openHoldingModal(index));
-      row.querySelector('[data-action="remove-holding"]').addEventListener("click", () => {
-        appState.holdings.splice(index, 1);
-        render();
-        refreshDividendSummary();
-        refreshHoldingSectors();
-        queueAutosave();
+      row.querySelector('[data-action="holding-menu"]').addEventListener("click", (event) => {
+        openRowActionMenu(event.currentTarget, [
+          { label: "編集", onSelect: () => openHoldingModal(index) },
+          {
+            label: "削除",
+            danger: true,
+            onSelect: () => {
+              appState.holdings.splice(index, 1);
+              render();
+              refreshDividendSummary();
+              refreshHoldingSectors();
+              queueAutosave();
+            }
+          }
+        ]);
       });
     }
     holdingsBody.appendChild(fragment);
@@ -2154,6 +2253,7 @@ function renderHoldingsMetricsTable() {
 }
 
 function renderWatchlistTable() {
+  closeRowActionMenu();
   watchlistBody.innerHTML = "";
   if (watchlistTableMode === "metrics") {
     renderWatchlistMetricsTable();
@@ -2196,12 +2296,20 @@ function renderWatchlistTable() {
       loadReviewSnapshot(ticker);
     });
     attachWatchlistDragEvents(row, index);
-    row.querySelector('[data-action="edit-watchlist"]').addEventListener("click", () => openWatchlistModal(index));
-    row.querySelector('[data-action="remove-watchlist"]').addEventListener("click", () => {
-      appState.watchlist.splice(index, 1);
-      render();
-      refreshHoldingSectors();
-      queueAutosave();
+    row.querySelector('[data-action="watchlist-menu"]').addEventListener("click", (event) => {
+      openRowActionMenu(event.currentTarget, [
+        { label: "編集", onSelect: () => openWatchlistModal(index) },
+        {
+          label: "削除",
+          danger: true,
+          onSelect: () => {
+            appState.watchlist.splice(index, 1);
+            render();
+            refreshHoldingSectors();
+            queueAutosave();
+          }
+        }
+      ]);
     });
 
     watchlistBody.appendChild(fragment);
@@ -2555,8 +2663,12 @@ reviewCandlestickWrap.addEventListener("mousemove", (event) => {
   if (index < 0 || index >= rows.length) { reviewChartTooltip.classList.add("is-hidden"); return; }
   const row = rows[index], fmt = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
   reviewChartTooltip.textContent = `${row.date}　始 ${fmt(row.open)}　高 ${fmt(row.high)}　安 ${fmt(row.low)}　終 ${fmt(row.close)}　出来高 ${(Number(row.volume) || 0).toLocaleString()}`;
-  reviewChartTooltip.style.left = `${Math.min(rect.width - 20, Math.max(20, x))}px`;
   reviewChartTooltip.classList.remove("is-hidden");
+  const tooltipHalfWidth = reviewChartTooltip.offsetWidth / 2;
+  const tooltipEdgeGap = 8;
+  const minCenter = tooltipHalfWidth + tooltipEdgeGap;
+  const maxCenter = Math.max(minCenter, rect.width - tooltipHalfWidth - tooltipEdgeGap);
+  reviewChartTooltip.style.left = clamp(x, minCenter, maxCenter) + "px";
 });
 reviewCandlestickWrap.addEventListener("mouseleave", () => {
   reviewChartTooltip.classList.add("is-hidden");
