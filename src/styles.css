@@ -2606,28 +2606,58 @@ select:focus {
 
 /* Model status bar */
 .chat-model-bar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  max-width: min(520px, calc(100vw - 100px));
+  overflow: hidden;
 }
 
 .chat-model-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--accent);
   flex-shrink: 0;
-  transition: background 200ms ease, box-shadow 200ms ease;
+  transition: color 200ms ease, filter 200ms ease;
 }
 
 .chat-model-indicator.is-loaded {
-  background: var(--pos);
-  box-shadow: 0 0 6px #4ade8055;
+  color: var(--pos);
+  filter: drop-shadow(0 0 3px #4ade8055);
 }
 
 .chat-model-indicator.is-loading {
-  background: var(--warn);
+  color: var(--warn);
   animation: chat-pulse 1.2s ease-in-out infinite;
+}
+
+#chat-model-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-model-bar.is-loading::after {
+  content: "";
+  position: absolute;
+  left: -45%;
+  bottom: 0;
+  width: 45%;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--warn);
+  animation: chat-model-loading-bar 1.15s ease-in-out infinite;
+}
+
+@keyframes chat-model-loading-bar {
+  from { transform: translateX(0); }
+  to { transform: translateX(325%); }
 }
 
 @keyframes chat-pulse {
@@ -3481,7 +3511,7 @@ body.is-resizing-chat-sidebar {
   padding: 14px 24px 16px;
 }
 
-/* 状態行（稼働状況 + ctx 選択 + 停止） */
+/* 状態行（稼働状況 + コンテキスト長 + 停止） */
 .chat-model-head {
   display: flex;
   align-items: center;
@@ -3495,6 +3525,20 @@ body.is-resizing-chat-sidebar {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-model-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.chat-model-context .chat-role-select {
+  width: auto;
+  min-width: 76px;
 }
 
 /* モデル一覧の行（クリックでロード） */
@@ -3566,7 +3610,7 @@ body.is-resizing-chat-sidebar {
 }
 
 .chat-role-ctx {
-  flex: 0 0 110px;
+  flex: 0 0 76px;
 }
 
 .chat-role-action {

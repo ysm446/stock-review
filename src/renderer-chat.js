@@ -117,8 +117,11 @@ let treeDragState = null;
 
 // ── Helpers ──────────────────────────────────────────────
 function setModelStatus(state, label) {
-  chatModelIndicator.className = `chat-model-indicator${state ? " " + state : ""}`;
+  chatModelIndicator.setAttribute("class", "chat-model-indicator" + (state ? " " + state : ""));
   chatModelNameEl.textContent = label;
+  const isLoading = state === "is-loading";
+  chatModelBar.classList.toggle("is-loading", isLoading);
+  chatModelBar.setAttribute("aria-busy", isLoading ? "true" : "false");
 }
 
 function ctxLabel(size) {
@@ -1174,6 +1177,7 @@ async function refreshSession(sessionId) {
 
 // ── Model picker（単一サーバー: 一覧から選んでロード、その1台が全処理を担当） ──
 async function openModelPicker() {
+  if (loadingModel) return;
   chatModelModalBackdrop.classList.remove("is-hidden");
   await renderModelModal();
 }
@@ -1208,7 +1212,7 @@ async function renderModelModal() {
   CTX_OPTIONS.forEach(size => {
     const option = document.createElement("option");
     option.value = String(size);
-    option.textContent = `ctx ${ctxLabel(size)}`;
+    option.textContent = ctxLabel(size);
     if (size === status.ctx_size) option.selected = true;
     ctxSelect.appendChild(option);
   });
@@ -1216,7 +1220,14 @@ async function renderModelModal() {
     api("PUT", "/llama/settings", { ctx_size: Number(ctxSelect.value) || null }).catch(() => {});
   });
 
-  head.append(state, ctxSelect);
+  const ctxField = document.createElement("label");
+  ctxField.className = "chat-model-context";
+  ctxField.title = "モデルが一度に参照できる情報量です。大きいほど多くの会話や資料を扱えますが、必要なメモリも増えます。";
+  const ctxFieldLabel = document.createElement("span");
+  ctxFieldLabel.textContent = "コンテキスト長：";
+  ctxField.append(ctxFieldLabel, ctxSelect);
+
+  head.append(state, ctxField);
 
   if (status.ready) {
     const stopBtn = document.createElement("button");
@@ -1260,23 +1271,29 @@ async function renderModelModal() {
     item.append(label, badge);
 
     item.addEventListener("click", async () => {
-      if (loadingModel || isRunning) return;
+      if (loadingModel) return;
+      if (isRunning) {
+        closeModelPicker();
+        return;
+      }
       loadingModel = true;
-      badge.textContent = "ロード中...";
-      item.classList.add("is-loading");
-      setAppStatus(`${relative_path || name} をロードしています...`, "active");
+      setInputEnabled(false);
+      const selectedName = relative_path || name;
+      setModelStatus("is-loading", selectedName + " をロード中...");
+      closeModelPicker();
+      setAppStatus(selectedName + " をロードしています...", "active");
       try {
         await api("POST", "/llama/start", {
           model_path: path,
           ctx_size: Number(ctxSelect.value) || null,
         });
-        setAppStatus(`${relative_path || name} をロードしました。`, "success");
+        setAppStatus(selectedName + " をロードしました。", "success");
       } catch (err) {
         setAppStatus(`モデルのロードに失敗しました: ${err.message}`, "error");
         window.alert(`モデルのロードに失敗しました: ${err.message}`);
       } finally {
         loadingModel = false;
-        await renderModelModal();
+        await refreshModelStatus().catch(() => setModelStatus("", "モデルを設定"));
       }
     });
 
