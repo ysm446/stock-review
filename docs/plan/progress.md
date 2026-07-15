@@ -4,6 +4,13 @@
 
 ## 完了済み
 
+- **2026-07-16: 全体レビュー第2弾（チャット通信の共通化）**。
+  - renderer-chat.js / renderer-stock-chat.js に重複していた `api()`（JSONリクエスト）と `streamChat()`（SSE受信）を `chat-api.js` へ統合。
+  - `streamChat` は両ファイルで引数順が異なっていた（chat: callbacks→options、stock: options→callbacks）ため、コールバックもオプションも単一オブジェクトで受ける形（`onToken`/`onDone`/`onError`/`onActivity`/`endpoint`/`persistUser`/`persistAssistant`/`systemPrompt`）に統一。呼び出し5箇所すべてを新形式へ移行。
+  - `persist_assistant`/`system_prompt` は常に送信（バックエンドは既定値付きで受けるため互換。`system_prompt` は空文字＝未指定扱い、`chat_server.py` の `req.system_prompt or ""` で確認済み）。
+  - SSE分割受信・末尾イベント（空行なし終端）・エラーパス・リクエストボディ互換をNodeでの単体テストで確認（scratchpad の test-stream.mjs）。実アプリでのチャット動作は未確認。
+  - 日付フォーマッタ（`formatChatDate`/`formatDate`）は表示形式が異なる（時刻あり/なし）ため統合を見送り。
+
 - **2026-07-16: 全体レビュー第1弾（実害バグ修正＋安定性）**。
   - `/llama/status` の二重登録を解消。runtime状態（chat_llama_manager）は従来の `/llama/status`、インストール状態（llama_updater）は `/llama/local-status` へ分離し、`renderer-settings.js` を追従。これまで設定画面のビルド表示は常に「未インストール」だった。
   - `chat_server.py` の `SessionBody` 二重定義を統合（既定タイトル「新しい会話」。フロントは常にtitleを送るため挙動変化なし）。

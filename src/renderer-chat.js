@@ -1,79 +1,7 @@
-import { apiFetch, createActivityRenderer } from "./chat-api.js";
+import { api, apiFetch, streamChat, createActivityRenderer } from "./chat-api.js";
 import { renderMarkdown } from "./chat-markdown.js";
 import { appendGenerationMetrics } from "./chat-metrics.js";
 import { setAppStatus } from "./renderer-status.js";
-
-// ── HTTP helpers ─────────────────────────────────────────
-async function api(method, path, body = null) {
-  const opts = { method, headers: {} };
-  if (body !== null) {
-    opts.headers["Content-Type"] = "application/json";
-    opts.body = JSON.stringify(body);
-  }
-  const res = await apiFetch(path, opts);
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${method} ${path} → ${res.status}${text ? ": " + text : ""}`);
-  }
-  return res.json();
-}
-
-async function streamChat(sessionId, messages, onToken, onDone, onError, options = {}) {
-  const dispatch = (evt) => {
-    if (evt.type === "token") onToken(evt.content);
-    else if (evt.type === "done") onDone(evt);
-    else if (evt.type === "error") onError(evt.message);
-    else if (options.onActivity) options.onActivity(evt);
-  };
-
-  let res;
-  try {
-    res = await apiFetch(options.endpoint || "/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: sessionId,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-        persist_user: options.persistUser !== false,
-      }),
-    });
-  } catch (e) {
-    onError(e.message);
-    return;
-  }
-  if (!res.ok) {
-    onError(`HTTP ${res.status}`);
-    return;
-  }
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const events = buf.split("\n\n");
-    buf = events.pop() ?? "";
-    for (const event of events) {
-      for (const line of event.split("\n")) {
-        if (!line.startsWith("data: ")) continue;
-        const payload = line.slice(6);
-        if (!payload) continue;
-        try {
-          dispatch(JSON.parse(payload));
-        } catch (_) {}
-      }
-    }
-  }
-  if (buf.trim()) {
-    for (const line of buf.split("\n")) {
-      if (!line.startsWith("data: ")) continue;
-      try {
-        dispatch(JSON.parse(line.slice(6)));
-      } catch (_) {}
-    }
-  }
-}
 
 // ── DOM refs ─────────────────────────────────────────────
 const chatModelBar        = document.getElementById("chat-model-bar");
@@ -1020,16 +948,16 @@ async function regenerateFromUserMessage(messageId) {
   let accumulated = "";
   const sidAtSend = activeSessionId;
 
-  await streamChat(
-    sidAtSend,
-    chatHistory,
-    chunk => {
+  await streamChat(sidAtSend, chatHistory, {
+    persistUser: false,
+    endpoint: "/chat/agent-stream",
+    onToken: chunk => {
       wrap.classList.remove("loading");
       accumulated += chunk;
       setMessageBodyContent(bubble, "assistant", accumulated);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     },
-    evt => {
+    onDone: evt => {
       wrap.classList.remove("loading");
       const assistantId = evt?.message?.id ?? null;
       meta.textContent = formatMessageMeta("assistant", evt?.message?.created_at || Date.now());
@@ -1045,7 +973,7 @@ async function regenerateFromUserMessage(messageId) {
       setAppStatus("回答を生成しました。", "success");
       if (serverLoaded) chatInput.focus();
     },
-    err => {
+    onError: err => {
       wrap.classList.remove("loading");
       wrap.classList.add("error");
       bubble.textContent = `エラー: ${err}`;
@@ -1053,24 +981,20 @@ async function regenerateFromUserMessage(messageId) {
       setInputEnabled(serverLoaded && activeSessionId !== null);
       setAppStatus(`回答の生成に失敗しました: ${err}`, "error");
     },
-    {
-      persistUser: false,
-      endpoint: "/chat/agent-stream",
-      onActivity: createActivityRenderer(activity, {
-        onModel: evt => {
-          if (evt.name) meta.textContent = `アシスタント（${evt.name}） 生成中`;
-        },
-        onTextReset: () => {
-          accumulated = "";
-          setMessageBodyContent(bubble, "assistant", "");
-        },
-        onUpdate: () => {
-          wrap.classList.remove("loading");
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-      })
-    }
-  );
+    onActivity: createActivityRenderer(activity, {
+      onModel: evt => {
+        if (evt.name) meta.textContent = `アシスタント（${evt.name}） 生成中`;
+      },
+      onTextReset: () => {
+        accumulated = "";
+        setMessageBodyContent(bubble, "assistant", "");
+      },
+      onUpdate: () => {
+        wrap.classList.remove("loading");
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    })
+  });
 }
 
 async function sendMessage() {
@@ -1102,16 +1026,15 @@ async function sendMessage() {
   let accumulated = "";
   const sidAtSend = activeSessionId;
 
-  await streamChat(
-    sidAtSend,
-    chatHistory,
-    chunk => {
+  await streamChat(sidAtSend, chatHistory, {
+    endpoint: "/chat/agent-stream",
+    onToken: chunk => {
       wrap.classList.remove("loading");
       accumulated += chunk;
       setMessageBodyContent(bubble, "assistant", accumulated);
       chatMessages.scrollTop = chatMessages.scrollHeight;
     },
-    evt => {
+    onDone: evt => {
       wrap.classList.remove("loading");
       const userMessageId = evt?.user_message?.id ?? null;
       const assistantId = evt?.message?.id ?? null;
@@ -1135,7 +1058,7 @@ async function sendMessage() {
       setAppStatus("回答を生成しました。", "success");
       if (serverLoaded) chatInput.focus();
     },
-    err => {
+    onError: err => {
       chatHistory.pop();
       wrap.classList.remove("loading");
       wrap.classList.add("error");
@@ -1144,23 +1067,20 @@ async function sendMessage() {
       setInputEnabled(serverLoaded && activeSessionId !== null);
       setAppStatus(`回答の生成に失敗しました: ${err}`, "error");
     },
-    {
-      endpoint: "/chat/agent-stream",
-      onActivity: createActivityRenderer(activity, {
-        onModel: evt => {
-          if (evt.name) meta.textContent = `アシスタント（${evt.name}） 生成中`;
-        },
-        onTextReset: () => {
-          accumulated = "";
-          setMessageBodyContent(bubble, "assistant", "");
-        },
-        onUpdate: () => {
-          wrap.classList.remove("loading");
-          chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-      })
-    }
-  );
+    onActivity: createActivityRenderer(activity, {
+      onModel: evt => {
+        if (evt.name) meta.textContent = `アシスタント（${evt.name}） 生成中`;
+      },
+      onTextReset: () => {
+        accumulated = "";
+        setMessageBodyContent(bubble, "assistant", "");
+      },
+      onUpdate: () => {
+        wrap.classList.remove("loading");
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    })
+  });
 }
 
 async function refreshSession(sessionId) {

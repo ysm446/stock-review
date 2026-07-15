@@ -23,6 +23,87 @@ export async function apiFetch(path, options = {}) {
   return fetch(`${CHAT_API_BASE}${path}`, { ...options, headers });
 }
 
+// JSONリクエストの共通ヘルパー。失敗時は "METHOD path → status: 本文" 形式のErrorを投げる。
+export async function api(method, path, body = null) {
+  const opts = { method, headers: {} };
+  if (body !== null) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const res = await apiFetch(path, opts);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${method} ${path} → ${res.status}${text ? `: ${text}` : ""}`);
+  }
+  return res.json();
+}
+
+// SSEチャットストリームの共通処理。renderer-chat / renderer-stock-chat 共用。
+// コールバックもオプションも1つのオブジェクトで受ける（呼び出し側での引数順の食い違いを防ぐ）。
+export async function streamChat(sessionId, messages, {
+  onToken = () => {},
+  onDone = () => {},
+  onError = () => {},
+  onActivity = null,
+  endpoint = "/chat/stream",
+  persistUser = true,
+  persistAssistant = true,
+  systemPrompt = "",
+} = {}) {
+  const dispatch = (evt) => {
+    if (evt.type === "token") onToken(evt.content);
+    else if (evt.type === "done") onDone(evt);
+    else if (evt.type === "error") onError(evt.message);
+    else if (onActivity) onActivity(evt);
+  };
+
+  let res;
+  try {
+    res = await apiFetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        persist_user: persistUser,
+        persist_assistant: persistAssistant,
+        system_prompt: systemPrompt || "",
+      }),
+    });
+  } catch (error) {
+    onError(error.message);
+    return;
+  }
+  if (!res.ok) {
+    onError(`HTTP ${res.status}`);
+    return;
+  }
+
+  const dispatchLines = (chunk) => {
+    for (const line of chunk.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6);
+      if (!payload) continue;
+      try {
+        dispatch(JSON.parse(payload));
+      } catch (_) {}
+    }
+  };
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+    events.forEach(dispatchLines);
+  }
+  // 最終イベントの後ろに空行が無いままストリームが終わるケースを取りこぼさない
+  if (buffer.trim()) dispatchLines(buffer);
+}
+
 const TOOL_LABELS = {
   web_search: "Web検索",
   news_search: "ニュース検索",

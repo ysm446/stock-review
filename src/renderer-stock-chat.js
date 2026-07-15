@@ -1,4 +1,4 @@
-import { apiFetch, createActivityRenderer } from "./chat-api.js";
+import { api, streamChat, createActivityRenderer } from "./chat-api.js";
 import { renderMarkdown } from "./chat-markdown.js";
 import { appendGenerationMetrics } from "./chat-metrics.js";
 import { formatMaybeCurrency, formatMaybeMultiple, formatMaybePercent } from "./renderer-utils.js";
@@ -36,80 +36,6 @@ let notesContent = "";
 let notesHasBackup = false;
 let notesQueue = []; // 反映待ちのやり取り [{user, assistant, btn}]
 let notesUpdating = false;
-
-async function api(method, path, body = null) {
-  const opts = { method, headers: {} };
-  if (body !== null) {
-    opts.headers["Content-Type"] = "application/json";
-    opts.body = JSON.stringify(body);
-  }
-  const res = await apiFetch(path, opts);
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${method} ${path} -> ${res.status}${text ? `: ${text}` : ""}`);
-  }
-  return res.json();
-}
-
-async function streamChat(sessionId, messages, options, onToken, onDone, onError) {
-  const dispatch = (payload) => {
-    if (payload.type === "token") onToken(payload.content);
-    else if (payload.type === "done") onDone(payload);
-    else if (payload.type === "error") onError(payload.message);
-    else if (options.onActivity) options.onActivity(payload);
-  };
-
-  let res;
-  try {
-    res = await apiFetch(options.endpoint || "/chat/stream", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        session_id: sessionId,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        persist_user: options.persistUser !== false,
-        persist_assistant: options.persistAssistant !== false,
-        system_prompt: options.systemPrompt || "",
-      }),
-    });
-  } catch (error) {
-    onError(error.message);
-    return;
-  }
-
-  if (!res.ok) {
-    onError(`HTTP ${res.status}`);
-    return;
-  }
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split("\n\n");
-    buffer = events.pop() || "";
-    for (const event of events) {
-      for (const line of event.split("\n")) {
-        if (!line.startsWith("data: ")) continue;
-        try {
-          dispatch(JSON.parse(line.slice(6)));
-        } catch (_) {}
-      }
-    }
-  }
-  // 最終イベントの後ろに空行が無いままストリームが終わるケースを取りこぼさない
-  if (buffer.trim()) {
-    for (const line of buffer.split("\n")) {
-      if (!line.startsWith("data: ")) continue;
-      try {
-        dispatch(JSON.parse(line.slice(6)));
-      } catch (_) {}
-    }
-  }
-}
 
 function setEnabled(enabled) {
   const canChat = enabled && activeSessionId !== null && !streaming;
@@ -399,18 +325,17 @@ async function processNotesQueue() {
     setAppStatus(`${ticker} のノートへ反映しています...`, "active");
     let markdown = "";
     let failed = null;
-    await streamChat(
-      sessionId,
-      [{ role: "user", content: buildNotesUpdatePrompt(exchanges) }],
-      { persistUser: false, persistAssistant: false, systemPrompt: buildNotesSystemPrompt() },
-      (chunk) => {
+    await streamChat(sessionId, [{ role: "user", content: buildNotesUpdatePrompt(exchanges) }], {
+      persistUser: false,
+      persistAssistant: false,
+      systemPrompt: buildNotesSystemPrompt(),
+      onToken: (chunk) => {
         markdown += chunk;
       },
-      () => {},
-      (error) => {
+      onError: (error) => {
         failed = error;
-      }
-    );
+      },
+    });
 
     // 更新中に銘柄が切り替わったら結果を破棄する
     if (activeTicker !== ticker) break;
@@ -565,33 +490,29 @@ async function sendMessage() {
   assistant.wrap.insertBefore(activity, assistant.body);
 
   let accumulated = "";
-  await streamChat(
-    activeSessionId,
-    history,
-    {
-      systemPrompt: buildStockSystemPrompt(),
-      endpoint: "/chat/agent-stream",
-      onActivity: createActivityRenderer(activity, {
-        onModel: evt => {
-          if (evt.name) assistant.meta.textContent = evt.name;
-        },
-        onTextReset: () => {
-          accumulated = "";
-          assistant.body.innerHTML = "";
-        },
-        onUpdate: () => {
-          assistant.wrap.classList.remove("loading");
-          messagesEl.scrollTop = messagesEl.scrollHeight;
-        }
-      })
-    },
-    (chunk) => {
+  await streamChat(activeSessionId, history, {
+    systemPrompt: buildStockSystemPrompt(),
+    endpoint: "/chat/agent-stream",
+    onActivity: createActivityRenderer(activity, {
+      onModel: evt => {
+        if (evt.name) assistant.meta.textContent = evt.name;
+      },
+      onTextReset: () => {
+        accumulated = "";
+        assistant.body.innerHTML = "";
+      },
+      onUpdate: () => {
+        assistant.wrap.classList.remove("loading");
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    }),
+    onToken: (chunk) => {
       assistant.wrap.classList.remove("loading");
       accumulated += chunk;
       assistant.body.innerHTML = renderMarkdown(accumulated);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
-    async (event) => {
+    onDone: async (event) => {
       assistant.wrap.classList.remove("loading");
       const userId = event?.user_message?.id || null;
       const assistantId = event?.message?.id || null;
@@ -605,7 +526,7 @@ async function sendMessage() {
       setAppStatus("回答を生成しました。", "success");
       inputEl.focus();
     },
-    (error) => {
+    onError: (error) => {
       history.pop();
       assistant.wrap.classList.remove("loading");
       assistant.wrap.classList.add("error");
@@ -613,8 +534,8 @@ async function sendMessage() {
       streaming = false;
       setEnabled(true);
       setAppStatus(`回答の生成に失敗しました: ${error}`, "error");
-    }
-  );
+    },
+  });
 }
 
 async function summarizeToMarkdown() {
@@ -635,21 +556,17 @@ async function summarizeToMarkdown() {
   ].join("\n");
 
   let markdown = "";
-  await streamChat(
-    activeSessionId,
-    [{ role: "user", content: prompt }],
-    {
-      persistUser: false,
-      persistAssistant: false,
-      systemPrompt: [buildStockSystemPrompt(), buildNotesSystemPrompt()].join("\n\n"),
-    },
-    (chunk) => {
+  await streamChat(activeSessionId, [{ role: "user", content: prompt }], {
+    persistUser: false,
+    persistAssistant: false,
+    systemPrompt: [buildStockSystemPrompt(), buildNotesSystemPrompt()].join("\n\n"),
+    onToken: (chunk) => {
       assistant.wrap.classList.remove("loading");
       markdown += chunk;
       assistant.body.innerHTML = renderMarkdown(markdown);
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
-    async (event) => {
+    onDone: async (event) => {
       const saved = await api("PATCH", `/stocks/${encodeURIComponent(activeTicker)}/notes`, {
         content: stripMarkdownFences(markdown),
       });
@@ -662,15 +579,15 @@ async function summarizeToMarkdown() {
       setAppStatus(`${activeTicker} のノートを作り直しました。`, "success");
       appendGenerationMetrics(assistant.wrap, event?.metrics);
     },
-    (error) => {
+    onError: (error) => {
       assistant.wrap.classList.remove("loading");
       assistant.wrap.classList.add("error");
       assistant.body.textContent = `保存に失敗しました: ${error}`;
       streaming = false;
       setEnabled(true);
       setAppStatus(`ノートの作り直しに失敗しました: ${error}`, "error");
-    }
-  );
+    },
+  });
 }
 
 tabMetricsBtn?.addEventListener("click", () => switchReviewTab("metrics"));
