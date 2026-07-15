@@ -17,8 +17,11 @@ EMBED_DIM = 768
 
 logger = logging.getLogger(__name__)
 
+_vec_warned = False
+
 
 def _connect() -> sqlite3.Connection:
+    global _vec_warned
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
@@ -27,9 +30,13 @@ def _connect() -> sqlite3.Connection:
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
     except Exception as e:
-        logger.debug("sqlite-vec unavailable: %s", e)
+        if not _vec_warned:
+            _vec_warned = True
+            logger.warning("sqlite-vec unavailable (vector search disabled): %s", e)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    # FastAPIが複数スレッドから同一DBへ書き込むため、writerロック競合時は待つ
+    conn.execute("PRAGMA busy_timeout = 10000")
     return conn
 
 

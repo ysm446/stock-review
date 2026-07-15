@@ -121,38 +121,40 @@ def store_and_load_candles(symbol, history):
     """取得した日足を追記し、これまで蓄積した全OHLCVを返す。"""
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 10000")
-    conn.execute("""CREATE TABLE IF NOT EXISTS review_price_history (
-        ticker TEXT NOT NULL, trade_date TEXT NOT NULL, open REAL, high REAL,
-        low REAL, close REAL, volume INTEGER, updated_at TEXT NOT NULL,
-        PRIMARY KEY (ticker, trade_date))""")
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    if history is not None:
-        rows = []
-        for index, row in history.iterrows():
-            open_price = to_float(row.get("Open"))
-            high = to_float(row.get("High"))
-            low = to_float(row.get("Low"))
-            close = to_float(row.get("Close"))
-            if any(value is None or value <= 0 for value in (open_price, high, low, close)):
-                continue
-            volume = to_float(row.get("Volume"))
-            rows.append((symbol, index.strftime("%Y-%m-%d"), open_price,
-                high, low, close,
-                int(volume) if volume is not None else None, now))
-        conn.executemany("""INSERT INTO review_price_history
-            (ticker, trade_date, open, high, low, close, volume, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(ticker, trade_date) DO UPDATE SET open=excluded.open,
-            high=excluded.high, low=excluded.low, close=excluded.close,
-            volume=excluded.volume, updated_at=excluded.updated_at""", rows)
-        conn.commit()
-    stored = conn.execute("""SELECT trade_date, open, high, low, close, volume
-        FROM review_price_history
-        WHERE ticker = ? AND open > 0 AND high > 0 AND low > 0 AND close > 0
-        ORDER BY trade_date""", (symbol,)).fetchall()
-    conn.close()
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 10000")
+        conn.execute("""CREATE TABLE IF NOT EXISTS review_price_history (
+            ticker TEXT NOT NULL, trade_date TEXT NOT NULL, open REAL, high REAL,
+            low REAL, close REAL, volume INTEGER, updated_at TEXT NOT NULL,
+            PRIMARY KEY (ticker, trade_date))""")
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if history is not None:
+            rows = []
+            for index, row in history.iterrows():
+                open_price = to_float(row.get("Open"))
+                high = to_float(row.get("High"))
+                low = to_float(row.get("Low"))
+                close = to_float(row.get("Close"))
+                if any(value is None or value <= 0 for value in (open_price, high, low, close)):
+                    continue
+                volume = to_float(row.get("Volume"))
+                rows.append((symbol, index.strftime("%Y-%m-%d"), open_price,
+                    high, low, close,
+                    int(volume) if volume is not None else None, now))
+            conn.executemany("""INSERT INTO review_price_history
+                (ticker, trade_date, open, high, low, close, volume, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ticker, trade_date) DO UPDATE SET open=excluded.open,
+                high=excluded.high, low=excluded.low, close=excluded.close,
+                volume=excluded.volume, updated_at=excluded.updated_at""", rows)
+            conn.commit()
+        stored = conn.execute("""SELECT trade_date, open, high, low, close, volume
+            FROM review_price_history
+            WHERE ticker = ? AND open > 0 AND high > 0 AND low > 0 AND close > 0
+            ORDER BY trade_date""", (symbol,)).fetchall()
+    finally:
+        conn.close()
     return [{"date": r[0], "open": r[1], "high": r[2], "low": r[3],
              "close": r[4], "volume": r[5]} for r in stored]
 
@@ -160,19 +162,21 @@ def store_and_load_candles(symbol, history):
 def store_review_snapshot(symbol, payload):
     snapshot = {key: value for key, value in payload.items() if key != "priceHistory"}
     conn = sqlite3.connect(DB_FILE)
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA busy_timeout = 10000")
-    conn.execute("""CREATE TABLE IF NOT EXISTS review_snapshots (
-        ticker TEXT PRIMARY KEY, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL)""")
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    conn.execute(
-        """INSERT INTO review_snapshots (ticker, payload_json, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(ticker) DO UPDATE SET
-             payload_json=excluded.payload_json, updated_at=excluded.updated_at""",
-        (symbol, json.dumps(snapshot, ensure_ascii=False), now),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 10000")
+        conn.execute("""CREATE TABLE IF NOT EXISTS review_snapshots (
+            ticker TEXT PRIMARY KEY, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL)""")
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        conn.execute(
+            """INSERT INTO review_snapshots (ticker, payload_json, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(ticker) DO UPDATE SET
+                 payload_json=excluded.payload_json, updated_at=excluded.updated_at""",
+            (symbol, json.dumps(snapshot, ensure_ascii=False), now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_history_fallback_prices(history):

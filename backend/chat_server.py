@@ -234,8 +234,8 @@ class LlamaDownloadRequest(BaseModel):
     asset_name: str
 
 
-@app.get("/llama/status")
-def llama_status():
+@app.get("/llama/local-status")
+def llama_local_status():
     return llama_updater.get_local_status()
 
 
@@ -314,7 +314,7 @@ class MessageBody(BaseModel):
 
 
 class SessionBody(BaseModel):
-    title: str = "New chat"
+    title: str = "新しい会話"
 
 
 @app.get("/workspaces")
@@ -434,10 +434,6 @@ def del_document(id: int):
 
 
 # ── Sessions ──────────────────────────────────────────────
-
-class SessionBody(BaseModel):
-    title: str = "新しい会話"
-
 
 @app.get("/workspaces/{workspace_id}/sessions")
 def get_sessions(workspace_id: int):

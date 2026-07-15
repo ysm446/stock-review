@@ -87,7 +87,7 @@ function closeSettings() {
 
 async function refreshLlamaStatus() {
   try {
-    const status = await settingsApi("GET", "/llama/status");
+    const status = await settingsApi("GET", "/llama/local-status");
     llamaCurrentBuild.textContent = status.installed
       ? `${status.build}${status.count > 1 ? `（他 ${status.count - 1} 件）` : ""}`
       : "未インストール";

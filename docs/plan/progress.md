@@ -4,6 +4,15 @@
 
 ## 完了済み
 
+- **2026-07-16: 全体レビュー第1弾（実害バグ修正＋安定性）**。
+  - `/llama/status` の二重登録を解消。runtime状態（chat_llama_manager）は従来の `/llama/status`、インストール状態（llama_updater）は `/llama/local-status` へ分離し、`renderer-settings.js` を追従。これまで設定画面のビルド表示は常に「未インストール」だった。
+  - `chat_server.py` の `SessionBody` 二重定義を統合（既定タイトル「新しい会話」。フロントは常にtitleを送るため挙動変化なし）。
+  - `styles.css` の未定義変数 `var(--border)` → `var(--line)`（`.review-ma-toggles` / `.review-menu-heading`）。
+  - `chat_store._connect` に `busy_timeout=10000` を追加（FastAPIの複数スレッド書き込み対策）。sqlite_vecロード失敗はdebug→warning（初回のみ）。
+  - `fetch_review.py` の `store_and_load_candles` / `store_review_snapshot` をtry/finally化し、例外時の接続リークを解消。
+  - `styles.css` の `@media (max-width: 760px)` ブロック（約100行）を削除。ウィンドウ `minWidth: 1180` のため到達不能なデッドコードだった。
+  - 全体レビューの残りの推奨事項（チャット2系統の共通化、renderer.js / chat_store.py の分割、ハイブリッド検索の重複、バックエンドクラッシュ時の自動復旧など）は「未完了 / 検討中」を参照。
+
 - **2026-07-16: モデル選択バーの最小幅とモデル一覧の表示名を調整**。
   - `.chat-model-bar` に `min-width: 220px` を設定し、モデル未選択時（「モデルを設定」表示）にバーが狭くなりすぎないようにした。
   - モデル選択モーダルの一覧は `relative_path`（フォルダ名＋ファイル名）を表示していたため長かったのを、`name`（ファイル名のみ）に変更。`relative_path` は各行の `title` 属性（ツールチップ）へ移した。ロード時のステータスメッセージもファイル名のみを使用。
@@ -170,6 +179,13 @@
 - 保有テーブル / 保有割合チャートのまとめ表示と、保有割合チャートの配色モード（デフォルト / セクター別）を localStorage で永続化。
 
 ## 未完了 / 検討中
+
+- **全体レビュー（2026-07-16実施）の残課題**:
+  - renderer.js（3,343行）の分割。自然な境界: レビュー画面（約600行、依存が閉じている）→ テーブル描画 → トレンドチャート。あわせてティッカー補完3重複・D&D 2重複・テーブルモード切替2重複の統合。
+  - chat_store.py（1,078行）の分割（stock_notesのファイルI/O分離、`search_memory`/`search_documents` のRRFハイブリッド検索約50行×2の共通化、埋め込み推論をトランザクション外へ）。
+  - chat_serverクラッシュ時の自動再起動またはステータスバー通知（electron/main.js の exit ハンドラ）。
+  - 未使用export削除（`formatMaybeYieldPercent`/`normalizeYieldPercentValue`）、`ensure_data_dir` 二重定義、`datetime.utcnow()` の置換、フォーム要素への `aria-label`、styles.cssの純重複セレクタ6件（`.accent-button`, `.panel` 等）。
+  - ローソク足（赤=上昇）とポートフォリオ損益（緑=プラス）で色の意味が画面間で逆転している件の整理（意図的なら変数名で明示）。
 
 - **フェーズ6残課題**: 保存先変更時の既存データの自動コピー/移行（現状は切り替えのみ）。`stock_master.json` の置き場（当面 `DATA_DIR`）と `models/`・`runtime/` の扱いの最終決定。第1弾の実装内容は上の「完了済み」参照。
 - **フェーズ4残課題**: チャット2系統（renderer-chat / renderer-stock-chat）の完全共通化（Markdown は共通化済み）、エージェントの出典リンクのクリック対応確認、要約への json_schema 構造化出力の導入検討。
