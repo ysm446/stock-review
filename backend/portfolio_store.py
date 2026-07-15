@@ -137,6 +137,8 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     }
     if "sort_order" not in watchlist_columns:
         conn.execute("ALTER TABLE watchlist ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+    if "category" not in watchlist_columns:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN category TEXT NOT NULL DEFAULT ''")
     conn.commit()
 
 
@@ -321,6 +323,29 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         """,
         (key, value, utc_now()),
     )
+
+
+def _normalize_category_names(values) -> list[str]:
+    result: list[str] = []
+    for value in values if isinstance(values, list) else []:
+        name = sanitize_text(value).strip()
+        if name and name not in result:
+            result.append(name)
+    return result
+
+
+def get_watchlist_categories(conn: sqlite3.Connection) -> list[str]:
+    try:
+        values = json.loads(get_setting(conn, "watchlist_categories", "[]"))
+    except json.JSONDecodeError:
+        return []
+    return _normalize_category_names(values)
+
+
+def set_watchlist_categories(conn: sqlite3.Connection, values) -> list[str]:
+    result = _normalize_category_names(values)
+    set_setting(conn, "watchlist_categories", json.dumps(result, ensure_ascii=False))
+    return result
 
 
 def get_cash_jpy(conn: sqlite3.Connection) -> int:
@@ -566,7 +591,7 @@ def load_state(conn: sqlite3.Connection) -> dict[str, object]:
     ).fetchall()
     watchlist_rows = conn.execute(
         """
-        SELECT ticker, rating, thesis, risk
+        SELECT ticker, rating, thesis, risk, category
         FROM watchlist
         ORDER BY sort_order ASC, ticker ASC
         """
@@ -592,12 +617,14 @@ def load_state(conn: sqlite3.Connection) -> dict[str, object]:
             "rating": row["rating"] or "B",
             "thesis": row["thesis"] or "",
             "risk": row["risk"] or "",
+            "category": row["category"] or "",
         }
         for row in watchlist_rows
     ]
     return {
         "holdings": holdings,
         "watchlist": watchlist,
+        "watchlistCategories": get_watchlist_categories(conn),
         "cashJpy": get_cash_jpy(conn),
         "trendHistory": build_portfolio_history(conn),
     }
@@ -610,6 +637,9 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
 
     if "cash" in payload or "cashJpy" in payload:
         set_cash_jpy(conn, payload.get("cash", payload.get("cashJpy")))
+
+    if "watchlistCategories" in payload:
+        set_watchlist_categories(conn, payload.get("watchlistCategories"))
 
     # 保存は全量置き換え。同一銘柄の複数ロットを行単位で保持する。
     conn.execute("DELETE FROM holdings")
@@ -674,12 +704,13 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
         ensure_stock(conn, ticker)
         conn.execute(
             """
-            INSERT INTO watchlist (ticker, rating, thesis, risk, sort_order, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO watchlist (ticker, rating, thesis, risk, category, sort_order, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(ticker) DO UPDATE SET
                 rating = excluded.rating,
                 thesis = excluded.thesis,
                 risk = excluded.risk,
+                category = excluded.category,
                 sort_order = excluded.sort_order,
                 updated_at = excluded.updated_at
             """,
@@ -688,6 +719,7 @@ def save_state(conn: sqlite3.Connection, payload: dict[str, object]) -> dict[str
                 sanitize_text(item.get("rating") or "B"),
                 sanitize_text(item.get("thesis")),
                 sanitize_text(item.get("risk")),
+                sanitize_text(item.get("category")).strip(),
                 index,
                 now,
             ),

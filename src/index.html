@@ -187,9 +187,13 @@
                     <button class="view-toggle-button is-active" id="watchlist-mode-positions" type="button" data-mode="positions" aria-pressed="true">株式情報</button>
                     <button class="view-toggle-button" id="watchlist-mode-metrics" type="button" data-mode="metrics" aria-pressed="false">企業指標</button>
                   </div>
+                  <button class="ghost-button" id="watchlist-add-category" title="ウォッチリストのカテゴリーを作成します">＋カテゴリー</button>
+                  <input type="text" class="watchlist-category-inline-input is-hidden" id="watchlist-category-inline-input" placeholder="カテゴリー名" autocomplete="off" />
                   <button class="accent-button" id="add-watchlist">ウォッチ追加</button>
                 </div>
               </div>
+
+              <div class="watchlist-category-tabs is-hidden" id="watchlist-category-tabs"></div>
 
               <div class="table-wrap">
                 <table class="watchlist-table">
@@ -264,6 +268,7 @@
                     <button type="button" class="ghost-button review-chart-refresh" id="review-chart-refresh" title="終値・始値・高値・安値・出来高を再取得します">日足を再取得</button>
                   </div></div>
                 <div class="review-candlestick-wrap" id="review-candlestick-wrap"><canvas id="review-candlestick-chart" width="1200" height="430"></canvas><div class="review-chart-crosshair is-hidden" id="review-chart-crosshair"><span id="review-chart-crosshair-price">-</span></div><div class="review-chart-tooltip is-hidden" id="review-chart-tooltip"></div></div>
+                <div class="review-chart-resizer" id="review-chart-resizer" title="ドラッグしてチャートの高さを調整（ダブルクリックで初期値に戻す）"></div>
               </article>
             <div class="review-left-tabs">
               <button type="button" class="review-left-tab is-active" id="review-tab-metrics">指標</button>
@@ -518,6 +523,14 @@
           <label>
             <span>評価</span>
             <input id="watchlist-rating-input" name="rating" type="text" placeholder="A" />
+          </label>
+          <label>
+            <span>カテゴリー</span>
+            <select id="watchlist-category-input" name="category"></select>
+          </label>
+          <label class="is-hidden" id="watchlist-new-category-field">
+            <span>新しいカテゴリー名</span>
+            <input id="watchlist-new-category-input" name="newCategory" type="text" placeholder="例: 高配当 / 半導体" autocomplete="off" />
           </label>
           <label>
             <span>投資仮説</span>

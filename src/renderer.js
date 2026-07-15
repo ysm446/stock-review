@@ -41,6 +41,7 @@ import {
   reviewVolumeProfileMenuButton,
   reviewVolumeProfileMenu,
   reviewVolumeProfileBinsInputs,
+  reviewChartResizer,
   reviewChartSummary,
   reviewChartPrice,
   reviewChartChange,
@@ -91,6 +92,12 @@ import {
   watchlistModeButtons,
   watchlistRatingInput,
   watchlistRiskInput,
+  watchlistCategoryInput,
+  watchlistNewCategoryField,
+  watchlistNewCategoryInput,
+  watchlistAddCategoryButton,
+  watchlistCategoryInlineInput,
+  watchlistCategoryTabs,
   watchlistRowTemplate,
   watchlistTable,
   watchlistThesisInput,
@@ -126,6 +133,7 @@ import {
 const appState = {
   holdings: [],
   watchlist: [],
+  watchlistCategories: [],
   cashJpy: 0,
   trendHistory: [],
   dividendSummary: null,
@@ -254,6 +262,12 @@ const REVIEW_CHART_RANGE_KEY = "stock-review.reviewChartRange";
 const REVIEW_MA_KEY = "stock-review.reviewMovingAverages";
 const REVIEW_VOLUME_PROFILE_KEY = "stock-review.reviewVolumeProfile";
 const REVIEW_VOLUME_PROFILE_BINS_KEY = "stock-review.reviewVolumeProfileBins";
+const WATCHLIST_CATEGORY_TAB_KEY = "stock-review.watchlistCategoryTab";
+const WATCHLIST_TAB_ALL = "__all__";
+const REVIEW_CHART_HEIGHT_KEY = "stock-review.reviewChartHeight";
+const REVIEW_CHART_HEIGHT_DEFAULT = 290;
+const REVIEW_CHART_HEIGHT_MIN = 180;
+const REVIEW_CHART_HEIGHT_MAX = 640;
 const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa" };
 let reviewCandleModel = null;
 
@@ -324,6 +338,8 @@ let autosaveTimer = null;
 let stockMasterEntries = [];
 let draggingHoldingIndex = null;
 let draggingWatchlistIndex = null;
+let watchlistActiveCategoryTab = localStorage.getItem(WATCHLIST_CATEGORY_TAB_KEY) ?? WATCHLIST_TAB_ALL;
+let watchlistRenamingCategory = null;
 let trendChartModel = null;
 let hoveredTrendIndex = null;
 let resizeTimer = null;
@@ -450,6 +466,42 @@ document.getElementById("add-holding").addEventListener("click", () => {
 });
 document.getElementById("add-watchlist").addEventListener("click", () => {
   openWatchlistModal();
+});
+watchlistCategoryInput.addEventListener("change", () => {
+  const isNew = watchlistCategoryInput.value === WATCHLIST_NEW_CATEGORY_VALUE;
+  watchlistNewCategoryField.classList.toggle("is-hidden", !isNew);
+  if (isNew) watchlistNewCategoryInput.focus();
+});
+// パネルヘッダーの「＋カテゴリー」: ボタンをインライン入力に切り替えて作成する
+watchlistAddCategoryButton.addEventListener("click", () => {
+  watchlistAddCategoryButton.classList.add("is-hidden");
+  watchlistCategoryInlineInput.classList.remove("is-hidden");
+  watchlistCategoryInlineInput.value = "";
+  watchlistCategoryInlineInput.focus();
+});
+function finishInlineCategoryInput(commit) {
+  if (watchlistCategoryInlineInput.classList.contains("is-hidden")) return;
+  if (commit) {
+    const name = addWatchlistCategory(watchlistCategoryInlineInput.value);
+    if (name) {
+      renderWatchlistTable();
+      queueAutosave();
+      setAppStatus(`カテゴリー「${name}」を作成しました。`, "success");
+    }
+  }
+  watchlistCategoryInlineInput.classList.add("is-hidden");
+  watchlistAddCategoryButton.classList.remove("is-hidden");
+}
+watchlistCategoryInlineInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    finishInlineCategoryInput(true);
+  } else if (event.key === "Escape") {
+    finishInlineCategoryInput(false);
+  }
+});
+watchlistCategoryInlineInput.addEventListener("blur", () => {
+  finishInlineCategoryInput(Boolean(watchlistCategoryInlineInput.value.trim()));
 });
 holdingsModeButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -1209,6 +1261,7 @@ async function persistPortfolio({ silent = false } = {}) {
   const result = await window.stockReviewApi.savePortfolio({
     holdings: appState.holdings,
     watchlist: appState.watchlist,
+    watchlistCategories: appState.watchlistCategories,
     cash: appState.cashJpy
   });
   appState.trendHistory = Array.isArray(result?.trendHistory) ? result.trendHistory : [];
@@ -1270,6 +1323,7 @@ function commitCashInput(rawValue) {
 async function applyPortfolioState(data) {
   appState.holdings = Array.isArray(data?.holdings) ? data.holdings : [];
   appState.watchlist = Array.isArray(data?.watchlist) ? data.watchlist : [];
+  appState.watchlistCategories = Array.isArray(data?.watchlistCategories) ? data.watchlistCategories : [];
   appState.cashJpy = parseNumericInput(data?.cashJpy ?? data?.cash);
   appState.trendHistory = Array.isArray(data?.trendHistory) ? data.trendHistory : [];
   render();
@@ -1655,6 +1709,9 @@ function attachWatchlistDragEvents(row, index) {
     watchlistBody.querySelectorAll("tr").forEach((item) => {
       item.classList.remove("is-dragging", "is-drag-target");
     });
+    watchlistCategoryTabs.querySelectorAll(".is-drag-target").forEach((tab) => {
+      tab.classList.remove("is-drag-target");
+    });
   });
 }
 
@@ -1817,10 +1874,39 @@ function saveHoldingFromModal() {
   queueAutosave();
 }
 
+const WATCHLIST_NEW_CATEGORY_VALUE = "__new__";
+
+function addWatchlistCategory(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return "";
+  if (!appState.watchlistCategories.includes(trimmed)) {
+    appState.watchlistCategories.push(trimmed);
+  }
+  return trimmed;
+}
+
+function renderWatchlistCategoryOptions(selected = "") {
+  watchlistCategoryInput.innerHTML = "";
+  const optionValues = [
+    ["", "未分類"],
+    ...appState.watchlistCategories.map((name) => [name, name]),
+    [WATCHLIST_NEW_CATEGORY_VALUE, "＋ 新しいカテゴリーを作成..."]
+  ];
+  optionValues.forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    watchlistCategoryInput.appendChild(option);
+  });
+  watchlistCategoryInput.value = appState.watchlistCategories.includes(selected) ? selected : "";
+  watchlistNewCategoryField.classList.add("is-hidden");
+  watchlistNewCategoryInput.value = "";
+}
+
 function openWatchlistModal(index = null) {
   editingWatchlistIndex = index;
   const item = index === null
-    ? { ticker: "", rating: "B", thesis: "", risk: "" }
+    ? { ticker: "", rating: "B", thesis: "", risk: "", category: "" }
     : appState.watchlist[index];
   watchlistModalTitle.textContent = index === null ? "ウォッチリストに追加" : "ウォッチリストを編集";
   submitWatchlistModalButton.textContent = index === null ? "追加" : "更新";
@@ -1828,6 +1914,7 @@ function openWatchlistModal(index = null) {
   watchlistRatingInput.value = item.rating || "B";
   watchlistThesisInput.value = item.thesis || "";
   watchlistRiskInput.value = item.risk || "";
+  renderWatchlistCategoryOptions(String(item.category || "").trim());
   watchlistModalBackdrop.classList.remove("is-hidden");
   hideWatchlistTickerSuggestions();
   watchlistTickerInput.focus();
@@ -1836,6 +1923,7 @@ function openWatchlistModal(index = null) {
 function closeWatchlistModal() {
   editingWatchlistIndex = null;
   watchlistForm.reset();
+  watchlistNewCategoryField.classList.add("is-hidden");
   hideWatchlistTickerSuggestions();
   watchlistModalBackdrop.classList.add("is-hidden");
 }
@@ -1847,12 +1935,18 @@ function saveWatchlistFromModal() {
     return;
   }
 
+  let category = watchlistCategoryInput.value;
+  if (category === WATCHLIST_NEW_CATEGORY_VALUE) {
+    category = addWatchlistCategory(watchlistNewCategoryInput.value);
+  }
+
   const nextItem = {
     ...(editingWatchlistIndex === null ? {} : appState.watchlist[editingWatchlistIndex]),
     ticker,
     rating: watchlistRatingInput.value.trim() || "B",
     thesis: watchlistThesisInput.value.trim(),
-    risk: watchlistRiskInput.value.trim()
+    risk: watchlistRiskInput.value.trim(),
+    category
   };
 
   if (editingWatchlistIndex === null) {
@@ -2305,23 +2399,214 @@ function renderHoldingsMetricsTable() {
   });
 }
 
+// 銘柄が属するタブの値を返す（削除済みカテゴリーの銘柄は未分類 "" 扱い）
+function getWatchlistGroupCategory(item) {
+  const category = String(item.category || "").trim();
+  return appState.watchlistCategories.includes(category) ? category : "";
+}
+
+function renameWatchlistCategory(oldName, newName) {
+  const categories = appState.watchlistCategories;
+  const index = categories.indexOf(oldName);
+  if (index === -1) {
+    renderWatchlistTable();
+    return;
+  }
+  const merging = categories.includes(newName);
+  if (merging) {
+    categories.splice(index, 1);
+  } else {
+    categories[index] = newName;
+  }
+  appState.watchlist.forEach((item) => {
+    if (String(item.category || "").trim() === oldName) item.category = newName;
+  });
+  if (watchlistActiveCategoryTab === oldName) setWatchlistActiveCategoryTab(newName);
+  renderWatchlistTable();
+  queueAutosave();
+  setAppStatus(
+    merging
+      ? `カテゴリー「${oldName}」を「${newName}」へ統合しました。`
+      : `カテゴリー名を「${newName}」に変更しました。`,
+    "success"
+  );
+}
+
+function deleteWatchlistCategory(name) {
+  appState.watchlistCategories = appState.watchlistCategories.filter((value) => value !== name);
+  appState.watchlist.forEach((item) => {
+    if (String(item.category || "").trim() === name) item.category = "";
+  });
+  if (watchlistActiveCategoryTab === name) setWatchlistActiveCategoryTab(WATCHLIST_TAB_ALL);
+  renderWatchlistTable();
+  queueAutosave();
+  setAppStatus(`カテゴリー「${name}」を削除しました。所属銘柄は未分類に移動しました。`, "success");
+}
+
+function setWatchlistActiveCategoryTab(value) {
+  watchlistActiveCategoryTab = value;
+  localStorage.setItem(WATCHLIST_CATEGORY_TAB_KEY, value);
+}
+
+function renderWatchlistCategoryTabs() {
+  const categories = appState.watchlistCategories;
+  watchlistCategoryTabs.innerHTML = "";
+  if (!categories.length) {
+    watchlistCategoryTabs.classList.add("is-hidden");
+    watchlistActiveCategoryTab = WATCHLIST_TAB_ALL;
+    return;
+  }
+  watchlistCategoryTabs.classList.remove("is-hidden");
+  if (![WATCHLIST_TAB_ALL, "", ...categories].includes(watchlistActiveCategoryTab)) {
+    setWatchlistActiveCategoryTab(WATCHLIST_TAB_ALL);
+  }
+
+  const counts = new Map();
+  appState.watchlist.forEach((item) => {
+    const key = getWatchlistGroupCategory(item);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  });
+  const tabs = [
+    [WATCHLIST_TAB_ALL, "すべて", appState.watchlist.length],
+    ...categories.map((name) => [name, name, counts.get(name) || 0]),
+    ["", "未分類", counts.get("") || 0]
+  ];
+
+  tabs.forEach(([value, label, count]) => {
+    // 名前の変更中はタブの代わりに入力欄を表示する
+    if (watchlistRenamingCategory !== null && watchlistRenamingCategory === value) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "watchlist-category-rename-input";
+      input.value = value;
+      let done = false;
+      const finish = (commit) => {
+        if (done) return;
+        done = true;
+        watchlistRenamingCategory = null;
+        const next = input.value.trim();
+        if (commit && next && next !== value) {
+          renameWatchlistCategory(value, next);
+        } else {
+          renderWatchlistTable();
+        }
+      };
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          finish(false);
+        }
+      });
+      input.addEventListener("blur", () => finish(true));
+      watchlistCategoryTabs.appendChild(input);
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+      return;
+    }
+
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "watchlist-category-tab";
+    tab.classList.toggle("is-active", value === watchlistActiveCategoryTab);
+    const text = document.createElement("span");
+    text.textContent = `${label}（${count}）`;
+    tab.appendChild(text);
+    tab.addEventListener("click", () => {
+      if (watchlistActiveCategoryTab === value) return;
+      setWatchlistActiveCategoryTab(value);
+      renderWatchlistTable();
+    });
+
+    // アクティブなカテゴリータブに「...」メニュー（名前の変更・削除）
+    if (value !== WATCHLIST_TAB_ALL && value !== "" && value === watchlistActiveCategoryTab) {
+      const menuButton = document.createElement("span");
+      menuButton.className = "watchlist-category-tab-menu";
+      menuButton.setAttribute("role", "button");
+      menuButton.setAttribute("aria-label", `カテゴリー ${value} の操作メニュー`);
+      menuButton.textContent = "...";
+      menuButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openRowActionMenu(event.currentTarget, [
+          {
+            label: "名前を変更",
+            onSelect: () => {
+              watchlistRenamingCategory = value;
+              renderWatchlistCategoryTabs();
+            }
+          },
+          {
+            label: "カテゴリーを削除",
+            danger: true,
+            onSelect: () => deleteWatchlistCategory(value)
+          }
+        ]);
+      });
+      tab.appendChild(menuButton);
+    }
+
+    // 銘柄行をタブへドロップするとそのカテゴリーへ移動（「すべて」は対象外）
+    if (value !== WATCHLIST_TAB_ALL) {
+      tab.addEventListener("dragover", (event) => {
+        if (draggingWatchlistIndex === null) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+        tab.classList.add("is-drag-target");
+      });
+      tab.addEventListener("dragleave", () => tab.classList.remove("is-drag-target"));
+      tab.addEventListener("drop", (event) => {
+        event.preventDefault();
+        tab.classList.remove("is-drag-target");
+        const item = draggingWatchlistIndex === null ? null : appState.watchlist[draggingWatchlistIndex];
+        if (!item || getWatchlistGroupCategory(item) === value) return;
+        item.category = value;
+        renderWatchlistTable();
+        queueAutosave();
+        setAppStatus(`${item.ticker} を「${value || "未分類"}」へ移動しました。`, "success");
+      });
+    }
+
+    watchlistCategoryTabs.appendChild(tab);
+  });
+}
+
+function getActiveWatchlistEntries() {
+  const entries = [];
+  appState.watchlist.forEach((item, index) => {
+    if (watchlistActiveCategoryTab !== WATCHLIST_TAB_ALL
+      && getWatchlistGroupCategory(item) !== watchlistActiveCategoryTab) return;
+    entries.push([item, index]);
+  });
+  return entries;
+}
+
 function renderWatchlistTable() {
   closeRowActionMenu();
+  renderWatchlistCategoryTabs();
   watchlistBody.innerHTML = "";
   if (watchlistTableMode === "metrics") {
     renderWatchlistMetricsTable();
     return;
   }
 
-  if (!appState.watchlist.length) {
+  const entries = getActiveWatchlistEntries();
+  if (!entries.length) {
     const empty = document.createElement("tr");
     empty.className = "table-empty-row";
-    empty.innerHTML = '<td colspan="6">ウォッチリストはまだありません</td>';
+    empty.innerHTML = `<td colspan="6">${appState.watchlist.length ? "このカテゴリーに銘柄はありません" : "ウォッチリストはまだありません"}</td>`;
     watchlistBody.appendChild(empty);
     return;
   }
 
-  appState.watchlist.forEach((item, index) => {
+  entries.forEach(([item, index]) => {
+    watchlistBody.appendChild(buildWatchlistRow(item, index));
+  });
+}
+
+function buildWatchlistRow(item, index) {
     const normalized = normalizeHolding(item);
     const fragment = watchlistRowTemplate.content.cloneNode(true);
     const row = fragment.querySelector("tr");
@@ -2365,12 +2650,13 @@ function renderWatchlistTable() {
       ]);
     });
 
-    watchlistBody.appendChild(fragment);
-  });
+    return fragment;
 }
 
 function renderWatchlistMetricsTable() {
-  const watchlist = getUniqueJapaneseWatchlist();
+  const watchlist = getUniqueJapaneseWatchlist().filter((item) =>
+    watchlistActiveCategoryTab === WATCHLIST_TAB_ALL
+    || getWatchlistGroupCategory(item) === watchlistActiveCategoryTab);
   const hasMissingSnapshot = watchlist.some((item) => {
     const ticker = String(item.ticker || "").trim().toUpperCase();
     return ticker && !getHoldingMetricSnapshot(ticker) && !holdingMetricsLoading.has(ticker);
@@ -2767,6 +3053,45 @@ reviewVolumeProfileBinsInputs.forEach((input) => input.addEventListener("change"
   localStorage.setItem(REVIEW_VOLUME_PROFILE_BINS_KEY, input.value);
   drawReviewCandlestickChart();
 }));
+function setReviewChartHeight(height, persist = false) {
+  const next = Math.min(REVIEW_CHART_HEIGHT_MAX,
+    Math.max(REVIEW_CHART_HEIGHT_MIN, Math.round(Number(height) || REVIEW_CHART_HEIGHT_DEFAULT)));
+  reviewCandlestickWrap.style.height = `${next}px`;
+  if (persist) localStorage.setItem(REVIEW_CHART_HEIGHT_KEY, String(next));
+}
+
+// チャート下端のハンドルをドラッグして高さを調整する。再描画はResizeObserverが追従する。
+function initReviewChartResize() {
+  setReviewChartHeight(Number(localStorage.getItem(REVIEW_CHART_HEIGHT_KEY)) || REVIEW_CHART_HEIGHT_DEFAULT);
+  if (!reviewChartResizer) return;
+  let resizing = false, startY = 0, startHeight = 0;
+  const resize = (event) => {
+    if (resizing) setReviewChartHeight(startHeight + event.clientY - startY);
+  };
+  const finish = () => {
+    if (!resizing) return;
+    resizing = false;
+    reviewChartResizer.classList.remove("is-active");
+    setReviewChartHeight(reviewCandlestickWrap.getBoundingClientRect().height, true);
+    window.removeEventListener("pointermove", resize);
+    window.removeEventListener("pointerup", finish);
+    window.removeEventListener("pointercancel", finish);
+  };
+  reviewChartResizer.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    resizing = true;
+    startY = event.clientY;
+    startHeight = reviewCandlestickWrap.getBoundingClientRect().height;
+    reviewChartResizer.classList.add("is-active");
+    reviewChartResizer.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  });
+  reviewChartResizer.addEventListener("dblclick", () => setReviewChartHeight(REVIEW_CHART_HEIGHT_DEFAULT, true));
+}
+initReviewChartResize();
+
 reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
 reviewChartRange.addEventListener("change", () => {
   localStorage.setItem(REVIEW_CHART_RANGE_KEY, reviewChartRange.value); drawReviewCandlestickChart();

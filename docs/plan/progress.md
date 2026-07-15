@@ -4,6 +4,19 @@
 
 ## 完了済み
 
+- **2026-07-16: ウォッチリストのカテゴリー分け（タブ方式）を追加**。
+  - DB: `watchlist` テーブルに `category TEXT NOT NULL DEFAULT ''` を追加（既存DBは起動時ALTERで自動移行）。カテゴリーの一覧・並び順は `app_settings` の `watchlist_categories`（JSON配列）に保存。`load_state` が `watchlistCategories` を返し、`save_state` は payload にキーがあるときだけ更新（キー無し保存でリストが消えない）。
+  - UI: カテゴリーが1つ以上あると一覧上部に「すべて / 各カテゴリー / 未分類」タブ（件数付き、`#watchlist-category-tabs`）を表示して絞り込み。カテゴリー未作成時はタブ非表示で従来どおり。選択タブは `stock-review.watchlistCategoryTab` に保存。企業指標モードにも同じ絞り込みを適用。
+  - 作成: パネルヘッダー「＋カテゴリー」→インライン入力（Enter確定・Escキャンセル）、または追加・編集モーダルのカテゴリーselect「＋新規作成…」。
+  - 名前の変更・削除: アクティブなカテゴリータブの「...」→ 名前を変更（タブがインライン入力に変わる。既存名への変更は統合）/ カテゴリーを削除（銘柄は未分類へ）。
+  - カテゴリー間移動: 銘柄行のドラッグでタブへドロップ（`draggingWatchlistIndex` を利用、「すべて」タブは対象外）。削除済みカテゴリー所属の銘柄は未分類扱い（`getWatchlistGroupCategory`）。
+  - 検証: 隔離DATA_DIRで保存→再読込→カテゴリー削除→キー無し保存→旧スキーマからの移行を確認（scratchpadのtest-watchlist-category.py）。実画面（タブ操作・D&D）は未確認。
+
+- **2026-07-16: 株価チャートの高さをドラッグで調整可能に**。
+  - チャート下端に `#review-chart-resizer` ハンドルを追加。pointerイベントで `.review-candlestick-wrap` の高さ（180〜640px、既定290px）をドラッグ調整し、`stock-review.reviewChartHeight` へ保存。ダブルクリックで初期値に戻す。
+  - パネルの固定高さ（`flex: 0 0 405px` / `height: 405px`）を廃止して内容駆動（`flex: 0 0 auto`）に変更。ラップの高さだけがチャート高を決めるため、≤1500pxメディアクエリ内の高さ上書きも削除。
+  - 再描画は既存のResizeObserver（ローソク足コンテナ監視）がそのまま追従。実画面でのドラッグ操作は未確認。
+
 - **2026-07-16: 全体レビュー第2弾（チャット通信の共通化）**。
   - renderer-chat.js / renderer-stock-chat.js に重複していた `api()`（JSONリクエスト）と `streamChat()`（SSE受信）を `chat-api.js` へ統合。
   - `streamChat` は両ファイルで引数順が異なっていた（chat: callbacks→options、stock: options→callbacks）ため、コールバックもオプションも単一オブジェクトで受ける形（`onToken`/`onDone`/`onError`/`onActivity`/`endpoint`/`persistUser`/`persistAssistant`/`systemPrompt`）に統一。呼び出し5箇所すべてを新形式へ移行。

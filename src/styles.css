@@ -1193,6 +1193,73 @@ select:focus {
   padding: 18px 8px;
 }
 
+/* ウォッチリストのカテゴリータブ */
+.watchlist-category-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.watchlist-category-tabs.is-hidden {
+  display: none;
+}
+
+.watchlist-category-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-raised);
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.watchlist-category-tab.is-active {
+  color: var(--text-strong);
+  border-color: var(--control-border-strong);
+  background: var(--control-bg-hover);
+}
+
+.watchlist-category-tab.is-drag-target {
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+
+.watchlist-category-tab-menu {
+  padding: 0 2px;
+  color: var(--muted);
+}
+
+.watchlist-category-tab-menu:hover {
+  color: var(--text-strong);
+}
+
+.watchlist-category-rename-input {
+  height: 28px;
+  width: 160px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+/* パネルヘッダーのカテゴリー作成用インライン入力 */
+.watchlist-category-inline-input {
+  width: 150px;
+  height: 30px;
+  padding: 0 10px;
+}
+
+.watchlist-category-inline-input.is-hidden,
+#watchlist-add-category.is-hidden {
+  display: none;
+}
+
 .chart-stack {
   flex: 1;
   min-height: 200px;
@@ -1930,9 +1997,11 @@ select:focus {
   align-items: stretch;
 }
 
-.review-candlestick-panel { flex: 0 0 405px; min-height: 405px; margin-bottom: 10px; }
+.review-candlestick-panel { flex: 0 0 auto; margin-bottom: 10px; }
 .review-chart-head { align-items: center; }
 .review-chart-controls { display: flex; align-items: center; gap: 12px; }
+/* 操作部のボタン（28px / 0.7rem）と高さ・フォントを揃える */
+.review-chart-controls .chart-color-select { height: 28px; padding: 0 8px; font-size: 0.7rem; }
 .review-chart-refresh { height: 28px; padding: 0 9px; font-size: 0.7rem; white-space: nowrap; }
 .review-ma-menu { position: relative; }
 .review-ma-menu-button { height: 28px; padding: 0 9px; font-size: 0.7rem; white-space: nowrap; }
@@ -1965,7 +2034,11 @@ select:focus {
   height: 100%;
 }
 
-.review-panel.review-candlestick-panel { height: 405px; }
+.review-panel.review-candlestick-panel { height: auto; }
+/* チャート下端のドラッグハンドル（高さ調整、ダブルクリックで初期値） */
+.review-chart-resizer { height: 10px; margin-top: 4px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; }
+.review-chart-resizer::after { content: ""; width: 46px; height: 3px; border-radius: 999px; background: var(--line); }
+.review-chart-resizer:hover::after, .review-chart-resizer.is-active::after { background: var(--control-border-strong); }
 
 /* レビュービュー内の見出しはデータ・チャットとも同じサイズに統一 */
 #view-review .panel h2,
@@ -2450,11 +2523,6 @@ select:focus {
 
   .review-lower-scroll {
     overflow: visible;
-  }
-
-  .review-panel.review-candlestick-panel {
-    height: auto;
-    min-height: 405px;
   }
 
   .stock-chat-panel {
