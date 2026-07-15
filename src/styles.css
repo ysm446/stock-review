@@ -1938,8 +1938,9 @@ select:focus {
 .review-ma-menu-button { height: 28px; padding: 0 9px; font-size: 0.7rem; white-space: nowrap; }
 .review-ma-toggles { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; display: grid; gap: 7px; min-width: 116px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--menu-bg); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28); }
 .review-ma-toggles.is-hidden { display: none; }
-.review-ma-toggles label, .review-volume-profile-toggle { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 0.7rem; cursor: pointer; user-select: none; white-space: nowrap; }
-.review-ma-toggles input, .review-volume-profile-toggle input { margin: 0; accent-color: var(--accent); }
+.review-ma-toggles label { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 0.7rem; cursor: pointer; user-select: none; white-space: nowrap; }
+.review-ma-toggles input { margin: 0; accent-color: var(--accent); }
+.review-menu-heading { color: var(--muted); font-size: 0.65rem; padding-top: 6px; margin-top: 1px; border-top: 1px solid var(--border); }
 .review-volume-profile-swatch { width: 10px; height: 6px; border-radius: 1px; background: rgba(96, 165, 250, 0.55); }
 .review-ma-swatch { width: 12px; height: 2px; border-radius: 2px; }
 .review-ma-swatch.is-ma25 { background: #f59e0b; }

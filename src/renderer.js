@@ -38,6 +38,9 @@ import {
   reviewChartRange,
   reviewChartRefresh,
   reviewVolumeProfileToggle,
+  reviewVolumeProfileMenuButton,
+  reviewVolumeProfileMenu,
+  reviewVolumeProfileBinsInputs,
   reviewChartSummary,
   reviewChartPrice,
   reviewChartChange,
@@ -250,6 +253,7 @@ const TREND_YAXIS_MODE_KEY = "stock-review.trendYAxisMode";
 const REVIEW_CHART_RANGE_KEY = "stock-review.reviewChartRange";
 const REVIEW_MA_KEY = "stock-review.reviewMovingAverages";
 const REVIEW_VOLUME_PROFILE_KEY = "stock-review.reviewVolumeProfile";
+const REVIEW_VOLUME_PROFILE_BINS_KEY = "stock-review.reviewVolumeProfileBins";
 const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa" };
 let reviewCandleModel = null;
 
@@ -2607,9 +2611,14 @@ function drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, pri
   ctx.lineWidth = 1;
 }
 
+function getReviewVolumeProfileBinCount() {
+  const checked = [...reviewVolumeProfileBinsInputs].find((input) => input.checked);
+  const value = Number(checked && checked.value);
+  return Number.isFinite(value) && value > 0 ? value : 24;
+}
 function drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight) {
   if (!reviewVolumeProfileToggle.checked) return;
-  const binCount = Math.min(24, Math.max(8, Math.round(priceHeight / 12)));
+  const binCount = getReviewVolumeProfileBinCount();
   const binSize = (maxPrice - minPrice) / binCount;
   if (!(binSize > 0)) return;
   const bins = Array.from({ length: binCount }, () => 0);
@@ -2716,27 +2725,48 @@ reviewMaToggles.forEach((toggle) => toggle.addEventListener("change", () => {
   drawReviewCandlestickChart();
 }));
 
-function closeReviewMaMenu() {
-  reviewMaMenu.classList.add("is-hidden");
-  reviewMaMenuButton.setAttribute("aria-expanded", "false");
+const reviewChartMenuClosers = [];
+function closeReviewChartMenus() {
+  reviewChartMenuClosers.forEach((close) => close());
 }
-
-reviewMaMenuButton.addEventListener("click", (event) => {
-  event.stopPropagation();
-  const willOpen = reviewMaMenu.classList.contains("is-hidden");
-  reviewMaMenu.classList.toggle("is-hidden", !willOpen);
-  reviewMaMenuButton.setAttribute("aria-expanded", String(willOpen));
-});
-reviewMaMenu.addEventListener("click", (event) => event.stopPropagation());
-document.addEventListener("click", closeReviewMaMenu);
+function setupReviewChartMenu(button, menu) {
+  const close = () => {
+    menu.classList.add("is-hidden");
+    button.setAttribute("aria-expanded", "false");
+  };
+  reviewChartMenuClosers.push(close);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const willOpen = menu.classList.contains("is-hidden");
+    closeReviewChartMenus();
+    if (willOpen) {
+      menu.classList.remove("is-hidden");
+      button.setAttribute("aria-expanded", "true");
+    }
+  });
+  menu.addEventListener("click", (event) => event.stopPropagation());
+}
+setupReviewChartMenu(reviewMaMenuButton, reviewMaMenu);
+setupReviewChartMenu(reviewVolumeProfileMenuButton, reviewVolumeProfileMenu);
+document.addEventListener("click", closeReviewChartMenus);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeReviewMaMenu();
+  if (event.key === "Escape") closeReviewChartMenus();
 });
 reviewVolumeProfileToggle.checked = localStorage.getItem(REVIEW_VOLUME_PROFILE_KEY) !== "false";
 reviewVolumeProfileToggle.addEventListener("change", () => {
   localStorage.setItem(REVIEW_VOLUME_PROFILE_KEY, String(reviewVolumeProfileToggle.checked));
   drawReviewCandlestickChart();
 });
+{
+  const savedBins = localStorage.getItem(REVIEW_VOLUME_PROFILE_BINS_KEY);
+  const binValues = [...reviewVolumeProfileBinsInputs].map((input) => input.value);
+  const activeBins = binValues.includes(savedBins) ? savedBins : "24";
+  reviewVolumeProfileBinsInputs.forEach((input) => { input.checked = input.value === activeBins; });
+}
+reviewVolumeProfileBinsInputs.forEach((input) => input.addEventListener("change", () => {
+  localStorage.setItem(REVIEW_VOLUME_PROFILE_BINS_KEY, input.value);
+  drawReviewCandlestickChart();
+}));
 reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
 reviewChartRange.addEventListener("change", () => {
   localStorage.setItem(REVIEW_CHART_RANGE_KEY, reviewChartRange.value); drawReviewCandlestickChart();
