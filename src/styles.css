@@ -1937,6 +1937,7 @@ select:focus {
 .review-ma-toggles { display: flex; align-items: center; gap: 8px; }
 .review-ma-toggles label { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 0.7rem; cursor: pointer; user-select: none; }
 .review-ma-toggles input { margin: 0; accent-color: var(--accent); }
+.review-volume-profile-swatch { width: 10px; height: 6px; border-radius: 1px; background: rgba(96, 165, 250, 0.55); }
 .review-ma-swatch { width: 12px; height: 2px; border-radius: 2px; }
 .review-ma-swatch.is-ma25 { background: #f59e0b; }
 .review-ma-swatch.is-ma50 { background: #06b6d4; }

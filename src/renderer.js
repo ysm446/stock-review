@@ -37,6 +37,7 @@ import {
   reviewCandlestickWrap,
   reviewChartRange,
   reviewChartRefresh,
+  reviewVolumeProfileToggle,
   reviewChartSummary,
   reviewChartPrice,
   reviewChartChange,
@@ -246,6 +247,7 @@ const TREND_RANGE_KEY = "stock-review.trendRange";
 const TREND_YAXIS_MODE_KEY = "stock-review.trendYAxisMode";
 const REVIEW_CHART_RANGE_KEY = "stock-review.reviewChartRange";
 const REVIEW_MA_KEY = "stock-review.reviewMovingAverages";
+const REVIEW_VOLUME_PROFILE_KEY = "stock-review.reviewVolumeProfile";
 const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa" };
 let reviewCandleModel = null;
 
@@ -2603,6 +2605,32 @@ function drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, pri
   ctx.lineWidth = 1;
 }
 
+function drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight) {
+  if (!reviewVolumeProfileToggle.checked) return;
+  const binCount = Math.min(24, Math.max(8, Math.round(priceHeight / 12)));
+  const binSize = (maxPrice - minPrice) / binCount;
+  if (!(binSize > 0)) return;
+  const bins = Array.from({ length: binCount }, () => 0);
+  rows.forEach((row) => {
+    const price = Number(row.close), volume = Number(row.volume);
+    if (!Number.isFinite(price) || !Number.isFinite(volume) || volume <= 0) return;
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor((price - minPrice) / binSize)));
+    bins[index] += volume;
+  });
+  const maxBinVolume = Math.max(...bins);
+  if (!(maxBinVolume > 0)) return;
+  const maxBarWidth = Math.min(180, (width - padding.left - padding.right) * 0.22);
+  const binHeight = priceHeight / binCount;
+  ctx.save();
+  ctx.fillStyle = "rgba(96, 165, 250, 0.24)";
+  bins.forEach((volume, index) => {
+    if (volume <= 0) return;
+    const barWidth = volume / maxBinVolume * maxBarWidth;
+    const y = padding.top + priceHeight - (index + 1) * binHeight;
+    ctx.fillRect(width - padding.right - barWidth, y + 0.5, barWidth, Math.max(1, binHeight - 1));
+  });
+  ctx.restore();
+}
 function drawReviewCandlestickChart() {
   const { ctx, width, height } = prepareHiDPICanvas(reviewCandlestickChart);
   ctx.clearRect(0, 0, width, height);
@@ -2655,6 +2683,7 @@ function drawReviewCandlestickChart() {
     const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
     ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
   });
+  drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight);
   drawReviewMovingAverages(ctx, rows, allRows, padding, step, yFor);
   drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals);
   ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
@@ -2685,6 +2714,11 @@ reviewMaToggles.forEach((toggle) => toggle.addEventListener("change", () => {
   drawReviewCandlestickChart();
 }));
 
+reviewVolumeProfileToggle.checked = localStorage.getItem(REVIEW_VOLUME_PROFILE_KEY) !== "false";
+reviewVolumeProfileToggle.addEventListener("change", () => {
+  localStorage.setItem(REVIEW_VOLUME_PROFILE_KEY, String(reviewVolumeProfileToggle.checked));
+  drawReviewCandlestickChart();
+});
 reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
 reviewChartRange.addEventListener("change", () => {
   localStorage.setItem(REVIEW_CHART_RANGE_KEY, reviewChartRange.value); drawReviewCandlestickChart();

@@ -34,6 +34,7 @@ export const reviewChartTooltip = document.getElementById("review-chart-tooltip"
 export const reviewChartCrosshair = document.getElementById("review-chart-crosshair");
 export const reviewChartCrosshairPrice = document.getElementById("review-chart-crosshair-price");
 export const reviewMaToggles = document.querySelectorAll(".review-ma-toggle");
+export const reviewVolumeProfileToggle = document.getElementById("review-volume-profile-toggle");
 export const allocationGroupToggle = document.getElementById("allocation-group-toggle");
 export const allocationColorScheme = document.getElementById("allocation-color-scheme");
 export const allocationLegend = document.getElementById("allocation-legend");
