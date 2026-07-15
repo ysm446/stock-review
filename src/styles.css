@@ -2615,7 +2615,9 @@ select:focus {
   position: relative;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  min-width: 220px;
   max-width: min(520px, calc(100vw - 100px));
   overflow: hidden;
 }

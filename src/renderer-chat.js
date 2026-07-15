@@ -1264,7 +1264,8 @@ async function renderModelModal() {
     item.className = `chat-model-item${isRunning ? " is-running" : ""}`;
     const label = document.createElement("span");
     label.className = "chat-model-item-name";
-    label.textContent = relative_path || name;
+    label.textContent = name;
+    item.title = relative_path || name;
     const badge = document.createElement("span");
     badge.className = "chat-model-item-state";
     badge.textContent = isRunning ? "稼働中" : "ロード";
@@ -1278,7 +1279,7 @@ async function renderModelModal() {
       }
       loadingModel = true;
       setInputEnabled(false);
-      const selectedName = relative_path || name;
+      const selectedName = name;
       setModelStatus("is-loading", selectedName + " をロード中...");
       closeModelPicker();
       setAppStatus(selectedName + " をロードしています...", "active");
