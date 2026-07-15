@@ -44,6 +44,8 @@ import {
   reviewChartTooltip,
   reviewChartCrosshair,
   reviewChartCrosshairPrice,
+  reviewMaMenuButton,
+  reviewMaMenu,
   reviewMaToggles,
   reviewChipRow,
   reviewFinancialBody,
@@ -2714,6 +2716,22 @@ reviewMaToggles.forEach((toggle) => toggle.addEventListener("change", () => {
   drawReviewCandlestickChart();
 }));
 
+function closeReviewMaMenu() {
+  reviewMaMenu.classList.add("is-hidden");
+  reviewMaMenuButton.setAttribute("aria-expanded", "false");
+}
+
+reviewMaMenuButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  const willOpen = reviewMaMenu.classList.contains("is-hidden");
+  reviewMaMenu.classList.toggle("is-hidden", !willOpen);
+  reviewMaMenuButton.setAttribute("aria-expanded", String(willOpen));
+});
+reviewMaMenu.addEventListener("click", (event) => event.stopPropagation());
+document.addEventListener("click", closeReviewMaMenu);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeReviewMaMenu();
+});
 reviewVolumeProfileToggle.checked = localStorage.getItem(REVIEW_VOLUME_PROFILE_KEY) !== "false";
 reviewVolumeProfileToggle.addEventListener("change", () => {
   localStorage.setItem(REVIEW_VOLUME_PROFILE_KEY, String(reviewVolumeProfileToggle.checked));
