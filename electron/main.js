@@ -19,6 +19,7 @@ const {
   runDividendFetcher,
   runPortfolioStore,
   runReviewFetcher,
+  refreshReviewPriceHistory,
   runSectorFetcher,
   spawnPython,
   syncPortfolioStore
@@ -321,6 +322,9 @@ ipcMain.handle("portfolio:sectors", async (_event, tickers) =>
 ipcMain.handle("stock-master:load", async () => readStockMaster());
 ipcMain.handle("review:load-cache", async (_event, ticker) => loadCachedReview(ticker));
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
+ipcMain.handle("review:refresh-price-history", async (_event, ticker) =>
+  refreshReviewPriceHistory(ticker)
+);
 
 // ── データルートフォルダ IPC ─────────────────────────────
 ipcMain.handle("data-dir:get", () => ({ dataDir: getDataDir() }));

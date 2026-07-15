@@ -32,7 +32,9 @@ def load_cached_review(symbol: str):
         if history_table:
             history = conn.execute(
                 """SELECT trade_date, open, high, low, close, volume
-                   FROM review_price_history WHERE ticker = ? ORDER BY trade_date""",
+                   FROM review_price_history
+                   WHERE ticker = ? AND open > 0 AND high > 0 AND low > 0 AND close > 0
+                   ORDER BY trade_date""",
                 (symbol,),
             ).fetchall()
         payload["priceHistory"] = [

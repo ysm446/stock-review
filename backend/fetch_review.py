@@ -100,6 +100,23 @@ def load_price_history(ticker):
     return history
 
 
+def refresh_price_history(symbol):
+    """日足だけを再取得し、既存の蓄積データへ上書き保存する。"""
+    ticker = yf.Ticker(symbol)
+    try:
+        history = ticker.history(period="1y", interval="1d", auto_adjust=False)
+    except Exception as error:
+        raise RuntimeError(f"日足を取得できませんでした: {error}") from error
+    if history is None or getattr(history, "empty", True):
+        raise RuntimeError("日足を取得できませんでした（データが空です）")
+    price_history = store_and_load_candles(symbol, history)
+    return {
+        "ticker": symbol,
+        "fetchedCount": len(history.index),
+        "priceHistory": price_history,
+    }
+
+
 def store_and_load_candles(symbol, history):
     """取得した日足を追記し、これまで蓄積した全OHLCVを返す。"""
     DB_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -114,12 +131,15 @@ def store_and_load_candles(symbol, history):
     if history is not None:
         rows = []
         for index, row in history.iterrows():
+            open_price = to_float(row.get("Open"))
+            high = to_float(row.get("High"))
+            low = to_float(row.get("Low"))
             close = to_float(row.get("Close"))
-            if close is None:
+            if any(value is None or value <= 0 for value in (open_price, high, low, close)):
                 continue
             volume = to_float(row.get("Volume"))
-            rows.append((symbol, index.strftime("%Y-%m-%d"), to_float(row.get("Open")),
-                to_float(row.get("High")), to_float(row.get("Low")), close,
+            rows.append((symbol, index.strftime("%Y-%m-%d"), open_price,
+                high, low, close,
                 int(volume) if volume is not None else None, now))
         conn.executemany("""INSERT INTO review_price_history
             (ticker, trade_date, open, high, low, close, volume, updated_at)
@@ -129,7 +149,9 @@ def store_and_load_candles(symbol, history):
             volume=excluded.volume, updated_at=excluded.updated_at""", rows)
         conn.commit()
     stored = conn.execute("""SELECT trade_date, open, high, low, close, volume
-        FROM review_price_history WHERE ticker = ? ORDER BY trade_date""", (symbol,)).fetchall()
+        FROM review_price_history
+        WHERE ticker = ? AND open > 0 AND high > 0 AND low > 0 AND close > 0
+        ORDER BY trade_date""", (symbol,)).fetchall()
     conn.close()
     return [{"date": r[0], "open": r[1], "high": r[2], "low": r[3],
              "close": r[4], "volume": r[5]} for r in stored]
@@ -307,7 +329,9 @@ def main():
     if not symbol:
         raise SystemExit("Ticker is required")
 
-    payload = json.dumps(build_payload(symbol), ensure_ascii=False)
+    price_history_only = len(sys.argv) > 2 and sys.argv[2] == "--price-history"
+    result = refresh_price_history(symbol) if price_history_only else build_payload(symbol)
+    payload = json.dumps(result, ensure_ascii=False)
     sys.stdout.buffer.write(payload.encode("utf-8"))
     return 0
 

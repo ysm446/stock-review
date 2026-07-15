@@ -36,6 +36,7 @@ import {
   reviewCandlestickChart,
   reviewCandlestickWrap,
   reviewChartRange,
+  reviewChartRefresh,
   reviewChartSummary,
   reviewChartPrice,
   reviewChartChange,
@@ -323,6 +324,7 @@ let activeReviewTicker = "";
 let reviewSnapshot = null;
 let reviewLoadRequestId = 0;
 let reviewRefreshPending = false;
+let reviewPriceRefreshPending = false;
 let holdingSectorMap = {};
 let holdingsDayChangeMode = "perShare";
 let holdingsTableMode = "positions";
@@ -599,6 +601,7 @@ window.addEventListener("resize", () => {
     drawReviewCandlestickChart();
   }, 80);
 });
+reviewChartRefresh.addEventListener("click", refreshReviewPriceHistory);
 observeChartSizes();
 closeHoldingModalButton.addEventListener("click", closeHoldingModal);
 cancelHoldingModalButton.addEventListener("click", closeHoldingModal);
@@ -2507,7 +2510,10 @@ function renderReviewFinancials(rows) {
 
 function getAllReviewCandles() {
   return (Array.isArray(reviewSnapshot?.priceHistory) ? reviewSnapshot.priceHistory : [])
-    .filter((row) => [row.open, row.high, row.low, row.close].every((value) => Number.isFinite(Number(value))));
+    .filter((row) => [row.open, row.high, row.low, row.close].every((value) => (
+      value !== null && value !== undefined && value !== ""
+      && Number.isFinite(Number(value)) && Number(value) > 0
+    )));
 }
 
 function getReviewCandles() {
@@ -2735,7 +2741,7 @@ function renderReviewChartQuote() {
     reviewChartChange.textContent = "前日比 -";
     return;
   }
-  const history = Array.isArray(reviewSnapshot.priceHistory) ? reviewSnapshot.priceHistory : [];
+  const history = getAllReviewCandles();
   const overview = reviewSnapshot.overview || {};
   const currency = reviewSnapshot.currency || "JPY";
   const currentPrice = toFiniteNumber(overview.currentPrice) ?? toFiniteNumber(history.at(-1)?.close);
@@ -2911,6 +2917,48 @@ async function loadReviewSnapshot(rawTicker) {
     renderReviewSnapshot();
     setStockReviewContext(ticker, cachedSnapshot);
     setAppStatus(`レビュー更新エラー: ${error.message}${cachedSnapshot ? "（保存済みデータを表示）" : ""}`, "error");
+  }
+}
+
+async function refreshReviewPriceHistory() {
+  const ticker = String(activeReviewTicker || "").trim().toUpperCase();
+  if (!ticker || reviewPriceRefreshPending) {
+    if (!ticker) setAppStatus("先に銘柄を表示してください。", "error");
+    return;
+  }
+
+  reviewPriceRefreshPending = true;
+  reviewChartRefresh.disabled = true;
+  const previousText = reviewChartRefresh.textContent;
+  reviewChartRefresh.textContent = "取得中...";
+  reviewChartSummary.textContent = "日足を再取得しています...";
+  setAppStatus(`${ticker} の日足を再取得しています...`, "active");
+
+  try {
+    const result = await window.stockReviewApi.refreshReviewPriceHistory(ticker);
+    if (ticker !== activeReviewTicker) return;
+    const baseSnapshot = reviewSnapshot || {
+      ticker,
+      name: ticker,
+      currency: "JPY",
+      overview: {},
+      valuation: {},
+      profitability: {},
+      analyst: {},
+      financialSummary: [],
+      news: []
+    };
+    reviewSnapshot = { ...baseSnapshot, priceHistory: result.priceHistory || [] };
+    renderReviewSnapshot();
+    const count = Number(result.fetchedCount) || 0;
+    setAppStatus(`${ticker} の日足を再取得しました（${count}件）。`, "success");
+  } catch (error) {
+    drawReviewCandlestickChart();
+    setAppStatus(`日足の再取得エラー: ${error.message}`, "error");
+  } finally {
+    reviewPriceRefreshPending = false;
+    reviewChartRefresh.disabled = false;
+    reviewChartRefresh.textContent = previousText;
   }
 }
 

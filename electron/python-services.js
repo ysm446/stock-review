@@ -108,6 +108,19 @@ function runReviewFetcher(ticker) {
   return runPythonJson(REVIEW_FETCHER, [normalizedTicker], null, "review fetcher");
 }
 
+function refreshReviewPriceHistory(ticker) {
+  const normalizedTicker = String(ticker || "").trim();
+  if (!normalizedTicker) {
+    return Promise.reject(new Error("Ticker is required"));
+  }
+  return runPythonJson(
+    REVIEW_FETCHER,
+    [normalizedTicker, "--price-history"],
+    null,
+    "review price history fetcher"
+  );
+}
+
 function loadCachedReview(ticker) {
   const normalizedTicker = String(ticker || "").trim();
   if (!normalizedTicker) return Promise.reject(new Error("Ticker is required"));
@@ -126,6 +139,7 @@ module.exports = {
   getPythonCommand,
   loadCachedReview,
   normalizeTickers,
+  refreshReviewPriceHistory,
   runDividendFetcher,
   runPortfolioStore,
   runReviewFetcher,

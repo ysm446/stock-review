@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 from pathlib import Path
 
 
@@ -45,7 +46,8 @@ def to_float(value) -> float | None:
     try:
         if value is None:
             return None
-        return float(value)
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
     except (TypeError, ValueError):
         return None
 

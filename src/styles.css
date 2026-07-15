@@ -1933,6 +1933,7 @@ select:focus {
 .review-candlestick-panel { flex: 0 0 405px; min-height: 405px; margin-bottom: 10px; }
 .review-chart-head { align-items: center; }
 .review-chart-controls { display: flex; align-items: center; gap: 12px; }
+.review-chart-refresh { height: 28px; padding: 0 9px; font-size: 0.7rem; white-space: nowrap; }
 .review-ma-toggles { display: flex; align-items: center; gap: 8px; }
 .review-ma-toggles label { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 0.7rem; cursor: pointer; user-select: none; }
 .review-ma-toggles input { margin: 0; accent-color: var(--accent); }

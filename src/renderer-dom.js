@@ -26,6 +26,7 @@ export const reviewAnalystGrid = document.getElementById("review-analyst-grid");
 export const reviewCandlestickChart = document.getElementById("review-candlestick-chart");
 export const reviewCandlestickWrap = document.getElementById("review-candlestick-wrap");
 export const reviewChartRange = document.getElementById("review-chart-range");
+export const reviewChartRefresh = document.getElementById("review-chart-refresh");
 export const reviewChartSummary = document.getElementById("review-chart-summary");
 export const reviewChartPrice = document.getElementById("review-chart-price");
 export const reviewChartChange = document.getElementById("review-chart-change");
