@@ -2943,11 +2943,13 @@ function drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, 
   const maxBarWidth = Math.min(180, (width - padding.left - padding.right) * 0.22);
   const binHeight = priceHeight / binCount;
   ctx.save();
-  ctx.fillStyle = "rgba(96, 165, 250, 0.24)";
   bins.forEach((volume, index) => {
     if (volume <= 0) return;
-    const barWidth = volume / maxBinVolume * maxBarWidth;
+    const ratio = volume / maxBinVolume;
+    const barWidth = ratio * maxBarWidth;
     const y = padding.top + priceHeight - (index + 1) * binHeight;
+    // 出来高が多い価格帯ほど明るく（不透明に）、少ないほど暗く
+    ctx.fillStyle = `rgba(96, 165, 250, ${(0.08 + ratio * 0.4).toFixed(3)})`;
     ctx.fillRect(width - padding.right - barWidth, y + 0.5, barWidth, Math.max(1, binHeight - 1));
   });
   ctx.restore();
@@ -3034,6 +3036,8 @@ function drawReviewCandlestickChart() {
       maximumFractionDigits: priceDecimals
     }), padding.left - 7, y + 4);
   }
+  // ローソク足より先に描いて背面に敷く
+  drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight);
   rows.forEach((row, index) => {
     const x = padding.left + step * (index + 0.5);
     const open = Number(row.open), high = Number(row.high), low = Number(row.low), close = Number(row.close);
@@ -3045,7 +3049,6 @@ function drawReviewCandlestickChart() {
     const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
     ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
   });
-  drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight);
   drawReviewMovingAverages(ctx, rows, allRows, padding, step, yFor);
   drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals);
   ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
