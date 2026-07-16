@@ -43,6 +43,8 @@ import {
   reviewVolumeProfileBinsInputs,
   reviewChartResizer,
   reviewChartSummary,
+  reviewChartTitle,
+  reviewChartDate,
   reviewChartPrice,
   reviewChartChange,
   reviewChartTooltip,
@@ -2928,11 +2930,24 @@ function drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, 
   });
   ctx.restore();
 }
+function updateReviewChartTitle(allRows) {
+  if (!reviewSnapshot) {
+    reviewChartTitle.textContent = "株価チャート";
+    reviewChartDate.textContent = "";
+    return;
+  }
+  const { ticker, name } = reviewSnapshot;
+  reviewChartTitle.textContent = `${stockMaster[ticker] || name || ticker} (${ticker})`;
+  const latestDate = allRows.at(-1)?.date;
+  reviewChartDate.textContent = latestDate ? `${latestDate.replaceAll("-", "/")} 時点` : "";
+}
+
 function drawReviewCandlestickChart() {
   const { ctx, width, height } = prepareHiDPICanvas(reviewCandlestickChart);
   ctx.clearRect(0, 0, width, height);
   const rows = getReviewCandles();
   const allRows = getAllReviewCandles();
+  updateReviewChartTitle(allRows);
   reviewCandleModel = null;
   reviewChartTooltip.classList.add("is-hidden");
   reviewChartCrosshair.classList.add("is-hidden");

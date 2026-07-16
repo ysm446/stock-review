@@ -12,6 +12,9 @@
   - カテゴリー間移動: 銘柄行のドラッグでタブへドロップ（`draggingWatchlistIndex` を利用、「すべて」タブは対象外）。削除済みカテゴリー所属の銘柄は未分類扱い（`getWatchlistGroupCategory`）。
   - 検証: 隔離DATA_DIRで保存→再読込→カテゴリー削除→キー無し保存→旧スキーマからの移行を確認（scratchpadのtest-watchlist-category.py）。実画面（タブ操作・D&D）は未確認。
 
+- **2026-07-16: 株価チャートの見出しを銘柄情報＋最新日付に変更**。
+  - `#review-chart-title` に `stockMaster[ticker] || name || ticker` + `(ticker)`、`#review-chart-date` に蓄積済み日足の最終日（`YYYY/MM/DD 時点`）を表示。`drawReviewCandlestickChart` 冒頭の `updateReviewChartTitle` で描画のたびに更新（日足再取得後も追従）。未選択時は「株価チャート」に戻る。
+
 - **2026-07-16: 株価チャートの高さをドラッグで調整可能に**。
   - チャート下端に `#review-chart-resizer` ハンドルを追加。pointerイベントで `.review-candlestick-wrap` の高さ（180〜640px、既定290px）をドラッグ調整し、`stock-review.reviewChartHeight` へ保存。ダブルクリックで初期値に戻す。
   - パネルの固定高さ（`flex: 0 0 405px` / `height: 405px`）を廃止して内容駆動（`flex: 0 0 auto`）に変更。ラップの高さだけがチャート高を決めるため、≤1500pxメディアクエリ内の高さ上書きも削除。
