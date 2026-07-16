@@ -40,6 +40,11 @@ export const reviewMaMenuButton = document.getElementById("review-ma-menu-button
 export const reviewMaMenu = document.getElementById("review-ma-menu");
 export const reviewVolumeProfileToggle = document.getElementById("review-volume-profile-toggle");
 export const reviewChartResizer = document.getElementById("review-chart-resizer");
+export const reviewChartScrub = document.getElementById("review-chart-scrub");
+export const reviewChartScrubSlider = document.getElementById("review-chart-scrub-slider");
+export const reviewChartStepBack = document.getElementById("review-chart-step-back");
+export const reviewChartStepForward = document.getElementById("review-chart-step-forward");
+export const reviewChartLatest = document.getElementById("review-chart-latest");
 export const reviewVolumeProfileMenuButton = document.getElementById("review-volume-profile-menu-button");
 export const reviewVolumeProfileMenu = document.getElementById("review-volume-profile-menu");
 export const reviewVolumeProfileBinsInputs = document.querySelectorAll('input[name="review-volume-profile-bins"]');

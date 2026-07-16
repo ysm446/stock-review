@@ -2019,6 +2019,16 @@ select:focus {
 .review-chart-title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .review-chart-title-row h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .review-chart-date { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+.review-chart-date.is-past { color: var(--warn); }
+/* タイムマシン操作列（終端日付のスライダーと1日ステップ） */
+.review-chart-scrub { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.review-chart-scrub.is-hidden { display: none; }
+.review-chart-step { height: 24px; padding: 0 8px; font-size: 0.7rem; white-space: nowrap; }
+#review-chart-scrub-slider { flex: 1; width: auto; min-width: 0; height: 12px; margin: 0; padding: 0; border: none; background: transparent; cursor: pointer; -webkit-appearance: none; appearance: none; }
+#review-chart-scrub-slider::-webkit-slider-runnable-track { height: 3px; border-radius: 999px; background: var(--line); }
+#review-chart-scrub-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 11px; height: 11px; margin-top: -4px; border: none; border-radius: 50%; background: var(--accent); }
+#review-chart-scrub-slider:focus { box-shadow: none; }
+#review-chart-scrub-slider:disabled { cursor: default; opacity: 0.5; }
 .review-chart-quote { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
 .review-chart-quote strong { color: var(--text-strong); font-size: 1.35rem; line-height: 1.1; }
 .review-chart-quote span { color: var(--muted); font-size: 0.78rem; font-weight: 600; }

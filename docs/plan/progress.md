@@ -12,6 +12,12 @@
   - カテゴリー間移動: 銘柄行のドラッグでタブへドロップ（`draggingWatchlistIndex` を利用、「すべて」タブは対象外）。削除済みカテゴリー所属の銘柄は未分類扱い（`getWatchlistGroupCategory`）。
   - 検証: 隔離DATA_DIRで保存→再読込→カテゴリー削除→キー無し保存→旧スキーマからの移行を確認（scratchpadのtest-watchlist-category.py）。実画面（タブ操作・D&D）は未確認。
 
+- **2026-07-16: 株価チャートのタイムマシン表示（終端日付のスクラブ）を追加**。
+  - `reviewChartEndOffset`（最新から何営業日戻るか、セッション内のみ・非永続）を導入。`getReviewCandlesUpToEnd` が全日足を終端まで切り詰め、`getReviewCandles` はそこから期間分を切り出す。MAは日付キーの後方参照のみ、価格帯別出来高・山谷・サマリーは表示中の足から集計のため、切り詰めだけで全指標が「その時点」の状態に再計算される。
+  - UI: チャート下に `#review-chart-scrub`（◀ 1日戻る / スライダー / ▶ 1日進む / 最新へ）。スライダーは右端が最新。最低20本は表示を保つ（maxOffset = 全本数 - 20）。データ無し時は行ごと非表示、端で各ボタンdisabled。
+  - 見出しの日付は表示終端の日付に変わり、過去表示中は `is-past`（--warn色）＋「（過去表示）」。ヘッダーの現在値・前日比は、過去表示中は表示終端日の終値・前日終値（`renderReviewChartQuote` を `drawReviewCandlestickChart` から毎回呼ぶ）、最新表示ではスナップショット値を優先。銘柄切替（ticker変更時）でオフセットは0にリセット。日足再取得では維持。
+  - 実画面での操作感は未確認。
+
 - **2026-07-16: 株価チャートの見出しを銘柄情報＋最新日付に変更**。
   - `#review-chart-title` に `stockMaster[ticker] || name || ticker` + `(ticker)`、`#review-chart-date` に蓄積済み日足の最終日（`YYYY/MM/DD 時点`）を表示。`drawReviewCandlestickChart` 冒頭の `updateReviewChartTitle` で描画のたびに更新（日足再取得後も追従）。未選択時は「株価チャート」に戻る。
 

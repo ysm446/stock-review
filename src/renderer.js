@@ -42,6 +42,11 @@ import {
   reviewVolumeProfileMenu,
   reviewVolumeProfileBinsInputs,
   reviewChartResizer,
+  reviewChartScrub,
+  reviewChartScrubSlider,
+  reviewChartStepBack,
+  reviewChartStepForward,
+  reviewChartLatest,
   reviewChartSummary,
   reviewChartTitle,
   reviewChartDate,
@@ -272,6 +277,7 @@ const REVIEW_CHART_HEIGHT_MIN = 180;
 const REVIEW_CHART_HEIGHT_MAX = 640;
 const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa" };
 let reviewCandleModel = null;
+let reviewChartEndOffset = 0;
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -2812,8 +2818,24 @@ function getAllReviewCandles() {
     )));
 }
 
-function getReviewCandles() {
+// タイムマシン表示: 終端オフセット（最新から何営業日戻るか）。0 = 最新。
+const REVIEW_SCRUB_MIN_VISIBLE = 20;
+
+function getReviewScrubMaxOffset(allRows) {
+  return Math.max(0, allRows.length - REVIEW_SCRUB_MIN_VISIBLE);
+}
+
+// 全日足を表示終端の日付まで切り詰める。移動平均線・価格帯別出来高・山谷ラベルは
+// この切り詰め後の足から計算されるため、その時点を「今日」とした状態で再計算される。
+function getReviewCandlesUpToEnd() {
   const rows = getAllReviewCandles();
+  if (reviewChartEndOffset <= 0) return rows;
+  reviewChartEndOffset = Math.min(reviewChartEndOffset, getReviewScrubMaxOffset(rows));
+  return rows.slice(0, rows.length - reviewChartEndOffset);
+}
+
+function getReviewCandles() {
+  const rows = getReviewCandlesUpToEnd();
   if (!rows.length || reviewChartRange.value === "all") return rows;
   const months = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 }[reviewChartRange.value] || 12;
   const start = new Date(`${rows[rows.length - 1].date}T00:00:00`);
@@ -2930,7 +2952,9 @@ function drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, 
   });
   ctx.restore();
 }
-function updateReviewChartTitle(allRows) {
+function updateReviewChartTitle(endRows) {
+  const isPast = reviewChartEndOffset > 0;
+  reviewChartDate.classList.toggle("is-past", isPast);
   if (!reviewSnapshot) {
     reviewChartTitle.textContent = "株価チャート";
     reviewChartDate.textContent = "";
@@ -2938,8 +2962,32 @@ function updateReviewChartTitle(allRows) {
   }
   const { ticker, name } = reviewSnapshot;
   reviewChartTitle.textContent = `${stockMaster[ticker] || name || ticker} (${ticker})`;
-  const latestDate = allRows.at(-1)?.date;
-  reviewChartDate.textContent = latestDate ? `${latestDate.replaceAll("-", "/")} 時点` : "";
+  const endDate = endRows.at(-1)?.date;
+  reviewChartDate.textContent = endDate
+    ? `${endDate.replaceAll("-", "/")} 時点${isPast ? "（過去表示）" : ""}`
+    : "";
+}
+
+function updateReviewChartScrub(allRows) {
+  const hasData = allRows.length > 0;
+  reviewChartScrub.classList.toggle("is-hidden", !hasData);
+  if (!hasData) return;
+  const maxOffset = getReviewScrubMaxOffset(allRows);
+  reviewChartEndOffset = Math.min(reviewChartEndOffset, maxOffset);
+  reviewChartScrubSlider.max = String(maxOffset);
+  reviewChartScrubSlider.value = String(maxOffset - reviewChartEndOffset);
+  reviewChartScrubSlider.disabled = maxOffset === 0;
+  reviewChartStepBack.disabled = reviewChartEndOffset >= maxOffset;
+  reviewChartStepForward.disabled = reviewChartEndOffset <= 0;
+  reviewChartLatest.disabled = reviewChartEndOffset <= 0;
+}
+
+function setReviewChartEndOffset(offset) {
+  const maxOffset = getReviewScrubMaxOffset(getAllReviewCandles());
+  const next = Math.min(maxOffset, Math.max(0, Math.round(Number(offset) || 0)));
+  if (next === reviewChartEndOffset) return;
+  reviewChartEndOffset = next;
+  drawReviewCandlestickChart();
 }
 
 function drawReviewCandlestickChart() {
@@ -2947,7 +2995,9 @@ function drawReviewCandlestickChart() {
   ctx.clearRect(0, 0, width, height);
   const rows = getReviewCandles();
   const allRows = getAllReviewCandles();
-  updateReviewChartTitle(allRows);
+  updateReviewChartScrub(allRows);
+  updateReviewChartTitle(getReviewCandlesUpToEnd());
+  renderReviewChartQuote();
   reviewCandleModel = null;
   reviewChartTooltip.classList.add("is-hidden");
   reviewChartCrosshair.classList.add("is-hidden");
@@ -3111,6 +3161,13 @@ reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
 reviewChartRange.addEventListener("change", () => {
   localStorage.setItem(REVIEW_CHART_RANGE_KEY, reviewChartRange.value); drawReviewCandlestickChart();
 });
+reviewChartScrubSlider.addEventListener("input", () => {
+  const maxOffset = Number(reviewChartScrubSlider.max) || 0;
+  setReviewChartEndOffset(maxOffset - Number(reviewChartScrubSlider.value));
+});
+reviewChartStepBack.addEventListener("click", () => setReviewChartEndOffset(reviewChartEndOffset + 1));
+reviewChartStepForward.addEventListener("click", () => setReviewChartEndOffset(reviewChartEndOffset - 1));
+reviewChartLatest.addEventListener("click", () => setReviewChartEndOffset(0));
 reviewCandlestickWrap.addEventListener("mousemove", (event) => {
   if (!reviewCandleModel) return;
   const rect = reviewCandlestickWrap.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
@@ -3163,11 +3220,17 @@ function renderReviewChartQuote() {
     reviewChartChange.textContent = "前日比 -";
     return;
   }
-  const history = getAllReviewCandles();
+  // 過去表示中は表示終端日の終値・前日終値で表示する（最新表示ではスナップショットの値を優先）
+  const isPast = reviewChartEndOffset > 0;
+  const history = getReviewCandlesUpToEnd();
   const overview = reviewSnapshot.overview || {};
   const currency = reviewSnapshot.currency || "JPY";
-  const currentPrice = toFiniteNumber(overview.currentPrice) ?? toFiniteNumber(history.at(-1)?.close);
-  const previousClose = toFiniteNumber(overview.previousClose) ?? toFiniteNumber(history.at(-2)?.close);
+  const currentPrice = isPast
+    ? toFiniteNumber(history.at(-1)?.close)
+    : (toFiniteNumber(overview.currentPrice) ?? toFiniteNumber(history.at(-1)?.close));
+  const previousClose = isPast
+    ? toFiniteNumber(history.at(-2)?.close)
+    : (toFiniteNumber(overview.previousClose) ?? toFiniteNumber(history.at(-2)?.close));
   reviewChartPrice.textContent = formatReviewQuote(currentPrice, currency);
   if (currentPrice === null || previousClose === null || previousClose === 0) {
     reviewChartChange.textContent = "前日比 -";
@@ -3304,6 +3367,7 @@ async function loadReviewSnapshot(rawTicker) {
   if (!ticker) return;
 
   const requestId = ++reviewLoadRequestId;
+  if (ticker !== activeReviewTicker) reviewChartEndOffset = 0;
   activeReviewTicker = ticker;
   reviewTickerInput.value = ticker;
   hideReviewTickerSuggestions();
