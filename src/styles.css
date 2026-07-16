@@ -2018,8 +2018,9 @@ select:focus {
 .review-chart-head p { margin: 3px 0 0; color: var(--muted); font-size: 0.72rem; }
 .review-chart-title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .review-chart-title-row h2 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.review-chart-date { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
-.review-chart-date.is-past { color: var(--warn); }
+.review-chart-date { display: inline-flex; align-items: center; height: 20px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--text-strong); font-size: 0.76rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.review-chart-date:empty { display: none; }
+.review-chart-date.is-past { color: #14100a; background: var(--warn); border-color: var(--warn); }
 /* タイムマシン操作列（終端日付のスライダーと1日ステップ） */
 .review-chart-scrub { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .review-chart-scrub.is-hidden { display: none; }
