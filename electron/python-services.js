@@ -127,6 +127,18 @@ function loadCachedReview(ticker) {
   return runPythonJson(REVIEW_CACHE, [normalizedTicker], null, "review cache");
 }
 
+// スナップショットを持たない指数・為替向けに、蓄積済みの日足だけを読み出す
+function loadCachedPriceHistory(ticker) {
+  const normalizedTicker = String(ticker || "").trim();
+  if (!normalizedTicker) return Promise.reject(new Error("Ticker is required"));
+  return runPythonJson(
+    REVIEW_CACHE,
+    [normalizedTicker, "--history-only"],
+    null,
+    "price history cache"
+  );
+}
+
 function runDividendFetcher(holdings) {
   return runPythonJson(DIVIDEND_FETCHER, [], { holdings }, "dividend fetcher");
 }
@@ -137,6 +149,7 @@ function runSectorFetcher(tickers) {
 
 module.exports = {
   getPythonCommand,
+  loadCachedPriceHistory,
   loadCachedReview,
   normalizeTickers,
   refreshReviewPriceHistory,

@@ -16,7 +16,14 @@
     <div class="app-shell">
       <aside class="sidebar">
         <nav class="sidebar-nav">
-          <button class="nav-button is-active" data-view="portfolio" title="ポートフォリオ" aria-label="ポートフォリオ">
+          <button class="nav-button is-active" data-view="market" title="マーケット" aria-label="マーケット">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5"></circle>
+              <path d="M3.5 12h17"></path>
+              <path d="M12 3.5c2.4 2.4 3.7 5.3 3.7 8.5s-1.3 6.1-3.7 8.5c-2.4-2.4-3.7-5.3-3.7-8.5s1.3-6.1 3.7-8.5z"></path>
+            </svg>
+          </button>
+          <button class="nav-button" data-view="portfolio" title="ポートフォリオ" aria-label="ポートフォリオ">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="8.5"></circle>
               <path d="M12 3.5V12h8.5"></path>
@@ -55,7 +62,70 @@
       </div>
 
       <main class="main-panel">
-        <section class="view is-visible" id="view-portfolio">
+        <section class="view is-visible" id="view-market">
+          <header class="hero">
+            <div>
+              <h1>マーケット</h1>
+            </div>
+          </header>
+
+          <div class="market-grid">
+            <article class="panel review-panel review-candlestick-panel market-chart-panel">
+              <div class="panel-head review-chart-head"><div><div class="review-chart-title-row"><h2 id="market-chart-title">マーケット</h2><span class="review-chart-date" id="market-chart-date"></span></div><div class="review-chart-quote"><strong id="market-chart-price">-</strong><span id="market-chart-change">前日比 -</span></div><p id="market-chart-summary">読み込み中...</p></div>
+                <div class="review-chart-controls">
+                  <div class="market-instrument-tabs" id="market-instrument-tabs" role="tablist" aria-label="表示する指数"></div>
+                  <div class="review-ma-menu">
+                    <button type="button" class="ghost-button review-ma-menu-button" id="market-ma-menu-button" aria-haspopup="menu" aria-expanded="false">移動平均線 <span aria-hidden="true">⌄</span></button>
+                    <div class="review-ma-toggles is-hidden" id="market-ma-menu" role="menu" aria-label="移動平均線">
+                      <label><input type="checkbox" value="25" checked><span class="review-ma-swatch is-ma25"></span>MA25</label>
+                      <label><input type="checkbox" value="50" checked><span class="review-ma-swatch is-ma50"></span>MA50</label>
+                      <label><input type="checkbox" value="75"><span class="review-ma-swatch is-ma75"></span>MA75</label>
+                      <label><input type="checkbox" value="200"><span class="review-ma-swatch is-ma200"></span>MA200</label>
+                    </div>
+                  </div>
+                  <div class="review-ma-menu">
+                    <button type="button" class="ghost-button review-ma-menu-button" id="market-volume-profile-menu-button" aria-haspopup="menu" aria-expanded="false">価格帯別出来高 <span aria-hidden="true">⌄</span></button>
+                    <div class="review-ma-toggles is-hidden" id="market-volume-profile-menu" role="menu" aria-label="価格帯別出来高">
+                      <label><input id="market-volume-profile-toggle" type="checkbox" checked><span class="review-volume-profile-swatch"></span>表示する</label>
+                      <div class="review-menu-heading">価格帯の本数</div>
+                      <label><input type="radio" name="market-volume-profile-bins" value="12">12本（粗い）</label>
+                      <label><input type="radio" name="market-volume-profile-bins" value="24" checked>24本（標準）</label>
+                      <label><input type="radio" name="market-volume-profile-bins" value="48">48本（細かい）</label>
+                    </div>
+                  </div>
+                  <select id="market-chart-range" class="chart-color-select" title="表示期間"><option value="1m">1か月</option><option value="3m">3か月</option><option value="6m">6か月</option><option value="1y" selected>1年</option><option value="all">全期間</option></select>
+                  <button type="button" class="ghost-button review-chart-refresh" id="market-chart-refresh" title="終値・始値・高値・安値・出来高を再取得します">日足を再取得</button>
+                </div></div>
+              <div class="review-candlestick-wrap market-candlestick-wrap" id="market-candlestick-wrap"><canvas id="market-candlestick-chart" width="1200" height="430"></canvas><div class="review-chart-crosshair is-hidden" id="market-chart-crosshair"><span id="market-chart-crosshair-price">-</span></div><div class="review-chart-tooltip is-hidden" id="market-chart-tooltip"></div></div>
+              <div class="review-chart-scrub is-hidden" id="market-chart-scrub">
+                <button type="button" class="ghost-button review-chart-step" id="market-chart-step-back" title="1日戻る" aria-label="1日戻る">◀</button>
+                <input type="range" id="market-chart-scrub-slider" min="0" max="0" step="1" value="0" aria-label="表示終端の日付" title="ドラッグして表示終端の日付を移動" />
+                <button type="button" class="ghost-button review-chart-step" id="market-chart-step-forward" title="1日進む" aria-label="1日進む">▶</button>
+                <button type="button" class="ghost-button review-chart-step" id="market-chart-latest" title="最新の日付に戻す">最新へ</button>
+              </div>
+            </article>
+
+            <article class="panel market-panel market-summary-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>AIまとめ</h2>
+                </div>
+              </div>
+              <p class="market-placeholder">最近のニュースのまとめをここに表示します（準備中）。</p>
+            </article>
+
+            <article class="panel market-panel market-news-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>ニュース</h2>
+                </div>
+              </div>
+              <p class="market-placeholder">株式・マーケットの最新ニュースをここに表示します（準備中）。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-portfolio">
           <header class="hero">
             <div>
               <h1>ポートフォリオ</h1>
@@ -249,10 +319,10 @@
                     <div class="review-ma-menu">
                       <button type="button" class="ghost-button review-ma-menu-button" id="review-ma-menu-button" aria-haspopup="menu" aria-expanded="false">移動平均線 <span aria-hidden="true">⌄</span></button>
                       <div class="review-ma-toggles is-hidden" id="review-ma-menu" role="menu" aria-label="移動平均線">
-                        <label><input class="review-ma-toggle" type="checkbox" value="25" checked><span class="review-ma-swatch is-ma25"></span>MA25</label>
-                        <label><input class="review-ma-toggle" type="checkbox" value="50" checked><span class="review-ma-swatch is-ma50"></span>MA50</label>
-                        <label><input class="review-ma-toggle" type="checkbox" value="75"><span class="review-ma-swatch is-ma75"></span>MA75</label>
-                        <label><input class="review-ma-toggle" type="checkbox" value="200"><span class="review-ma-swatch is-ma200"></span>MA200</label>
+                        <label><input type="checkbox" value="25" checked><span class="review-ma-swatch is-ma25"></span>MA25</label>
+                        <label><input type="checkbox" value="50" checked><span class="review-ma-swatch is-ma50"></span>MA50</label>
+                        <label><input type="checkbox" value="75"><span class="review-ma-swatch is-ma75"></span>MA75</label>
+                        <label><input type="checkbox" value="200"><span class="review-ma-swatch is-ma200"></span>MA200</label>
                       </div>
                     </div>
                     <div class="review-ma-menu">

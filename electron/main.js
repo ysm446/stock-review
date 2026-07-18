@@ -14,6 +14,7 @@ const {
   writePortfolio
 } = require("./data-files");
 const {
+  loadCachedPriceHistory,
   loadCachedReview,
   normalizeTickers,
   runDividendFetcher,
@@ -214,6 +215,9 @@ function createWindow() {
         `document.querySelector('.nav-button[data-view="${view}"]')?.click()`
       );
       setTimeout(async () => {
+        await captureScreenshot(win, "-market");
+        await clickNav("portfolio");
+        await new Promise((resolve) => setTimeout(resolve, 900));
         await captureScreenshot(win, "-portfolio");
         await clickNav("review");
         // 先頭の銘柄チップをクリックしてデータ入りの状態で撮影する
@@ -324,6 +328,9 @@ ipcMain.handle("review:load-cache", async (_event, ticker) => loadCachedReview(t
 ipcMain.handle("review:fetch", async (_event, ticker) => runReviewFetcher(ticker));
 ipcMain.handle("review:refresh-price-history", async (_event, ticker) =>
   refreshReviewPriceHistory(ticker)
+);
+ipcMain.handle("market:load-price-history", async (_event, ticker) =>
+  loadCachedPriceHistory(ticker)
 );
 
 // ── データルートフォルダ IPC ─────────────────────────────

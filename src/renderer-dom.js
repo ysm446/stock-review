@@ -35,7 +35,6 @@ export const reviewChartChange = document.getElementById("review-chart-change");
 export const reviewChartTooltip = document.getElementById("review-chart-tooltip");
 export const reviewChartCrosshair = document.getElementById("review-chart-crosshair");
 export const reviewChartCrosshairPrice = document.getElementById("review-chart-crosshair-price");
-export const reviewMaToggles = document.querySelectorAll(".review-ma-toggle");
 export const reviewMaMenuButton = document.getElementById("review-ma-menu-button");
 export const reviewMaMenu = document.getElementById("review-ma-menu");
 export const reviewVolumeProfileToggle = document.getElementById("review-volume-profile-toggle");
@@ -47,7 +46,6 @@ export const reviewChartStepForward = document.getElementById("review-chart-step
 export const reviewChartLatest = document.getElementById("review-chart-latest");
 export const reviewVolumeProfileMenuButton = document.getElementById("review-volume-profile-menu-button");
 export const reviewVolumeProfileMenu = document.getElementById("review-volume-profile-menu");
-export const reviewVolumeProfileBinsInputs = document.querySelectorAll('input[name="review-volume-profile-bins"]');
 export const allocationGroupToggle = document.getElementById("allocation-group-toggle");
 export const allocationColorScheme = document.getElementById("allocation-color-scheme");
 export const allocationLegend = document.getElementById("allocation-legend");

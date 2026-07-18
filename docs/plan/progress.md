@@ -4,6 +4,13 @@
 
 ## 完了済み
 
+- **2026-07-18: マーケットページ第1弾（骨格＋指数チャート）とチャート共通化**。
+  - **チャート共通化**: レビュー画面のローソク足チャート（描画・MA・価格帯別出来高・山谷ラベル・タイムマシン・ツールチップ・十字線・高さリサイズ・メニュー開閉・localStorage永続化）を `src/candlestick-chart.js` の `createCandlestickChart(config)` へ全面切り出し。インスタンスごとに `storagePrefix`（review は `stock-review.review` で既存キー互換、market は `stock-review.market`）、`getRows`/`getEmptyState`/`getSummarySuffix`/`onAfterDraw` フックで画面固有処理（見出し・株価表示・取得中メッセージ）を注入する。`prepareHiDPICanvas` も同モジュールへ移動。renderer.js 側は `drawReviewCandlestickChart()` を薄いラッパーとして残したため呼び出し箇所は無変更。MAトグルは menu 内の checkbox、ビン選択 radio は menu 内から自動検出（グローバルクラス `.review-ma-toggle` は廃止）。旧 MA5→MA50 の保存値移行は renderer.js 側でチャート生成前に実施。
+  - **マーケットページ**: ナビ最上位に `#view-market` を追加し初期表示に変更（portfolio から交代）。左上=指数チャート（`market-instrument-tabs` で ^N225 / ^DJI / JPY=X 切替、選択は `stock-review.marketInstrument` に保存）、右=ニュースパネル、左下=AIまとめパネル（どちらもプレースホルダー）。実装は `src/renderer-market.js`（renderer-dom を使わず自前で要素取得、専用ResizeObserverで再描画）。
+  - **データ経路**: 指数も `review_price_history` に蓄積。キャッシュ読み出しは `review_cache.py --history-only`（スナップショット無しでも日足だけ返す）→ IPC `market:load-price-history`（`loadMarketPriceHistory`）。再取得は既存の `review:refresh-price-history` を流用（`fetch_review.py --price-history` は任意のyfinanceシンボルで動作、^N225=244日・JPY=X=260日で確認）。ページ表示時はキャッシュ即表示→セッション初回のみ背景で自動再取得、「日足を再取得」ボタンで手動更新。
+  - **検証**: 隔離DATA_DIRで --history-only 空/蓄積後、^N225・JPY=X 取得（FXは出来高0、チャート側で出来高バー・価格帯別出来高は自動的に空になる）。AUTOSHOT実起動でマーケット（撮影ステップに `-market` を追加）・ポートフォリオ・レビュー・ノート・モデルモーダル撮影し、レビュー画面の無回帰とマーケット表示を目視確認。マーケットCanvasの `height:100%` 指定漏れによるはみ出しを修正済み。タブ切替・スクラブの実操作は未確認。
+  - **残課題（フェーズ2以降）**: ニュースパネル（ddgs軽量版）、AIまとめ（手動ボタン＋キャッシュ）。
+
 - **2026-07-18: 移動平均線にMA200を追加**。
   - `index.html` の移動平均線メニューにMA200チェックボックス（既定OFF）、`styles.css` にスウォッチ色 `is-ma200`（#ec4899 ピンク）、`renderer.js` の `REVIEW_MA_COLORS` に `200` を追加。既存の `calculateMovingAverage` / `drawReviewMovingAverages` は任意periodに対応済みのため計算・描画ロジックの変更は不要。
   - 計算は先行履歴を含む `allRows`（fetch_reviewが約1年＝約250営業日取得）を使うため、蓄積が200営業日に達した銘柄で表示される。実画面での表示は未確認。

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("stockReviewApi", {
   loadCachedReview: (ticker) => ipcRenderer.invoke("review:load-cache", ticker),
   fetchReview: (ticker) => ipcRenderer.invoke("review:fetch", ticker),
   refreshReviewPriceHistory: (ticker) => ipcRenderer.invoke("review:refresh-price-history", ticker),
+  loadMarketPriceHistory: (ticker) => ipcRenderer.invoke("market:load-price-history", ticker),
   loadAnnotations: () => ipcRenderer.invoke("annotations:load"),
   saveAnnotations: (data) => ipcRenderer.invoke("annotations:save", data),
   getChatApiToken: () => ipcRenderer.invoke("chat:api-token"),

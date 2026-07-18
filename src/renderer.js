@@ -1,6 +1,8 @@
 import "./renderer-chat.js";
 import "./renderer-settings.js";
 import "./renderer-resources.js";
+import "./renderer-market.js";
+import { createCandlestickChart, prepareHiDPICanvas } from "./candlestick-chart.js";
 import { setStockReviewContext } from "./renderer-stock-chat.js";
 import { setAppStatus } from "./renderer-status.js";
 import {
@@ -40,7 +42,6 @@ import {
   reviewVolumeProfileToggle,
   reviewVolumeProfileMenuButton,
   reviewVolumeProfileMenu,
-  reviewVolumeProfileBinsInputs,
   reviewChartResizer,
   reviewChartScrub,
   reviewChartScrubSlider,
@@ -57,7 +58,6 @@ import {
   reviewChartCrosshairPrice,
   reviewMaMenuButton,
   reviewMaMenu,
-  reviewMaToggles,
   reviewChipRow,
   reviewFinancialBody,
   reviewHistoryButton,
@@ -116,7 +116,6 @@ import {
   buildMetricToneStyle,
   buildPositiveMetricToneStyle,
   buildYieldToneStyle,
-  clamp,
   escapeHtml,
   formatCurrency,
   formatMaybeCurrency,
@@ -265,19 +264,8 @@ const ALLOCATION_GROUPED_KEY = "stock-review.allocationGrouped";
 const ALLOCATION_COLOR_MODE_KEY = "stock-review.allocationColorMode";
 const TREND_RANGE_KEY = "stock-review.trendRange";
 const TREND_YAXIS_MODE_KEY = "stock-review.trendYAxisMode";
-const REVIEW_CHART_RANGE_KEY = "stock-review.reviewChartRange";
-const REVIEW_MA_KEY = "stock-review.reviewMovingAverages";
-const REVIEW_VOLUME_PROFILE_KEY = "stock-review.reviewVolumeProfile";
-const REVIEW_VOLUME_PROFILE_BINS_KEY = "stock-review.reviewVolumeProfileBins";
 const WATCHLIST_CATEGORY_TAB_KEY = "stock-review.watchlistCategoryTab";
 const WATCHLIST_TAB_ALL = "__all__";
-const REVIEW_CHART_HEIGHT_KEY = "stock-review.reviewChartHeight";
-const REVIEW_CHART_HEIGHT_DEFAULT = 290;
-const REVIEW_CHART_HEIGHT_MIN = 180;
-const REVIEW_CHART_HEIGHT_MAX = 640;
-const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa", 200: "#ec4899" };
-let reviewCandleModel = null;
-let reviewChartEndOffset = 0;
 
 const REVIEW_LABEL_HELP = {
   "PER": "株価が1株利益の何倍まで買われているかを見る指標です。",
@@ -1443,25 +1431,6 @@ function buildSectorColors(holdings) {
   });
 }
 
-function prepareHiDPICanvas(canvas) {
-  const ctx = canvas.getContext("2d");
-  const rect = canvas.getBoundingClientRect();
-  const logicalWidth = Math.max(1, Math.round(rect.width || canvas.clientWidth || canvas.width));
-  const logicalHeight = Math.max(1, Math.round(rect.height || canvas.clientHeight || canvas.height));
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const pixelWidth = Math.round(logicalWidth * dpr);
-  const pixelHeight = Math.round(logicalHeight * dpr);
-
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-  }
-
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, logicalWidth, logicalHeight);
-
-  return { ctx, width: logicalWidth, height: logicalHeight };
-}
 
 function hideTrendTooltip() {
   trendTooltip.classList.add("is-hidden");
@@ -2810,152 +2779,7 @@ function renderReviewFinancials(rows) {
   });
 }
 
-function getAllReviewCandles() {
-  return (Array.isArray(reviewSnapshot?.priceHistory) ? reviewSnapshot.priceHistory : [])
-    .filter((row) => [row.open, row.high, row.low, row.close].every((value) => (
-      value !== null && value !== undefined && value !== ""
-      && Number.isFinite(Number(value)) && Number(value) > 0
-    )));
-}
-
-// タイムマシン表示: 終端オフセット（最新から何営業日戻るか）。0 = 最新。
-const REVIEW_SCRUB_MIN_VISIBLE = 20;
-
-function getReviewScrubMaxOffset(allRows) {
-  return Math.max(0, allRows.length - REVIEW_SCRUB_MIN_VISIBLE);
-}
-
-// 全日足を表示終端の日付まで切り詰める。移動平均線・価格帯別出来高・山谷ラベルは
-// この切り詰め後の足から計算されるため、その時点を「今日」とした状態で再計算される。
-function getReviewCandlesUpToEnd() {
-  const rows = getAllReviewCandles();
-  if (reviewChartEndOffset <= 0) return rows;
-  reviewChartEndOffset = Math.min(reviewChartEndOffset, getReviewScrubMaxOffset(rows));
-  return rows.slice(0, rows.length - reviewChartEndOffset);
-}
-
-function getReviewCandles() {
-  const rows = getReviewCandlesUpToEnd();
-  if (!rows.length || reviewChartRange.value === "all") return rows;
-  const months = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 }[reviewChartRange.value] || 12;
-  const start = new Date(`${rows[rows.length - 1].date}T00:00:00`);
-  start.setMonth(start.getMonth() - months);
-  return rows.filter((row) => new Date(`${row.date}T00:00:00`) >= start);
-}
-
-function getNicePriceStep(range, targetIntervals = 5) {
-  const roughStep = Math.max(range / targetIntervals, Number.EPSILON);
-  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
-  const normalized = roughStep / magnitude;
-  const niceFactor = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
-  return niceFactor * magnitude;
-}
-
-function calculateMovingAverage(rows, period) {
-  const values = new Map();
-  let sum = 0;
-  rows.forEach((row, index) => {
-    sum += Number(row.close);
-    if (index >= period) sum -= Number(rows[index - period].close);
-    if (index >= period - 1) values.set(row.date, sum / period);
-  });
-  return values;
-}
-
-function getReviewTurningPoints(rows) {
-  if (!rows.length) return [];
-  const windowSize = Math.max(2, Math.floor(rows.length / 25));
-  const candidates = [];
-  for (let index = windowSize; index < rows.length - windowSize; index += 1) {
-    const neighbors = rows.slice(index - windowSize, index + windowSize + 1);
-    const high = Number(rows[index].high), low = Number(rows[index].low);
-    const otherHighs = neighbors.filter((_, offset) => offset !== windowSize).map((row) => Number(row.high));
-    const otherLows = neighbors.filter((_, offset) => offset !== windowSize).map((row) => Number(row.low));
-    if (high >= Math.max(...otherHighs)) {
-      candidates.push({ index, type: "high", value: high, prominence: high - Math.min(...otherLows) });
-    }
-    if (low <= Math.min(...otherLows)) {
-      candidates.push({ index, type: "low", value: low, prominence: Math.max(...otherHighs) - low });
-    }
-  }
-  const highIndex = rows.reduce((best, row, index) => Number(row.high) > Number(rows[best].high) ? index : best, 0);
-  const lowIndex = rows.reduce((best, row, index) => Number(row.low) < Number(rows[best].low) ? index : best, 0);
-  const selected = [
-    { index: highIndex, type: "high", value: Number(rows[highIndex].high), prominence: Infinity },
-    { index: lowIndex, type: "low", value: Number(rows[lowIndex].low), prominence: Infinity }
-  ].filter((point, index, list) => list.findIndex((other) => other.index === point.index && other.type === point.type) === index);
-  const minDistance = Math.max(3, Math.floor(rows.length / 10));
-  candidates.sort((a, b) => b.prominence - a.prominence).forEach((candidate) => {
-    if (selected.length >= 6) return;
-    if (selected.every((point) => Math.abs(point.index - candidate.index) >= minDistance)) selected.push(candidate);
-  });
-  return selected.sort((a, b) => a.index - b.index);
-}
-
-function drawReviewMovingAverages(ctx, rows, allRows, padding, step, yFor) {
-  const enabled = new Set([...reviewMaToggles].filter((toggle) => toggle.checked).map((toggle) => Number(toggle.value)));
-  enabled.forEach((period) => {
-    const averages = calculateMovingAverage(allRows, period);
-    ctx.strokeStyle = REVIEW_MA_COLORS[period]; ctx.lineWidth = 1.7; ctx.globalAlpha = 0.95;
-    ctx.beginPath(); let started = false;
-    rows.forEach((row, index) => {
-      const value = averages.get(row.date);
-      if (!Number.isFinite(value)) return;
-      const x = padding.left + step * (index + 0.5), y = yFor(value);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-    });
-    if (started) ctx.stroke();
-  });
-  ctx.lineWidth = 1; ctx.globalAlpha = 1;
-}
-
-function drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals) {
-  ctx.font = "600 10px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 3;
-  getReviewTurningPoints(rows).forEach((point) => {
-    const x = Math.max(padding.left + 24, Math.min(width - padding.right - 24, padding.left + step * (point.index + 0.5)));
-    const y = yFor(point.value) + (point.type === "high" ? -7 : 13);
-    const label = point.value.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, priceDecimals) });
-    ctx.strokeStyle = "rgba(15, 23, 42, 0.9)"; ctx.strokeText(label, x, y);
-    ctx.fillStyle = "#e5e7eb"; ctx.fillText(label, x, y);
-  });
-  ctx.lineWidth = 1;
-}
-
-function getReviewVolumeProfileBinCount() {
-  const checked = [...reviewVolumeProfileBinsInputs].find((input) => input.checked);
-  const value = Number(checked && checked.value);
-  return Number.isFinite(value) && value > 0 ? value : 24;
-}
-function drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight) {
-  if (!reviewVolumeProfileToggle.checked) return;
-  const binCount = getReviewVolumeProfileBinCount();
-  const binSize = (maxPrice - minPrice) / binCount;
-  if (!(binSize > 0)) return;
-  const bins = Array.from({ length: binCount }, () => 0);
-  rows.forEach((row) => {
-    const price = Number(row.close), volume = Number(row.volume);
-    if (!Number.isFinite(price) || !Number.isFinite(volume) || volume <= 0) return;
-    const index = Math.min(binCount - 1, Math.max(0, Math.floor((price - minPrice) / binSize)));
-    bins[index] += volume;
-  });
-  const maxBinVolume = Math.max(...bins);
-  if (!(maxBinVolume > 0)) return;
-  const maxBarWidth = Math.min(180, (width - padding.left - padding.right) * 0.22);
-  const binHeight = priceHeight / binCount;
-  ctx.save();
-  bins.forEach((volume, index) => {
-    if (volume <= 0) return;
-    const ratio = volume / maxBinVolume;
-    const barWidth = ratio * maxBarWidth;
-    const y = padding.top + priceHeight - (index + 1) * binHeight;
-    // 出来高が多い価格帯ほど明るく（不透明に）、少ないほど暗く
-    ctx.fillStyle = `rgba(96, 165, 250, ${(0.08 + ratio * 0.4).toFixed(3)})`;
-    ctx.fillRect(width - padding.right - barWidth, y + 0.5, barWidth, Math.max(1, binHeight - 1));
-  });
-  ctx.restore();
-}
-function updateReviewChartTitle(endRows) {
-  const isPast = reviewChartEndOffset > 0;
+function updateReviewChartTitle(endRows, isPast) {
   reviewChartDate.classList.toggle("is-past", isPast);
   if (!reviewSnapshot) {
     reviewChartTitle.textContent = "株価チャート";
@@ -2970,240 +2794,56 @@ function updateReviewChartTitle(endRows) {
     : "";
 }
 
-function updateReviewChartScrub(allRows) {
-  const hasData = allRows.length > 0;
-  reviewChartScrub.classList.toggle("is-hidden", !hasData);
-  if (!hasData) return;
-  const maxOffset = getReviewScrubMaxOffset(allRows);
-  reviewChartEndOffset = Math.min(reviewChartEndOffset, maxOffset);
-  reviewChartScrubSlider.max = String(maxOffset);
-  reviewChartScrubSlider.value = String(maxOffset - reviewChartEndOffset);
-  reviewChartScrubSlider.disabled = maxOffset === 0;
-  reviewChartStepBack.disabled = reviewChartEndOffset >= maxOffset;
-  reviewChartStepForward.disabled = reviewChartEndOffset <= 0;
-  reviewChartLatest.disabled = reviewChartEndOffset <= 0;
+// 旧保存値の移行: かつての MA5 選択は MA50 として読み替える
+try {
+  const storedMa = JSON.parse(localStorage.getItem("stock-review.reviewMovingAverages") || "[]");
+  if (Array.isArray(storedMa) && storedMa.includes(5)) {
+    localStorage.setItem("stock-review.reviewMovingAverages",
+      JSON.stringify([...new Set(storedMa.map((period) => period === 5 ? 50 : period))]));
+  }
+} catch (_error) {
+  // 壊れた保存値はチャート側が既定値にフォールバックする
 }
 
-function setReviewChartEndOffset(offset) {
-  const maxOffset = getReviewScrubMaxOffset(getAllReviewCandles());
-  const next = Math.min(maxOffset, Math.max(0, Math.round(Number(offset) || 0)));
-  if (next === reviewChartEndOffset) return;
-  reviewChartEndOffset = next;
-  drawReviewCandlestickChart();
-}
+const reviewChart = createCandlestickChart({
+  canvas: reviewCandlestickChart,
+  wrap: reviewCandlestickWrap,
+  tooltip: reviewChartTooltip,
+  crosshair: reviewChartCrosshair,
+  crosshairPrice: reviewChartCrosshairPrice,
+  summary: reviewChartSummary,
+  rangeSelect: reviewChartRange,
+  maMenuButton: reviewMaMenuButton,
+  maMenu: reviewMaMenu,
+  volumeProfileMenuButton: reviewVolumeProfileMenuButton,
+  volumeProfileMenu: reviewVolumeProfileMenu,
+  volumeProfileToggle: reviewVolumeProfileToggle,
+  scrub: {
+    container: reviewChartScrub,
+    slider: reviewChartScrubSlider,
+    stepBack: reviewChartStepBack,
+    stepForward: reviewChartStepForward,
+    latest: reviewChartLatest
+  },
+  resizer: reviewChartResizer,
+  storagePrefix: "stock-review.review",
+  getRows: () => reviewSnapshot?.priceHistory,
+  getEmptyState: () => ({
+    summary: reviewRefreshPending
+      ? "最新データを取得中..."
+      : reviewSnapshot ? "株価履歴を取得できませんでした" : "銘柄を選択してください",
+    canvas: reviewRefreshPending ? "株価データを取得中..." : "表示できる株価データがありません"
+  }),
+  getSummarySuffix: () => reviewRefreshPending ? "　最新データを取得中..." : "",
+  onAfterDraw: ({ endRows, isPast }) => {
+    updateReviewChartTitle(endRows, isPast);
+    renderReviewChartQuote(endRows, isPast);
+  }
+});
 
 function drawReviewCandlestickChart() {
-  const { ctx, width, height } = prepareHiDPICanvas(reviewCandlestickChart);
-  ctx.clearRect(0, 0, width, height);
-  const rows = getReviewCandles();
-  const allRows = getAllReviewCandles();
-  updateReviewChartScrub(allRows);
-  updateReviewChartTitle(getReviewCandlesUpToEnd());
-  renderReviewChartQuote();
-  reviewCandleModel = null;
-  reviewChartTooltip.classList.add("is-hidden");
-  reviewChartCrosshair.classList.add("is-hidden");
-  if (!rows.length) {
-    reviewChartSummary.textContent = reviewRefreshPending
-      ? "最新データを取得中..."
-      : reviewSnapshot ? "株価履歴を取得できませんでした" : "銘柄を選択してください";
-    ctx.fillStyle = "rgba(148, 163, 184, 0.85)"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(reviewRefreshPending ? "株価データを取得中..." : "表示できる株価データがありません", width / 2, height / 2); return;
-  }
-  const padding = { left: 62, right: 16, top: 16, bottom: 28 };
-  const volumeHeight = Math.max(44, height * 0.18), gap = 14;
-  const priceBottom = height - padding.bottom - volumeHeight - gap;
-  const plotWidth = width - padding.left - padding.right, priceHeight = priceBottom - padding.top;
-  const lows = rows.map((r) => Number(r.low)).filter(Number.isFinite);
-  const highs = rows.map((r) => Number(r.high)).filter(Number.isFinite);
-  let minPrice = Math.min(...lows), maxPrice = Math.max(...highs);
-  const pricePad = Math.max((maxPrice - minPrice) * 0.06, maxPrice * 0.002);
-  const priceStep = getNicePriceStep(maxPrice - minPrice + pricePad * 2);
-  minPrice = Math.floor((minPrice - pricePad) / priceStep) * priceStep;
-  maxPrice = Math.ceil((maxPrice + pricePad) / priceStep) * priceStep;
-  const priceRange = Math.max(0.000001, maxPrice - minPrice);
-  const maxVolume = Math.max(1, ...rows.map((r) => Number(r.volume) || 0));
-  const step = plotWidth / rows.length, bodyWidth = Math.max(1, Math.min(12, step * 0.68));
-  const yFor = (value) => padding.top + (maxPrice - value) / priceRange * priceHeight;
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.16)"; ctx.fillStyle = "rgba(148, 163, 184, 0.8)";
-  ctx.font = "11px sans-serif"; ctx.textAlign = "right";
-  const priceDecimals = priceStep < 1 ? Math.min(4, Math.ceil(-Math.log10(priceStep))) : 0;
-  for (let value = maxPrice; value >= minPrice - priceStep * 0.001; value -= priceStep) {
-    const y = yFor(value);
-    ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(width - padding.right, y); ctx.stroke();
-    ctx.fillText(value.toLocaleString(undefined, {
-      minimumFractionDigits: priceDecimals,
-      maximumFractionDigits: priceDecimals
-    }), padding.left - 7, y + 4);
-  }
-  // ローソク足より先に描いて背面に敷く
-  drawReviewVolumeProfile(ctx, rows, padding, width, minPrice, maxPrice, priceHeight);
-  rows.forEach((row, index) => {
-    const x = padding.left + step * (index + 0.5);
-    const open = Number(row.open), high = Number(row.high), low = Number(row.low), close = Number(row.close);
-    if (![open, high, low, close].every(Number.isFinite)) return;
-    const color = close >= open ? "#ef4444" : "#22c55e"; ctx.strokeStyle = color; ctx.fillStyle = color;
-    ctx.beginPath(); ctx.moveTo(x, yFor(high)); ctx.lineTo(x, yFor(low)); ctx.stroke();
-    const top = Math.min(yFor(open), yFor(close)), bodyHeight = Math.max(1, Math.abs(yFor(open) - yFor(close)));
-    ctx.fillRect(x - bodyWidth / 2, top, bodyWidth, bodyHeight);
-    const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
-    ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
-  });
-  drawReviewMovingAverages(ctx, rows, allRows, padding, step, yFor);
-  drawReviewTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals);
-  ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
-  const labelCount = Math.min(5, rows.length);
-  for (let i = 0; i < labelCount; i += 1) {
-    const index = Math.round(i * (rows.length - 1) / Math.max(1, labelCount - 1));
-    ctx.fillText(rows[index].date.slice(5).replace("-", "/"), padding.left + step * (index + 0.5), height - 7);
-  }
-  const first = rows[0], last = rows[rows.length - 1], change = Number(last.close) - Number(first.close);
-  const percent = Number(first.close) ? change / Number(first.close) * 100 : 0;
-  reviewChartSummary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）${reviewRefreshPending ? "　最新データを取得中..." : ""}`;
-  reviewCandleModel = { rows, padding, step, width, priceBottom, priceHeight, minPrice, maxPrice, priceRange, priceDecimals };
+  reviewChart.draw();
 }
-
-try {
-  let savedMovingAverages = JSON.parse(localStorage.getItem(REVIEW_MA_KEY) || "[25,50]");
-  if (Array.isArray(savedMovingAverages) && savedMovingAverages.includes(5)) {
-    savedMovingAverages = [...new Set(savedMovingAverages.map((period) => period === 5 ? 50 : period))];
-    localStorage.setItem(REVIEW_MA_KEY, JSON.stringify(savedMovingAverages));
-  }
-  reviewMaToggles.forEach((toggle) => { toggle.checked = savedMovingAverages.includes(Number(toggle.value)); });
-} catch (_error) {
-  // ????????????HTML????????????
-}
-reviewMaToggles.forEach((toggle) => toggle.addEventListener("change", () => {
-  const enabled = [...reviewMaToggles].filter((item) => item.checked).map((item) => Number(item.value));
-  localStorage.setItem(REVIEW_MA_KEY, JSON.stringify(enabled));
-  drawReviewCandlestickChart();
-}));
-
-const reviewChartMenuClosers = [];
-function closeReviewChartMenus() {
-  reviewChartMenuClosers.forEach((close) => close());
-}
-function setupReviewChartMenu(button, menu) {
-  const close = () => {
-    menu.classList.add("is-hidden");
-    button.setAttribute("aria-expanded", "false");
-  };
-  reviewChartMenuClosers.push(close);
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    const willOpen = menu.classList.contains("is-hidden");
-    closeReviewChartMenus();
-    if (willOpen) {
-      menu.classList.remove("is-hidden");
-      button.setAttribute("aria-expanded", "true");
-    }
-  });
-  menu.addEventListener("click", (event) => event.stopPropagation());
-}
-setupReviewChartMenu(reviewMaMenuButton, reviewMaMenu);
-setupReviewChartMenu(reviewVolumeProfileMenuButton, reviewVolumeProfileMenu);
-document.addEventListener("click", closeReviewChartMenus);
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeReviewChartMenus();
-});
-reviewVolumeProfileToggle.checked = localStorage.getItem(REVIEW_VOLUME_PROFILE_KEY) !== "false";
-reviewVolumeProfileToggle.addEventListener("change", () => {
-  localStorage.setItem(REVIEW_VOLUME_PROFILE_KEY, String(reviewVolumeProfileToggle.checked));
-  drawReviewCandlestickChart();
-});
-{
-  const savedBins = localStorage.getItem(REVIEW_VOLUME_PROFILE_BINS_KEY);
-  const binValues = [...reviewVolumeProfileBinsInputs].map((input) => input.value);
-  const activeBins = binValues.includes(savedBins) ? savedBins : "24";
-  reviewVolumeProfileBinsInputs.forEach((input) => { input.checked = input.value === activeBins; });
-}
-reviewVolumeProfileBinsInputs.forEach((input) => input.addEventListener("change", () => {
-  localStorage.setItem(REVIEW_VOLUME_PROFILE_BINS_KEY, input.value);
-  drawReviewCandlestickChart();
-}));
-function setReviewChartHeight(height, persist = false) {
-  const next = Math.min(REVIEW_CHART_HEIGHT_MAX,
-    Math.max(REVIEW_CHART_HEIGHT_MIN, Math.round(Number(height) || REVIEW_CHART_HEIGHT_DEFAULT)));
-  reviewCandlestickWrap.style.height = `${next}px`;
-  if (persist) localStorage.setItem(REVIEW_CHART_HEIGHT_KEY, String(next));
-}
-
-// チャート下端のハンドルをドラッグして高さを調整する。再描画はResizeObserverが追従する。
-function initReviewChartResize() {
-  setReviewChartHeight(Number(localStorage.getItem(REVIEW_CHART_HEIGHT_KEY)) || REVIEW_CHART_HEIGHT_DEFAULT);
-  if (!reviewChartResizer) return;
-  let resizing = false, startY = 0, startHeight = 0;
-  const resize = (event) => {
-    if (resizing) setReviewChartHeight(startHeight + event.clientY - startY);
-  };
-  const finish = () => {
-    if (!resizing) return;
-    resizing = false;
-    reviewChartResizer.classList.remove("is-active");
-    setReviewChartHeight(reviewCandlestickWrap.getBoundingClientRect().height, true);
-    window.removeEventListener("pointermove", resize);
-    window.removeEventListener("pointerup", finish);
-    window.removeEventListener("pointercancel", finish);
-  };
-  reviewChartResizer.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    resizing = true;
-    startY = event.clientY;
-    startHeight = reviewCandlestickWrap.getBoundingClientRect().height;
-    reviewChartResizer.classList.add("is-active");
-    reviewChartResizer.setPointerCapture?.(event.pointerId);
-    window.addEventListener("pointermove", resize);
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-  });
-  reviewChartResizer.addEventListener("dblclick", () => setReviewChartHeight(REVIEW_CHART_HEIGHT_DEFAULT, true));
-}
-initReviewChartResize();
-
-reviewChartRange.value = localStorage.getItem(REVIEW_CHART_RANGE_KEY) || "1y";
-reviewChartRange.addEventListener("change", () => {
-  localStorage.setItem(REVIEW_CHART_RANGE_KEY, reviewChartRange.value); drawReviewCandlestickChart();
-});
-reviewChartScrubSlider.addEventListener("input", () => {
-  const maxOffset = Number(reviewChartScrubSlider.max) || 0;
-  setReviewChartEndOffset(maxOffset - Number(reviewChartScrubSlider.value));
-});
-reviewChartStepBack.addEventListener("click", () => setReviewChartEndOffset(reviewChartEndOffset + 1));
-reviewChartStepForward.addEventListener("click", () => setReviewChartEndOffset(reviewChartEndOffset - 1));
-reviewChartLatest.addEventListener("click", () => setReviewChartEndOffset(0));
-reviewCandlestickWrap.addEventListener("mousemove", (event) => {
-  if (!reviewCandleModel) return;
-  const rect = reviewCandlestickWrap.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
-  const { rows, padding, step, width, priceBottom, priceHeight, maxPrice, priceRange, priceDecimals } = reviewCandleModel;
-  const isInPricePlot = x >= padding.left && x <= width - padding.right && y >= padding.top && y <= priceBottom;
-  if (isInPricePlot) {
-    const price = maxPrice - ((y - padding.top) / priceHeight) * priceRange;
-    reviewChartCrosshair.style.left = `${padding.left}px`;
-    reviewChartCrosshair.style.right = `${padding.right}px`;
-    reviewChartCrosshair.style.top = `${y}px`;
-    reviewChartCrosshairPrice.textContent = price.toLocaleString(undefined, {
-      minimumFractionDigits: priceDecimals,
-      maximumFractionDigits: priceDecimals
-    });
-    reviewChartCrosshair.classList.remove("is-hidden");
-  } else {
-    reviewChartCrosshair.classList.add("is-hidden");
-  }
-  const index = Math.floor((x - padding.left) / step);
-  if (index < 0 || index >= rows.length) { reviewChartTooltip.classList.add("is-hidden"); return; }
-  const row = rows[index], fmt = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
-  reviewChartTooltip.textContent = `${row.date}　始 ${fmt(row.open)}　高 ${fmt(row.high)}　安 ${fmt(row.low)}　終 ${fmt(row.close)}　出来高 ${(Number(row.volume) || 0).toLocaleString()}`;
-  reviewChartTooltip.classList.remove("is-hidden");
-  const tooltipHalfWidth = reviewChartTooltip.offsetWidth / 2;
-  const tooltipEdgeGap = 8;
-  const minCenter = tooltipHalfWidth + tooltipEdgeGap;
-  const maxCenter = Math.max(minCenter, rect.width - tooltipHalfWidth - tooltipEdgeGap);
-  reviewChartTooltip.style.left = clamp(x, minCenter, maxCenter) + "px";
-});
-reviewCandlestickWrap.addEventListener("mouseleave", () => {
-  reviewChartTooltip.classList.add("is-hidden");
-  reviewChartCrosshair.classList.add("is-hidden");
-});
 
 function formatReviewQuote(value, currency, signed = false) {
   const numeric = toFiniteNumber(value);
@@ -3216,7 +2856,7 @@ function formatReviewQuote(value, currency, signed = false) {
   }).format(numeric);
 }
 
-function renderReviewChartQuote() {
+function renderReviewChartQuote(history, isPast) {
   reviewChartChange.classList.remove("is-positive", "is-negative");
   if (!reviewSnapshot) {
     reviewChartPrice.textContent = "-";
@@ -3224,8 +2864,6 @@ function renderReviewChartQuote() {
     return;
   }
   // 過去表示中は表示終端日の終値・前日終値で表示する（最新表示ではスナップショットの値を優先）
-  const isPast = reviewChartEndOffset > 0;
-  const history = getReviewCandlesUpToEnd();
   const overview = reviewSnapshot.overview || {};
   const currency = reviewSnapshot.currency || "JPY";
   const currentPrice = isPast
@@ -3247,7 +2885,6 @@ function renderReviewChartQuote() {
 
 function renderReviewSnapshot() {
   renderReviewChips();
-  renderReviewChartQuote();
 
   if (!reviewSnapshot) {
     reviewSymbol.textContent = "銘柄を選択してください";
@@ -3370,7 +3007,7 @@ async function loadReviewSnapshot(rawTicker) {
   if (!ticker) return;
 
   const requestId = ++reviewLoadRequestId;
-  if (ticker !== activeReviewTicker) reviewChartEndOffset = 0;
+  if (ticker !== activeReviewTicker) reviewChart.resetEndOffset();
   activeReviewTicker = ticker;
   reviewTickerInput.value = ticker;
   hideReviewTickerSuggestions();
