@@ -3,6 +3,7 @@ import "./renderer-settings.js";
 import "./renderer-resources.js";
 import "./renderer-market.js";
 import { createCandlestickChart, prepareHiDPICanvas } from "./candlestick-chart.js";
+import { setupColumnResizer } from "./grid-resizer.js";
 import { setStockReviewContext } from "./renderer-stock-chat.js";
 import { setAppStatus } from "./renderer-status.js";
 import {
@@ -2851,6 +2852,16 @@ const reviewChart = createCandlestickChart({
 function drawReviewCandlestickChart() {
   reviewChart.draw();
 }
+
+// 指標列と銘柄チャット列の境界ドラッグ（再描画はResizeObserverが追従）
+setupColumnResizer({
+  grid: document.querySelector("#view-review .review-main-grid"),
+  handle: document.getElementById("review-col-resizer"),
+  cssVar: "--review-split",
+  storageKey: "stock-review.reviewSplitX",
+  min: 32,
+  max: 72
+});
 
 function formatReviewQuote(value, currency, signed = false) {
   const numeric = toFiniteNumber(value);
