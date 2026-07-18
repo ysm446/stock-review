@@ -1,8 +1,17 @@
 # Progress
 
-最終更新: 2026-07-18
+最終更新: 2026-07-19
 
 ## 完了済み
+
+- **2026-07-19: 株価チャートに信用残（信用買い残・売り残）を追加**。
+  - **データ源の調査結果**: 東証の銘柄別信用取引週末残高は、無料公開が公式サイトの直近5週分のPDF（`syumatsuYYYYMMDD00.pdf`、削除済みの過去週はURL直打ちでも404）のみ。過去へ遡るには J-Quants API の Standard プラン以上（10年分、Premiumで20年分）が必要。日証金の貸借残高（日次）はCSRF付きセッションフォームで簡易には叩けず、IRBank等はJS動的読み込みのため見送り。→ **無料のJPX週次PDFを蓄積する方式を採用**（review_price_history と同じ発想）。
+  - **backend/fetch_margin.py 新設**: JPXページから未取り込み週のPDFをダウンロードし pdfplumber（requirements.txt に追加済み・.venv 導入済み）で解析、`app.db` の `margin_history`（code + week_date 主キー、売残・買残）へ全銘柄upsert。解析は行グループ化（許容誤差4px、名前と数値のbaselineずれ対策）→ ISIN の右側の数値を右揃えx座標で12列に割当。「売残=一般+制度、買残=一般+制度」の恒等式で列ずれ行を破棄（実PDFで3,929/3,931行一致・不一致0）。▲は次数値のマイナス符号。コードは5桁→末尾0を除去して正規化（`25935` のような優先株はそのまま）。JPXはデフォルトUAを403で弾くためブラウザ風UAを送る。`margin_meta.last_checked` で6時間スロットル（`--force` で無視）。
+  - **配線**: `fetch_review.py` の `build_payload` / `refresh_price_history` が `.T` 銘柄で `ingest_safely()`（失敗してもstderrに出すだけ）→ `marginHistory` をペイロードに付与（スナップショットには含めない）。`review_cache.py` は起動高速化のため fetch_margin を import せず同じ正規化規則で `margin_history` を直接読む。IPC・preload の変更は不要（既存ペイロードに相乗り）。
+  - **フロント**: `candlestick-chart.js` に `marginMenuButton`/`marginMenu`/`getMarginRows` config を追加。買い残 #f97316 / 売り残 #38bdf8 の階段状ライン（週末申込日≦ローソク日付の最新値を割当）を出来高エリアに独立スケール（表示中の最大値基準）で描画。選択は `${storagePrefix}MarginSeries` に保存（既定は両方ON）。ツールチップに信用買残・売残・倍率（M/D時点）を追記。メニューはレビュー画面のみ（マーケットの指数・FXはデータ対象外、config省略で安全に無効）。
+  - **検証**: 隔離DATA_DIRで実サイトから5週分取り込み（各約3,930銘柄、計47秒）→ スロットル動作 → トヨタ7203.Tの5週履歴 → `review_cache.py` の `marginHistory` 出力を確認。scratchpadのElectronハーネス（実styles.css＋実チャートモジュール＋合成データ）で階段ライン2本・メニュー・スウォッチの描画を目視確認。実アプリ画面での表示は未確認。
+  - **注意**: 初回は5週分のPDF解析で1分弱かかる（背景実行なのでUIはブロックしないが、初回の「日足を再取得」がその分待たされることがある）。蓄積開始前の過去分は取得不能（有料のJ-Quants Standardで10年分を投入する拡張は将来検討。テーブル構造はそのまま流用可能）。
+  - **同日追記**: データの性質・入手事情・実装・読み方の注意（週次ラグ、スケール独立、信用残は国内個人中心で海外機関の貸株空売りは含まれない、代替は空売り残高報告等）を `docs/design/margin-trading-data.md` に文書化。空売り残高報告の蓄積・チャート重ねを将来の拡張候補として記載。
 
 - **2026-07-18: マーケットページ第2・3弾（ニュースパネル＋AIまとめ）**。
   - **ニュース収集**: `backend/market_news.py` 新設。`search_web.search_news`（ddgs、`include_image=True` でサムネイルURL取得。エージェントツール向けの既定は従来どおり画像なし）を市況クエリ4本（株式市場 / 日経平均 / 米国株 / 為替 ドル円）×8件で実行。

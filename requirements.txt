@@ -1,6 +1,7 @@
 yfinance
 pandas
 requests
+pdfplumber
 fastapi
 pydantic
 uvicorn

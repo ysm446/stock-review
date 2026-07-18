@@ -1,10 +1,32 @@
 """個別銘柄レビューのローカルキャッシュを高速に読み出す。"""
 
 import json
+import re
 import sqlite3
 import sys
 
 from paths import DB_FILE
+
+# 起動高速化のため fetch_margin（requests 依存）は import せず、
+# 東証ティッカー→コードの変換だけ同じ規則で行う
+TSE_TICKER = re.compile(r"([0-9A-Z]{4,5})\.T$")
+
+
+def load_margin_rows(conn, symbol):
+    match = TSE_TICKER.fullmatch(symbol)
+    if not match:
+        return []
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='margin_history'"
+    ).fetchone()
+    if not table:
+        return []
+    rows = conn.execute(
+        """SELECT week_date, sell_balance, buy_balance FROM margin_history
+           WHERE code = ? ORDER BY week_date""",
+        (match.group(1),),
+    ).fetchall()
+    return [{"date": r[0], "sell": r[1], "buy": r[2]} for r in rows]
 
 
 def load_cached_review(symbol: str):
@@ -42,6 +64,7 @@ def load_cached_review(symbol: str):
              "close": item[4], "volume": item[5]}
             for item in history
         ]
+        payload["marginHistory"] = load_margin_rows(conn, symbol)
         return payload
     finally:
         conn.close()

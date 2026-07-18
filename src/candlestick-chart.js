@@ -6,6 +6,7 @@
 import { clamp } from "./renderer-utils.js";
 
 export const MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa", 200: "#ec4899" };
+export const MARGIN_COLORS = { buy: "#f97316", sell: "#38bdf8" };
 const SCRUB_MIN_VISIBLE = 20;
 const CANDLE_UP_COLOR = "#ef4444";
 const CANDLE_DOWN_COLOR = "#22c55e";
@@ -118,10 +119,12 @@ function getTurningPoints(rows) {
 //   rangeSelect … 表示期間 <select>（1m/3m/6m/1y/all）
 //   maMenuButton / maMenu … 移動平均線メニュー（トグルは maMenu 内の checkbox を自動検出）
 //   volumeProfileMenuButton / volumeProfileMenu / volumeProfileToggle … 価格帯別出来高（省略可。本数 radio は menu 内を自動検出）
+//   marginMenuButton / marginMenu … 信用残メニュー（省略可。買い残/売り残 checkbox を自動検出）
 //   scrub: { container, slider, stepBack, stepForward, latest } … タイムマシン操作（省略可）
 //   resizer … 高さ調整ハンドル（省略可）
 //   storagePrefix … localStorage キーの前置詞（例 "stock-review.review"）
 //   getRows() … 全日足（古い順）。不正な行はチャート側で除外する
+//   getMarginRows() … 信用残の週次履歴（古い順、{date, sell, buy}。省略可）
 //   getEmptyState() … データ無し時の { summary, canvas } メッセージ
 //   getSummarySuffix() … サマリー行の末尾に足す文字列（省略可）
 //   onAfterDraw({ endRows, isPast }) … 描画のたびに呼ばれる（見出し・株価表示の更新用）
@@ -130,9 +133,11 @@ export function createCandlestickChart(config) {
     canvas, wrap, tooltip, crosshair, crosshairPrice, summary,
     rangeSelect, maMenuButton, maMenu,
     volumeProfileMenuButton, volumeProfileMenu, volumeProfileToggle,
+    marginMenuButton, marginMenu,
     scrub, resizer,
     storagePrefix,
     getRows,
+    getMarginRows = () => [],
     getEmptyState = () => ({ summary: "データがありません", canvas: "表示できるデータがありません" }),
     getSummarySuffix = () => "",
     onAfterDraw = () => {},
@@ -144,9 +149,11 @@ export function createCandlestickChart(config) {
   const MA_KEY = `${storagePrefix}MovingAverages`;
   const VOLUME_PROFILE_KEY = `${storagePrefix}VolumeProfile`;
   const VOLUME_PROFILE_BINS_KEY = `${storagePrefix}VolumeProfileBins`;
+  const MARGIN_KEY = `${storagePrefix}MarginSeries`;
   const HEIGHT_KEY = `${storagePrefix}ChartHeight`;
 
   const maToggles = maMenu ? [...maMenu.querySelectorAll('input[type="checkbox"]')] : [];
+  const marginToggles = marginMenu ? [...marginMenu.querySelectorAll('input[type="checkbox"]')] : [];
   const volumeProfileBinsInputs = volumeProfileMenu
     ? [...volumeProfileMenu.querySelectorAll('input[type="radio"]')]
     : [];
@@ -248,6 +255,53 @@ export function createCandlestickChart(config) {
     ctx.restore();
   }
 
+  // 各ローソクの日付時点で公表済み（申込日＝週末がその日以前）の最新の信用残を割り当てる
+  function getMarginValues(rows) {
+    const marginRows = (getMarginRows() || []).filter((row) => row && row.date);
+    if (!marginRows.length || !rows.length) return null;
+    const values = new Array(rows.length);
+    let cursor = -1;
+    rows.forEach((row, index) => {
+      while (cursor + 1 < marginRows.length && marginRows[cursor + 1].date <= row.date) cursor += 1;
+      values[index] = cursor >= 0 ? marginRows[cursor] : null;
+    });
+    return values;
+  }
+
+  function getEnabledMarginSeries() {
+    return marginToggles.filter((toggle) => toggle.checked).map((toggle) => toggle.value);
+  }
+
+  // 信用残（週次）を出来高エリアに階段状ラインで重ねる。
+  // 縦スケールは表示中の買い残・売り残の最大値（出来高バーとは独立）。
+  function drawMarginBalances(ctx, rows, marginValues, padding, step, height, volumeHeight) {
+    const enabled = getEnabledMarginSeries();
+    if (!marginValues || !enabled.length) return;
+    const peak = Math.max(0, ...marginValues.flatMap((value) => (
+      value ? enabled.map((key) => Number(value[key]) || 0) : []
+    )));
+    if (!(peak > 0)) return;
+    const bottom = height - padding.bottom;
+    ctx.save();
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = 0.9;
+    enabled.forEach((key) => {
+      ctx.strokeStyle = MARGIN_COLORS[key] || "#94a3b8";
+      ctx.beginPath();
+      let started = false;
+      rows.forEach((row, index) => {
+        const value = marginValues[index] ? Number(marginValues[index][key]) : NaN;
+        if (!Number.isFinite(value)) return;
+        const x = padding.left + step * index;
+        const y = bottom - (value / peak) * volumeHeight;
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        ctx.lineTo(x + step, y);
+      });
+      if (started) ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   function updateScrub(allRows) {
     if (!scrub) return;
     const hasData = allRows.length > 0;
@@ -326,6 +380,8 @@ export function createCandlestickChart(config) {
       const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
       ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
     });
+    const marginValues = getMarginValues(rows);
+    drawMarginBalances(ctx, rows, marginValues, padding, step, height, volumeHeight);
     drawMovingAverages(ctx, rows, getRowsUpToEnd(), padding, step, yFor);
     drawTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals);
     ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
@@ -337,7 +393,7 @@ export function createCandlestickChart(config) {
     const first = rows[0], last = rows[rows.length - 1], change = Number(last.close) - Number(first.close);
     const percent = Number(first.close) ? change / Number(first.close) * 100 : 0;
     summary.textContent = `${rows.length}日分を表示　${change >= 0 ? "+" : ""}${change.toLocaleString(undefined, { maximumFractionDigits: 2 })}（${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%）${getSummarySuffix()}`;
-    model = { rows, padding, step, width, priceBottom, priceHeight, minPrice, maxPrice, priceRange, priceDecimals };
+    model = { rows, padding, step, width, priceBottom, priceHeight, minPrice, maxPrice, priceRange, priceDecimals, marginValues };
   }
 
   // ---- 設定の復元とイベント配線 ----
@@ -382,6 +438,20 @@ export function createCandlestickChart(config) {
     }));
   }
   if (volumeProfileMenuButton && volumeProfileMenu) setupChartMenu(volumeProfileMenuButton, volumeProfileMenu);
+
+  if (marginToggles.length) {
+    try {
+      const savedMarginSeries = JSON.parse(localStorage.getItem(MARGIN_KEY) || '["buy","sell"]');
+      marginToggles.forEach((toggle) => { toggle.checked = savedMarginSeries.includes(toggle.value); });
+    } catch (_error) {
+      // 保存値が壊れているときはHTMLの初期状態のまま
+    }
+    marginToggles.forEach((toggle) => toggle.addEventListener("change", () => {
+      localStorage.setItem(MARGIN_KEY, JSON.stringify(getEnabledMarginSeries()));
+      draw();
+    }));
+  }
+  if (marginMenuButton && marginMenu) setupChartMenu(marginMenuButton, marginMenu);
 
   if (scrub) {
     scrub.slider.addEventListener("input", () => {
@@ -450,7 +520,13 @@ export function createCandlestickChart(config) {
     const index = Math.floor((x - padding.left) / step);
     if (index < 0 || index >= rows.length) { tooltip.classList.add("is-hidden"); return; }
     const row = rows[index], fmt = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
-    tooltip.textContent = `${row.date}　始 ${fmt(row.open)}　高 ${fmt(row.high)}　安 ${fmt(row.low)}　終 ${fmt(row.close)}　出来高 ${(Number(row.volume) || 0).toLocaleString()}`;
+    let marginText = "";
+    const margin = getEnabledMarginSeries().length ? model.marginValues?.[index] : null;
+    if (margin) {
+      const ratio = Number(margin.sell) > 0 ? `　倍率 ${(Number(margin.buy) / Number(margin.sell)).toFixed(2)}` : "";
+      marginText = `　信用買残 ${(Number(margin.buy) || 0).toLocaleString()}　売残 ${(Number(margin.sell) || 0).toLocaleString()}${ratio}（${margin.date.slice(5).replace("-", "/")}時点）`;
+    }
+    tooltip.textContent = `${row.date}　始 ${fmt(row.open)}　高 ${fmt(row.high)}　安 ${fmt(row.low)}　終 ${fmt(row.close)}　出来高 ${(Number(row.volume) || 0).toLocaleString()}${marginText}`;
     tooltip.classList.remove("is-hidden");
     const tooltipHalfWidth = tooltip.offsetWidth / 2;
     const tooltipEdgeGap = 8;

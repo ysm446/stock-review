@@ -58,6 +58,8 @@ import {
   reviewChartCrosshairPrice,
   reviewMaMenuButton,
   reviewMaMenu,
+  reviewMarginMenuButton,
+  reviewMarginMenu,
   reviewChipRow,
   reviewFinancialBody,
   reviewHistoryButton,
@@ -2818,6 +2820,8 @@ const reviewChart = createCandlestickChart({
   volumeProfileMenuButton: reviewVolumeProfileMenuButton,
   volumeProfileMenu: reviewVolumeProfileMenu,
   volumeProfileToggle: reviewVolumeProfileToggle,
+  marginMenuButton: reviewMarginMenuButton,
+  marginMenu: reviewMarginMenu,
   scrub: {
     container: reviewChartScrub,
     slider: reviewChartScrubSlider,
@@ -2828,6 +2832,7 @@ const reviewChart = createCandlestickChart({
   resizer: reviewChartResizer,
   storagePrefix: "stock-review.review",
   getRows: () => reviewSnapshot?.priceHistory,
+  getMarginRows: () => reviewSnapshot?.marginHistory,
   getEmptyState: () => ({
     summary: reviewRefreshPending
       ? "最新データを取得中..."
@@ -3074,7 +3079,11 @@ async function refreshReviewPriceHistory() {
       financialSummary: [],
       news: []
     };
-    reviewSnapshot = { ...baseSnapshot, priceHistory: result.priceHistory || [] };
+    reviewSnapshot = {
+      ...baseSnapshot,
+      priceHistory: result.priceHistory || [],
+      marginHistory: result.marginHistory || baseSnapshot.marginHistory || []
+    };
     renderReviewSnapshot();
     const count = Number(result.fetchedCount) || 0;
     setAppStatus(`${ticker} の日足を再取得しました（${count}件）。`, "success");

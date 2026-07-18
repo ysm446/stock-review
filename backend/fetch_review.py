@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import yfinance as yf
 
+import fetch_margin
 from shared import to_float
 from paths import DB_FILE
 
@@ -110,10 +111,12 @@ def refresh_price_history(symbol):
     if history is None or getattr(history, "empty", True):
         raise RuntimeError("日足を取得できませんでした（データが空です）")
     price_history = store_and_load_candles(symbol, history)
+    fetch_margin.ingest_safely(symbol)
     return {
         "ticker": symbol,
         "fetchedCount": len(history.index),
         "priceHistory": price_history,
+        "marginHistory": fetch_margin.load_margin_history(symbol),
     }
 
 
@@ -160,7 +163,9 @@ def store_and_load_candles(symbol, history):
 
 
 def store_review_snapshot(symbol, payload):
-    snapshot = {key: value for key, value in payload.items() if key != "priceHistory"}
+    # 履歴系はスナップショットに含めない（それぞれ専用テーブルに蓄積済み）
+    snapshot = {key: value for key, value in payload.items()
+                if key not in ("priceHistory", "marginHistory")}
     conn = sqlite3.connect(DB_FILE)
     try:
         conn.execute("PRAGMA journal_mode = WAL")
@@ -325,6 +330,8 @@ def build_payload(symbol: str):
         "priceHistory": price_history,
     }
     store_review_snapshot(symbol, payload)
+    fetch_margin.ingest_safely(symbol)
+    payload["marginHistory"] = fetch_margin.load_margin_history(symbol)
     return payload
 
 
