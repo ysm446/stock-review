@@ -280,35 +280,57 @@ export function createCandlestickChart(config) {
     return marginToggles.filter((toggle) => toggle.checked).map((toggle) => toggle.value);
   }
 
-  // 信用残（週次）を出来高エリアに階段状ラインで重ねる。
-  // 縦スケールは表示中の買い残・売り残の最大値（出来高バーとは独立）。
-  function drawMarginBalances(ctx, rows, marginValues, padding, step, height, volumeHeight) {
+  // 信用残（週次）を出来高エリアに折れ線で重ねる。週末（申込日）の足の位置に点を打ち、
+  // 隣り合う週を直線で結ぶ。間隔が MARGIN_MAX_AGE_DAYS を超える欠測は結ばず、
+  // 孤立した週はドットだけ表示する。縦スケールは表示中の最大値（出来高バーとは独立）。
+  function drawMarginBalances(ctx, rows, padding, step, height, volumeHeight) {
     const enabled = getEnabledMarginSeries();
-    if (!marginValues || !enabled.length) return;
-    const peak = Math.max(0, ...marginValues.flatMap((value) => (
-      value ? enabled.map((key) => Number(value[key]) || 0) : []
-    )));
+    if (!rows.length || !enabled.length) return;
+    const marginRows = (getMarginRows() || []).filter((row) => row && row.date);
+    if (!marginRows.length) return;
+    // 週次データ点を表示中のローソクへアンカーする。申込日は取引日なので通常は
+    // 同日の足があるが、無い場合は直近過去の足（許容日数内）に寄せる
+    const indexByDate = new Map(rows.map((row, index) => [row.date, index]));
+    const maxAgeMs = MARGIN_MAX_AGE_DAYS * 86400000;
+    const points = [];
+    marginRows.forEach((margin) => {
+      let index = indexByDate.get(margin.date);
+      if (index === undefined) {
+        const marginTime = new Date(`${margin.date}T00:00:00`).getTime();
+        for (let i = rows.length - 1; i >= 0; i -= 1) {
+          const rowTime = new Date(`${rows[i].date}T00:00:00`).getTime();
+          if (rowTime <= marginTime) {
+            if (marginTime - rowTime <= maxAgeMs) index = i;
+            break;
+          }
+        }
+      }
+      if (index !== undefined) points.push({ index, ...margin });
+    });
+    if (!points.length) return;
+    const peak = Math.max(0, ...points.flatMap((point) => enabled.map((key) => Number(point[key]) || 0)));
     if (!(peak > 0)) return;
     const bottom = height - padding.bottom;
+    const xFor = (point) => padding.left + step * (point.index + 0.5);
+    const timeOf = (point) => new Date(`${point.date}T00:00:00`).getTime();
     ctx.save();
     ctx.lineWidth = 1.6;
     ctx.globalAlpha = 0.9;
     enabled.forEach((key) => {
-      ctx.strokeStyle = MARGIN_COLORS[key] || "#94a3b8";
-      let started = false;
-      rows.forEach((row, index) => {
-        const value = marginValues[index] ? Number(marginValues[index][key]) : NaN;
-        if (!Number.isFinite(value)) {
-          // 欠測区間では線を途切れさせる
-          if (started) { ctx.stroke(); started = false; }
-          return;
+      const color = MARGIN_COLORS[key] || "#94a3b8";
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      let previous = null;
+      points.forEach((point) => {
+        const value = Number(point[key]);
+        if (!Number.isFinite(value)) { previous = null; return; }
+        const x = xFor(point), y = bottom - (value / peak) * volumeHeight;
+        if (previous && timeOf(point) - previous.time <= maxAgeMs) {
+          ctx.beginPath(); ctx.moveTo(previous.x, previous.y); ctx.lineTo(x, y); ctx.stroke();
         }
-        const x = padding.left + step * index;
-        const y = bottom - (value / peak) * volumeHeight;
-        if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-        ctx.lineTo(x + step, y);
+        ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+        previous = { x, y, time: timeOf(point) };
       });
-      if (started) ctx.stroke();
     });
     ctx.restore();
   }
@@ -391,8 +413,8 @@ export function createCandlestickChart(config) {
       const barHeight = (Number(row.volume) || 0) / maxVolume * volumeHeight;
       ctx.globalAlpha = 0.35; ctx.fillRect(x - bodyWidth / 2, height - padding.bottom - barHeight, bodyWidth, barHeight); ctx.globalAlpha = 1;
     });
-    const marginValues = getMarginValues(rows);
-    drawMarginBalances(ctx, rows, marginValues, padding, step, height, volumeHeight);
+    const marginValues = getMarginValues(rows); // ツールチップ用（描画は drawMarginBalances が週次点から行う）
+    drawMarginBalances(ctx, rows, padding, step, height, volumeHeight);
     drawMovingAverages(ctx, rows, getRowsUpToEnd(), padding, step, yFor);
     drawTurningPointLabels(ctx, rows, padding, step, yFor, width, priceDecimals);
     ctx.fillStyle = "rgba(148, 163, 184, 0.8)"; ctx.textAlign = "center";
