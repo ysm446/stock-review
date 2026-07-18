@@ -275,7 +275,7 @@ const REVIEW_CHART_HEIGHT_KEY = "stock-review.reviewChartHeight";
 const REVIEW_CHART_HEIGHT_DEFAULT = 290;
 const REVIEW_CHART_HEIGHT_MIN = 180;
 const REVIEW_CHART_HEIGHT_MAX = 640;
-const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa" };
+const REVIEW_MA_COLORS = { 25: "#f59e0b", 50: "#06b6d4", 75: "#a78bfa", 200: "#ec4899" };
 let reviewCandleModel = null;
 let reviewChartEndOffset = 0;
 

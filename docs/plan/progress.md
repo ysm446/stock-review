@@ -1,8 +1,12 @@
 # Progress
 
-最終更新: 2026-07-16
+最終更新: 2026-07-18
 
 ## 完了済み
+
+- **2026-07-18: 移動平均線にMA200を追加**。
+  - `index.html` の移動平均線メニューにMA200チェックボックス（既定OFF）、`styles.css` にスウォッチ色 `is-ma200`（#ec4899 ピンク）、`renderer.js` の `REVIEW_MA_COLORS` に `200` を追加。既存の `calculateMovingAverage` / `drawReviewMovingAverages` は任意periodに対応済みのため計算・描画ロジックの変更は不要。
+  - 計算は先行履歴を含む `allRows`（fetch_reviewが約1年＝約250営業日取得）を使うため、蓄積が200営業日に達した銘柄で表示される。実画面での表示は未確認。
 
 - **2026-07-16: ウォッチリストのカテゴリー分け（タブ方式）を追加**。
   - DB: `watchlist` テーブルに `category TEXT NOT NULL DEFAULT ''` を追加（既存DBは起動時ALTERで自動移行）。カテゴリーの一覧・並び順は `app_settings` の `watchlist_categories`（JSON配列）に保存。`load_state` が `watchlistCategories` を返し、`save_state` は payload にキーがあるときだけ更新（キー無し保存でリストが消えない）。
