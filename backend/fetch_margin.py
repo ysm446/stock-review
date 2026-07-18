@@ -17,6 +17,7 @@ import json
 import re
 import sqlite3
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -25,6 +26,12 @@ from paths import DB_FILE
 
 PAGE_URL = "https://www.jpx.co.jp/markets/statistics-equities/margin/05.html"
 JPX_ORIGIN = "https://www.jpx.co.jp"
+# 過去分バックフィル用: Internet Archive に保存された週次PDFの一覧（CDX API）
+WAYBACK_CDX_URL = (
+    "http://web.archive.org/cdx/search/cdx"
+    "?url=jpx.co.jp/markets/statistics-equities/margin/tvdivq0000001rnl-att/syumatsu*"
+    "&output=text&fl=timestamp,original,statuscode&collapse=urlkey"
+)
 # JPX はデフォルトの python-requests UA を 403 で拒否する
 HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -141,6 +148,17 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _upsert_week(conn, week_date: str, balances: dict[str, tuple[int, int]], now: str) -> None:
+    conn.executemany(
+        """INSERT INTO margin_history (code, week_date, sell_balance, buy_balance, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(code, week_date) DO UPDATE SET
+             sell_balance=excluded.sell_balance, buy_balance=excluded.buy_balance,
+             updated_at=excluded.updated_at""",
+        [(code, week_date, sell, buy, now) for code, (sell, buy) in balances.items()],
+    )
+
+
 def ingest(throttle: bool = True) -> dict:
     """JPX ページを確認し、未取り込みの週の PDF を蓄積する。"""
     conn = _connect()
@@ -175,14 +193,7 @@ def ingest(throttle: bool = True) -> dict:
             balances = parse_margin_pdf(pdf.content)
             if not balances:
                 continue
-            conn.executemany(
-                """INSERT INTO margin_history (code, week_date, sell_balance, buy_balance, updated_at)
-                   VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(code, week_date) DO UPDATE SET
-                     sell_balance=excluded.sell_balance, buy_balance=excluded.buy_balance,
-                     updated_at=excluded.updated_at""",
-                [(code, week_date, sell, buy, now) for code, (sell, buy) in balances.items()],
-            )
+            _upsert_week(conn, week_date, balances, now)
             ingested.append({"weekDate": week_date, "count": len(balances)})
         conn.execute(
             "INSERT INTO margin_meta (key, value) VALUES ('last_checked', ?) "
@@ -191,6 +202,56 @@ def ingest(throttle: bool = True) -> dict:
         )
         conn.commit()
         return {"checked": True, "ingested": ingested}
+    finally:
+        conn.close()
+
+
+def backfill_from_wayback() -> dict:
+    """Internet Archive に保存された過去の週次PDFを取り込む（1回限りの手動実行を想定）。
+
+    JPX の無料公開は直近5週で消えるが、Wayback Machine がクロールした週は
+    後からでも取得できる（2026-07 時点で 2015〜2016 / 2021〜2022 / 2024〜2025 の
+    約90週。クロール頻度依存のため連続はしていない）。取り込み済みの週は飛ばすので
+    再実行しても安全。進捗は stderr に1行ずつ出す。
+    """
+    conn = _connect()
+    try:
+        known = {r[0] for r in conn.execute("SELECT DISTINCT week_date FROM margin_history")}
+        listing = requests.get(WAYBACK_CDX_URL, headers=HTTP_HEADERS, timeout=60)
+        listing.raise_for_status()
+        candidates = {}  # week_date -> (timestamp, original_url)
+        for line in listing.text.splitlines():
+            parts = line.split()
+            if len(parts) != 3 or parts[2] != "200":
+                continue
+            match = re.search(r"syumatsu(\d{8})00\.pdf$", parts[1])
+            if not match:
+                continue
+            ymd = match.group(1)
+            week_date = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
+            if week_date not in known and week_date not in candidates:
+                candidates[week_date] = (parts[0], parts[1])
+
+        now = _utc_now_iso()
+        ingested, failed = [], []
+        for week_date in sorted(candidates):
+            timestamp, original = candidates[week_date]
+            url = f"https://web.archive.org/web/{timestamp}id_/{original}"
+            try:
+                pdf = requests.get(url, headers=HTTP_HEADERS, timeout=120)
+                pdf.raise_for_status()
+                balances = parse_margin_pdf(pdf.content)
+                if not balances:
+                    raise RuntimeError("解析結果が0件")
+                _upsert_week(conn, week_date, balances, now)
+                conn.commit()  # 週ごとに確定し、中断しても途中までの蓄積を残す
+                ingested.append({"weekDate": week_date, "count": len(balances)})
+                print(f"{week_date}: {len(balances)}銘柄", file=sys.stderr)
+            except Exception as error:
+                failed.append({"weekDate": week_date, "error": str(error)})
+                print(f"{week_date}: 失敗 ({error})", file=sys.stderr)
+            time.sleep(1)  # web.archive.org への負荷を抑える
+        return {"candidates": len(candidates), "ingested": ingested, "failed": failed}
     finally:
         conn.close()
 
@@ -228,8 +289,10 @@ def ingest_safely(symbol: str) -> None:
 
 
 def main() -> int:
-    throttle = "--force" not in sys.argv
-    result = ingest(throttle=throttle)
+    if "--backfill" in sys.argv:
+        result = backfill_from_wayback()
+    else:
+        result = ingest(throttle="--force" not in sys.argv)
     sys.stdout.buffer.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
     return 0
 
