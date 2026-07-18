@@ -255,15 +255,23 @@ export function createCandlestickChart(config) {
     ctx.restore();
   }
 
-  // 各ローソクの日付時点で公表済み（申込日＝週末がその日以前）の最新の信用残を割り当てる
+  // 週次データを引き延ばして良い上限。これより古い値しか無い日は欠測として線を切る
+  // （アーカイブ由来の蓄積は数か月単位の欠落があり、フラット線で埋めると誤解を招くため）
+  const MARGIN_MAX_AGE_DAYS = 14;
+
+  // 各ローソクの日付時点で公表済み（申込日＝週末がその日以前）の最新の信用残を割り当てる。
+  // ただし MARGIN_MAX_AGE_DAYS より古い値は割り当てない（null = 欠測）。
   function getMarginValues(rows) {
     const marginRows = (getMarginRows() || []).filter((row) => row && row.date);
     if (!marginRows.length || !rows.length) return null;
+    const maxAgeMs = MARGIN_MAX_AGE_DAYS * 86400000;
     const values = new Array(rows.length);
     let cursor = -1;
     rows.forEach((row, index) => {
       while (cursor + 1 < marginRows.length && marginRows[cursor + 1].date <= row.date) cursor += 1;
-      values[index] = cursor >= 0 ? marginRows[cursor] : null;
+      if (cursor < 0) { values[index] = null; return; }
+      const age = new Date(`${row.date}T00:00:00`) - new Date(`${marginRows[cursor].date}T00:00:00`);
+      values[index] = age <= maxAgeMs ? marginRows[cursor] : null;
     });
     return values;
   }
@@ -287,14 +295,17 @@ export function createCandlestickChart(config) {
     ctx.globalAlpha = 0.9;
     enabled.forEach((key) => {
       ctx.strokeStyle = MARGIN_COLORS[key] || "#94a3b8";
-      ctx.beginPath();
       let started = false;
       rows.forEach((row, index) => {
         const value = marginValues[index] ? Number(marginValues[index][key]) : NaN;
-        if (!Number.isFinite(value)) return;
+        if (!Number.isFinite(value)) {
+          // 欠測区間では線を途切れさせる
+          if (started) { ctx.stroke(); started = false; }
+          return;
+        }
         const x = padding.left + step * index;
         const y = bottom - (value / peak) * volumeHeight;
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        if (!started) { ctx.beginPath(); ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
         ctx.lineTo(x + step, y);
       });
       if (started) ctx.stroke();
