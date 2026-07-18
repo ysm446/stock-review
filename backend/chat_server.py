@@ -25,6 +25,7 @@ import chat_agent
 import llm_client
 import llama_updater
 import embed_manager
+import fetch_margin
 import market_news
 from chat_embedder import warmup as embed_warmup
 
@@ -284,6 +285,25 @@ def embedding_install_deps():
     def event_stream():
         try:
             for event in embed_manager.install_deps():
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── Margin balance backfill ───────────────────────────────
+
+class MarginBackfillBody(BaseModel):
+    since: str | None = None  # "YYYY-MM-DD" または "YYYY"。None は取得できる全期間
+
+
+@app.post("/margin/backfill")
+def margin_backfill(body: MarginBackfillBody):
+    """Wayback Machine に保存された過去の信用残PDFを取り込む（進捗をSSEで返す）。"""
+    def event_stream():
+        try:
+            for event in fetch_margin.iter_backfill(body.since):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"

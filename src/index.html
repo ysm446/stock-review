@@ -764,6 +764,20 @@
                 <p class="settings-hint">ポートフォリオ・保有・会話・ノート・スクリーンショットなどのユーザーデータの保存先です。別ドライブやバックアップ対象のフォルダを指定できます。変更するとそのフォルダのデータに切り替わります（アプリ本体とモデル、llama-server の設定は移動しません）。</p>
                 <p class="settings-hint" id="data-dir-status"></p>
               </div>
+              <div class="settings-section">
+                <p class="settings-label">信用残の過去データ</p>
+                <div class="settings-row settings-row-actions">
+                  <select id="margin-backfill-range" class="chart-color-select" title="どこまで過去の週末残高を取り込むか">
+                    <option value="1">過去1年分</option>
+                    <option value="2" selected>過去2年分</option>
+                    <option value="3">過去3年分</option>
+                    <option value="all">取得できる全期間（2015年〜）</option>
+                  </select>
+                  <button class="accent-button" id="margin-backfill-run" type="button">過去分を取り込む</button>
+                </div>
+                <p class="settings-hint">株価チャートの「信用残」に表示する過去の週末残高を、公表PDFのアーカイブ（Internet Archive）から取り込みます。アーカイブに残っている週だけが対象のため、期間内でも取り込めない週があります（2023年・2025年秋〜2026年春は欠落）。直近5週分は普段の利用で自動取得されます。1週あたり10秒前後かかります。</p>
+                <p class="settings-hint" id="margin-backfill-status"></p>
+              </div>
             </section>
           </div>
         </div>

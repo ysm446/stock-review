@@ -53,23 +53,29 @@
 出ないので、通常は週1本の PDF 取り込み（約10秒）だけが走る。初回のみ5週分で1分弱。
 取り込み失敗はstderrに出すだけで、日足取得やレビュー表示は止めない。
 
-### 過去分バックフィル（fetch_margin.py --backfill）
+### 過去分バックフィル（設定画面 または fetch_margin.py --backfill）
 
 Internet Archive（Wayback Machine）がクロールした過去の週次PDFを一括で取り込む。
 
+- **設定 > データ > 信用残の過去データ**: 期間（過去1年 / 2年 / 3年 / 全期間）を選んで
+  「過去分を取り込む」を押す。進捗（n/m 週目）と完了サマリーがボタン下に表示される。
+  実装は `POST /margin/backfill`（SSE、`{"since": "YYYY-MM-DD" | "YYYY" | null}`）→
+  `fetch_margin.iter_backfill()`。
+- CLI からも実行できる:
+
 ```
-.venv\Scripts\python.exe backend\fetch_margin.py --backfill
+.venv\Scripts\python.exe backend\fetch_margin.py --backfill [--since 2024]
 ```
 
-- CDX API でアーカイブ済みPDFの一覧を取得し、未取り込みの週だけをダウンロード・解析して
-  `margin_history` へ upsert する。週ごとにコミットするので**中断しても再実行すれば続きから**進む。
+- CDX API でアーカイブ済みPDFの一覧を取得し、期間内で未取り込みの週だけをダウンロード・
+  解析して `margin_history` へ upsert する。週ごとにコミットするので**中断しても再実行すれば
+  続きから**進む（取り込み済みの週はスキップ）。
 - アーカイブのクロール頻度に依存するため**連続した週次にはならない**
   （2026-07 時点: 2015〜2016年・2021〜2022年・2024年・2025年前半の約90週。
   2017〜2020年・2023年・2025年秋〜2026年春は欠落）。
 - チャートは「その日以前の最新週の値」を階段状に引くため、欠落期間は
   古い値のフラットな線が続く。時点はツールチップの日付で確認できる。
-- 1回限りの手動実行を想定（自動更新には組み込まない）。archive.org への負荷を抑えるため
-  週ごとに1秒の間隔を置く。全体で30分前後かかる。
+- archive.org への負荷を抑えるため週ごとに1秒の間隔を置く。1週あたり10秒前後。
 
 ### チャート表示（src/candlestick-chart.js）
 
