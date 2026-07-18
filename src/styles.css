@@ -2030,6 +2030,22 @@ button:focus-visible {
   align-items: stretch;
 }
 
+/* 指標エリアが広いときは3カラムにして、項目の少ないカードの余白を減らす。
+   幅が必要な財務サマリーだけ2カラム分を使う（境界ドラッグで狭めたときは2カラムに戻る） */
+.review-lower-scroll {
+  container-type: inline-size;
+}
+
+@container (min-width: 860px) {
+  .review-grid-layout {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .review-financial-panel {
+    grid-column: span 2;
+  }
+}
+
 .review-candlestick-panel { flex: 0 0 auto; margin-bottom: 10px; }
 .review-chart-head { align-items: center; }
 .review-chart-controls { display: flex; align-items: center; gap: 12px; }
@@ -2125,7 +2141,8 @@ button:focus-visible {
 
 .review-kv-row {
   display: grid;
-  grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1fr);
+  /* ラベル列は固定幅にして、値をラベルのすぐ右に置く（カードが広くても間延びしない） */
+  grid-template-columns: 110px minmax(0, 1fr);
   gap: 12px;
   align-items: baseline;
 }
@@ -2193,7 +2210,7 @@ button:focus-visible {
 
 .review-kv-value {
   color: var(--text);
-  text-align: right;
+  text-align: left;
   font-size: 0.84rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -2205,10 +2222,6 @@ button:focus-visible {
 
 .review-kv-value.is-negative {
   color: var(--neg);
-}
-
-.review-financial-panel {
-  grid-column: auto;
 }
 
 .review-notes-panel {
