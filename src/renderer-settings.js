@@ -31,9 +31,6 @@ const dataDirOpenBtn          = document.getElementById("data-dir-open");
 const dataDirChangeBtn        = document.getElementById("data-dir-change");
 const dataDirStatus           = document.getElementById("data-dir-status");
 
-const marginBackfillRange     = document.getElementById("margin-backfill-range");
-const marginBackfillRun       = document.getElementById("margin-backfill-run");
-const marginBackfillStatus    = document.getElementById("margin-backfill-status");
 const marginAutoIngestToggle  = document.getElementById("margin-auto-ingest-toggle");
 const marginAutoIngestStatus  = document.getElementById("margin-auto-ingest-status");
 
@@ -381,56 +378,6 @@ marginAutoIngestToggle?.addEventListener("change", async () => {
     setAppStatus(`信用残の設定保存に失敗しました: ${err.message}`, "error");
   }
 });
-
-// ── 信用残の過去データ取り込み（Wayback バックフィル） ─────────
-let marginBackfilling = false;
-
-function marginBackfillSince() {
-  const value = marginBackfillRange?.value || "2";
-  if (value === "all") return null;
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - Number(value));
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-async function runMarginBackfill() {
-  if (marginBackfilling) return;
-  marginBackfilling = true;
-  marginBackfillRun.disabled = true;
-  const setStatus = (text) => { if (marginBackfillStatus) marginBackfillStatus.textContent = text; };
-  setStatus("アーカイブの一覧を確認しています…");
-  setAppStatus("信用残の過去データを取り込んでいます...", "active");
-  let done = null;
-  try {
-    await streamPost("/margin/backfill", { since: marginBackfillSince() }, evt => {
-      if (evt.type === "start") {
-        setStatus(evt.candidates > 0
-          ? `取り込み対象: ${evt.candidates}週（1週あたり10秒前後かかります）`
-          : "取り込み対象の週はありません（アーカイブに残っていないか、取り込み済みです）。");
-      } else if (evt.type === "week") {
-        setStatus(`${evt.index}/${evt.total} 週目: ${evt.weekDate}（${evt.count.toLocaleString()}銘柄）を取り込みました`);
-      } else if (evt.type === "done") {
-        done = evt;
-      } else if (evt.type === "error") {
-        throw new Error(evt.message);
-      }
-    });
-    if (done && (done.ingested > 0 || done.failed > 0)) {
-      setStatus(`完了: ${done.ingested}週を取り込みました${done.failed ? `（${done.failed}週は失敗）` : ""}。チャートは銘柄を開き直すと反映されます。`);
-      setAppStatus(`信用残の過去データを${done.ingested}週分取り込みました。`, done.failed ? "neutral" : "success");
-    } else {
-      setAppStatus("信用残の過去データ: 新たに取り込める週はありませんでした。", "neutral", 5000);
-    }
-  } catch (err) {
-    setStatus(`失敗しました: ${err.message}（再実行すると続きから取り込みます）`);
-    setAppStatus(`信用残の過去データ取り込みに失敗しました: ${err.message}`, "error");
-  } finally {
-    marginBackfilling = false;
-    marginBackfillRun.disabled = false;
-  }
-}
-
-marginBackfillRun?.addEventListener("click", runMarginBackfill);
 
 // ── テーマ（配色）の切り替え ───────────────────────────────
 // 実際のテーマ適用・永続化は theme.js（window.StockReviewTheme）が担う。

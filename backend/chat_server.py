@@ -292,11 +292,7 @@ def embedding_install_deps():
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ── Margin balance backfill ───────────────────────────────
-
-class MarginBackfillBody(BaseModel):
-    since: str | None = None  # "YYYY-MM-DD" または "YYYY"。None は取得できる全期間
-
+# ── Margin balance settings ───────────────────────────────
 
 class MarginSettingsBody(BaseModel):
     autoIngest: bool
@@ -310,19 +306,6 @@ def margin_settings():
 @app.put("/margin/settings")
 def margin_settings_update(body: MarginSettingsBody):
     return fetch_margin.save_settings(body.autoIngest)
-
-
-@app.post("/margin/backfill")
-def margin_backfill(body: MarginBackfillBody):
-    """Wayback Machine に保存された過去の信用残PDFを取り込む（進捗をSSEで返す）。"""
-    def event_stream():
-        try:
-            for event in fetch_margin.iter_backfill(body.since):
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ── Workspaces ────────────────────────────────────────────

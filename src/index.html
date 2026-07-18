@@ -773,19 +773,8 @@
                   <input type="checkbox" id="margin-auto-ingest-toggle" checked />
                   <span>新しい週の残高を自動で取り込む（銘柄レビューの表示・日足再取得時、6時間に1回まで）</span>
                 </label>
+                <p class="settings-hint">株価チャートの「信用残」に表示する東証公表の週末残高（週1回更新）です。オフにすると取り込みを行わず、蓄積済みの分だけ表示されます。</p>
                 <p class="settings-hint" id="margin-auto-ingest-status"></p>
-                <p class="settings-label">信用残の過去データ</p>
-                <div class="settings-row settings-row-actions">
-                  <select id="margin-backfill-range" class="chart-color-select" title="どこまで過去の週末残高を取り込むか">
-                    <option value="1">過去1年分</option>
-                    <option value="2" selected>過去2年分</option>
-                    <option value="3">過去3年分</option>
-                    <option value="all">取得できる全期間（2015年〜）</option>
-                  </select>
-                  <button class="accent-button" id="margin-backfill-run" type="button">過去分を取り込む</button>
-                </div>
-                <p class="settings-hint">株価チャートの「信用残」に表示する過去の週末残高を、公表PDFのアーカイブ（Internet Archive）から取り込みます。アーカイブに残っている週だけが対象のため、期間内でも取り込めない週があります（2023年・2025年秋〜2026年春は欠落）。直近5週分は普段の利用で自動取得されます。1週あたり10秒前後かかります。</p>
-                <p class="settings-hint" id="margin-backfill-status"></p>
               </div>
             </section>
           </div>

@@ -17,7 +17,6 @@ import json
 import re
 import sqlite3
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -26,12 +25,6 @@ from paths import DB_FILE
 
 PAGE_URL = "https://www.jpx.co.jp/markets/statistics-equities/margin/05.html"
 JPX_ORIGIN = "https://www.jpx.co.jp"
-# 過去分バックフィル用: Internet Archive に保存された週次PDFの一覧（CDX API）
-WAYBACK_CDX_URL = (
-    "http://web.archive.org/cdx/search/cdx"
-    "?url=jpx.co.jp/markets/statistics-equities/margin/tvdivq0000001rnl-att/syumatsu*"
-    "&output=text&fl=timestamp,original,statuscode&collapse=urlkey"
-)
 # JPX はデフォルトの python-requests UA を 403 で拒否する
 HTTP_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -206,94 +199,6 @@ def ingest(throttle: bool = True) -> dict:
         conn.close()
 
 
-def normalize_since(since: str | None) -> str | None:
-    """期間指定を 'YYYY-MM-DD' に正規化する。'2025' のような年だけの指定も受ける。"""
-    if not since:
-        return None
-    text = str(since).strip()
-    if re.fullmatch(r"\d{4}", text):
-        return f"{text}-01-01"
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        return text
-    raise ValueError(f"期間指定は YYYY または YYYY-MM-DD で指定してください: {since!r}")
-
-
-def iter_backfill(since: str | None = None):
-    """Internet Archive に保存された過去の週次PDFを取り込み、進捗イベントをyieldする。
-
-    JPX の無料公開は直近5週で消えるが、Wayback Machine がクロールした週は
-    後からでも取得できる（2026-07 時点で 2015〜2016 / 2021〜2022 / 2024〜2025 の
-    約90週。クロール頻度依存のため連続はしていない）。取り込み済みの週は飛ばすので
-    再実行しても安全。週ごとにコミットするため中断しても途中までの蓄積は残る。
-
-    イベント: {"type": "start", "candidates": n}
-              {"type": "week", "weekDate": ..., "count": n, "index": i, "total": n}
-              {"type": "week_error", "weekDate": ..., "message": ...}
-              {"type": "done", "ingested": n, "failed": n}
-    """
-    since = normalize_since(since)
-    conn = _connect()
-    try:
-        known = {r[0] for r in conn.execute("SELECT DISTINCT week_date FROM margin_history")}
-        listing = requests.get(WAYBACK_CDX_URL, headers=HTTP_HEADERS, timeout=60)
-        listing.raise_for_status()
-        candidates = {}  # week_date -> (timestamp, original_url)
-        for line in listing.text.splitlines():
-            parts = line.split()
-            if len(parts) != 3 or parts[2] != "200":
-                continue
-            match = re.search(r"syumatsu(\d{8})00\.pdf$", parts[1])
-            if not match:
-                continue
-            ymd = match.group(1)
-            week_date = f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}"
-            if since and week_date < since:
-                continue
-            if week_date not in known and week_date not in candidates:
-                candidates[week_date] = (parts[0], parts[1])
-
-        yield {"type": "start", "candidates": len(candidates)}
-        now = _utc_now_iso()
-        ingested = failed = 0
-        for index, week_date in enumerate(sorted(candidates), start=1):
-            timestamp, original = candidates[week_date]
-            url = f"https://web.archive.org/web/{timestamp}id_/{original}"
-            try:
-                pdf = requests.get(url, headers=HTTP_HEADERS, timeout=120)
-                pdf.raise_for_status()
-                balances = parse_margin_pdf(pdf.content)
-                if not balances:
-                    raise RuntimeError("解析結果が0件")
-                _upsert_week(conn, week_date, balances, now)
-                conn.commit()  # 週ごとに確定し、中断しても途中までの蓄積を残す
-                ingested += 1
-                yield {"type": "week", "weekDate": week_date, "count": len(balances),
-                       "index": index, "total": len(candidates)}
-            except Exception as error:
-                failed += 1
-                yield {"type": "week_error", "weekDate": week_date, "message": str(error)}
-            time.sleep(1)  # web.archive.org への負荷を抑える
-        yield {"type": "done", "ingested": ingested, "failed": failed}
-    finally:
-        conn.close()
-
-
-def backfill_from_wayback(since: str | None = None) -> dict:
-    """CLI用: iter_backfill を消費して進捗をstderrへ流し、集計を返す。"""
-    summary = {"candidates": 0, "ingested": [], "failed": []}
-    for event in iter_backfill(since):
-        if event["type"] == "start":
-            summary["candidates"] = event["candidates"]
-            print(f"取り込み対象: {event['candidates']}週", file=sys.stderr)
-        elif event["type"] == "week":
-            summary["ingested"].append({"weekDate": event["weekDate"], "count": event["count"]})
-            print(f"{event['weekDate']}: {event['count']}銘柄", file=sys.stderr)
-        elif event["type"] == "week_error":
-            summary["failed"].append({"weekDate": event["weekDate"], "error": event["message"]})
-            print(f"{event['weekDate']}: 失敗 ({event['message']})", file=sys.stderr)
-    return summary
-
-
 def load_margin_history(symbol: str) -> list[dict]:
     """東証ティッカーの蓄積済み信用残を古い順で返す。対象外・未蓄積は空リスト。"""
     code = code_for_ticker(symbol)
@@ -357,14 +262,7 @@ def ingest_safely(symbol: str) -> None:
 
 
 def main() -> int:
-    if "--backfill" in sys.argv:
-        since = None
-        if "--since" in sys.argv:
-            index = sys.argv.index("--since")
-            since = sys.argv[index + 1] if index + 1 < len(sys.argv) else None
-        result = backfill_from_wayback(since)
-    else:
-        result = ingest(throttle="--force" not in sys.argv)
+    result = ingest(throttle="--force" not in sys.argv)
     sys.stdout.buffer.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
     return 0
 
