@@ -1847,6 +1847,9 @@ button:focus-visible {
 .review-col-resizer:hover::after, .review-col-resizer.is-active::after { background: var(--control-border-strong); }
 
 .review-metrics-col {
+  /* 明示配置: 後続のドラッグハンドル（grid-column:1指定）に押し出されないようにする */
+  grid-column: 1;
+  grid-row: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -2239,6 +2242,8 @@ button:focus-visible {
 }
 
 .stock-chat-panel {
+  grid-column: 2;
+  grid-row: 1;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
@@ -2566,6 +2571,13 @@ button:focus-visible {
   /* 1カラム表示では左右の境界ドラッグは意味を持たないため隠す */
   .review-col-resizer {
     display: none;
+  }
+
+  /* 1カラムでは明示配置を解除して縦積みに戻す */
+  .review-metrics-col,
+  .stock-chat-panel {
+    grid-column: 1;
+    grid-row: auto;
   }
 
   .review-metrics-col {
