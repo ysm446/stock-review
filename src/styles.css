@@ -1945,26 +1945,6 @@ button:focus-visible {
   color: var(--neg-soft);
 }
 
-.review-notes-restore {
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--control-bg);
-  color: var(--muted);
-  font-size: 0.72rem;
-  cursor: pointer;
-}
-
-.review-notes-restore:hover {
-  background: var(--control-bg-hover);
-  color: var(--text);
-}
-
-.review-notes-restore.is-hidden {
-  display: none;
-}
-
 /* アシスタント回答下の「ノートに反映」ボタン */
 .chat-message-actions {
   margin-top: 6px;
@@ -1996,7 +1976,7 @@ button:focus-visible {
   background: none;
 }
 
-/* ノート表示パネル（notes.md の描画） */
+/* ノート表示パネル（カテゴリー別カードの描画） */
 .review-notes-pane {
   padding: 16px 18px;
 }
@@ -2006,20 +1986,58 @@ button:focus-visible {
   display: none;
 }
 
-.review-notes-pane .review-notes-body {
+.review-note-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.review-note-card + .review-note-card {
+  margin-top: 12px;
+}
+
+.review-note-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.review-note-card-head h3 {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-strong);
+}
+
+.review-note-card-time {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.review-note-card-restore {
+  margin-left: auto;
+  height: 22px;
+  padding: 0 9px;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.review-note-card-body {
   font-size: 0.92rem;
   line-height: 1.75;
 }
 
-.review-notes-pane .review-notes-body h1 {
+.review-note-card-body h1 {
   font-size: 1.08rem;
 }
 
-.review-notes-pane .review-notes-body h2 {
+.review-note-card-body h2 {
   font-size: 1rem;
 }
 
-.review-notes-pane .review-notes-body h3 {
+.review-note-card-body h3 {
   font-size: 0.94rem;
 }
 

@@ -320,6 +320,20 @@ def create_stock_session(ticker: str, title: str = "New chat") -> dict:
     return create_session(int(workspace["id"]), title)
 
 
+# ノートのカード分割（カテゴリー）。ルーティングとUIの表示順を兼ねる。
+# key はファイル名（stocks/<ticker>/notes/<key>.md）になるため英数字のみ。
+NOTE_CATEGORIES = [
+    {"key": "business", "title": "事業・製品", "description": "何で稼いでいる会社か、主力製品・サービス、ビジネスモデル、強み"},
+    {"key": "financials", "title": "業績・財務", "description": "決算の内容、売上・利益の傾向、財務体質、配当・株主還元"},
+    {"key": "recent", "title": "最近の動き", "description": "直近のニュース、発表、株価の材料になった出来事"},
+    {"key": "history", "title": "経緯・歴史", "description": "ここ数年の変化、転換点、過去の不祥事や構造改革"},
+    {"key": "environment", "title": "競合・取引環境", "description": "競合他社、主要取引先、業界動向、規制やマクロの影響"},
+    {"key": "thesis", "title": "投資判断メモ", "description": "自分の考え。買い/売りの根拠、懸念点、監視ポイント"},
+    {"key": "misc", "title": "その他", "description": "上のどれにも収まらない投資関連メモ"},
+]
+NOTE_CATEGORY_KEYS = [c["key"] for c in NOTE_CATEGORIES]
+
+
 def stock_notes_path(ticker: str) -> Path:
     return STOCKS_DIR / _stock_dir_name(ticker) / "notes.md"
 
@@ -375,6 +389,87 @@ def restore_stock_notes(ticker: str) -> dict:
     atomic_write_text(path, backup_content)
     atomic_write_text(backup, current)
     return get_stock_notes(normalized)
+
+
+# ── カード分割ノート（stocks/<ticker>/notes/<key>.md） ─────────
+
+def _note_card_path(ticker: str, key: str) -> Path:
+    return STOCKS_DIR / _stock_dir_name(ticker) / "notes" / f"{key}.md"
+
+
+def _require_note_category(key: str) -> dict:
+    for category in NOTE_CATEGORIES:
+        if category["key"] == key:
+            return category
+    raise ValueError(f"不明なノートカテゴリーです: {key}")
+
+
+def _read_note_card(ticker: str, category: dict) -> dict:
+    path = _note_card_path(ticker, category["key"])
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    updated_at = None
+    if content.strip():
+        updated_at = datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(timespec="seconds")
+    backup_path = path.parent / (path.name + ".bak")
+    has_backup = backup_path.exists() and bool(backup_path.read_text(encoding="utf-8").strip())
+    return {
+        "key": category["key"],
+        "title": category["title"],
+        "description": category["description"],
+        "content": content,
+        "updated_at": updated_at,
+        "has_backup": has_backup,
+    }
+
+
+def get_stock_note_cards(ticker: str) -> dict:
+    """全カードと、分割前の旧ノート（notes.md、あれば）を返す。"""
+    normalized = normalize_stock_ticker(ticker)
+    cards = [_read_note_card(normalized, category) for category in NOTE_CATEGORIES]
+    legacy_path = stock_notes_path(normalized)
+    legacy_content = legacy_path.read_text(encoding="utf-8") if legacy_path.exists() else ""
+    legacy = None
+    if legacy_content.strip():
+        legacy = {
+            "content": legacy_content,
+            "updated_at": datetime.fromtimestamp(legacy_path.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
+        }
+    notes_dir = STOCKS_DIR / _stock_dir_name(normalized) / "notes"
+    return {
+        "ticker": normalized,
+        "cards": cards,
+        "legacy": legacy,
+        "relative_dir": str(notes_dir.relative_to(DATA_DIR)),
+    }
+
+
+def save_stock_note_card(ticker: str, key: str, content: str) -> dict:
+    normalized = normalize_stock_ticker(ticker)
+    category = _require_note_category(key)
+    path = _note_card_path(normalized, key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # 上書き前の内容を1世代だけ退避する（空のときと内容が変わらないときは残さない）
+    previous = path.read_text(encoding="utf-8") if path.exists() else ""
+    if previous.strip() and previous != (content or ""):
+        atomic_write_text(path.parent / (path.name + ".bak"), previous)
+    atomic_write_text(path, content or "")
+    return _read_note_card(normalized, category)
+
+
+def restore_stock_note_card(ticker: str, key: str) -> dict:
+    """カードの現内容とバックアップを入れ替える（もう一度呼ぶと元に戻る）。"""
+    normalized = normalize_stock_ticker(ticker)
+    category = _require_note_category(key)
+    path = _note_card_path(normalized, key)
+    backup = path.parent / (path.name + ".bak")
+    backup_content = backup.read_text(encoding="utf-8") if backup.exists() else ""
+    if not backup_content.strip():
+        raise ValueError("戻せるバックアップがありません")
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, backup_content)
+    atomic_write_text(backup, current)
+    return _read_note_card(normalized, category)
 
 
 def list_documents(workspace_id: int) -> list[dict]:

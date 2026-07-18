@@ -19,7 +19,6 @@ const tabMetricsBtn = document.getElementById("review-tab-metrics");
 const tabNotesBtn = document.getElementById("review-tab-notes");
 const notesDot = document.getElementById("review-notes-dot");
 const notesStatus = document.getElementById("review-notes-status");
-const notesRestoreBtn = document.getElementById("review-notes-restore");
 const metricsPane = document.getElementById("review-metrics-pane");
 const notesPane = document.getElementById("review-notes-pane");
 const notesBody = document.getElementById("review-notes-body");
@@ -31,10 +30,12 @@ let activeSessionId = null;
 let history = [];
 let streaming = false;
 
-// ノート（notes.md）の表示と「ノートに反映」ボタンからの更新
-let notesContent = "";
-let notesHasBackup = false;
-let notesQueue = []; // 反映待ちのやり取り [{user, assistant, btn}]
+// ノート（カテゴリー別カード stocks/<ticker>/notes/<key>.md）の表示と
+// 「ノートに反映」ボタンからの更新。カード一覧はバックエンドの
+// NOTE_CATEGORIES 定義（key/title/description）をそのまま受け取る。
+let noteCards = [];    // [{key, title, description, content, updated_at, has_backup}]
+let legacyNote = null; // 分割前の旧 notes.md（あれば読み取り専用で表示）
+let notesQueue = [];   // 反映待ちのやり取り [{user, assistant, btn}]
 let notesUpdating = false;
 
 function setEnabled(enabled) {
@@ -177,15 +178,20 @@ function buildStockSystemPrompt() {
   ].join("\n");
 }
 
-function buildNotesSystemPrompt() {
+// 全プロンプト共通のノート編集ルール
+const NOTES_COMMON_RULES = [
+  "事実、推測、意見を区別し、会話にない情報は推測で補わないでください。",
+  "投資判断・企業分析に関係しない雑談やアプリ操作はノートに含めないでください。",
+  "出典URLの羅列や「出典」セクションは作らず、重要な出典は本文中に1〜2件添える程度にしてください。",
+  "時期が分かる情報には年月を添えてください。",
+];
+
+function buildCardEditorSystemPrompt() {
   return [
     "あなたは、個別銘柄の会話を長期的に蓄積する投資レビューノートの編集者です。",
-    "出力は更新後のMarkdownノート本文のみとし、前置き・説明・コードフェンスは書かないでください。",
-    "事実、推測、意見を区別し、会話にない情報は推測で補わないでください。",
-    "投資判断・企業分析に関係しない雑談やアプリ操作はノートに含めないでください。",
-    "出典URLの羅列や「出典」セクションは作らず、重要な出典は本文中に1〜2件添える程度にしてください。",
-    "基本構成は「# 銘柄コード 銘柄名」「## 投資仮説」「## ここ数年の経緯」「## 強み」「## リスク」「## 確認事項」「## メモ」とし、情報がない見出しは省略できます。",
-    "「ここ数年の経緯」は、事業構成、業績、経営方針、重要イベントの変化を、年や時期がわかる範囲で時系列に整理してください。",
+    "ノートはカテゴリー別のカードに分かれており、あなたは指示された1枚のカードだけを編集します。",
+    "出力は更新後のカード本文（Markdown）のみとし、前置き・説明・コードフェンス・カードタイトルの見出しは書かないでください。",
+    ...NOTES_COMMON_RULES,
   ].join("\n");
 }
 
@@ -195,16 +201,24 @@ function setNotesStatus(text, isError = false) {
   notesStatus.classList.toggle("is-error", isError);
 }
 
-function updateNotesRestoreButton() {
-  notesRestoreBtn?.classList.toggle("is-hidden", !notesHasBackup || !activeTicker);
+// ノート一覧 API（GET /stocks/{ticker}/notes 形式）のレスポンスを表示へ反映する
+function applyNotesData(data) {
+  noteCards = Array.isArray(data?.cards) ? data.cards : [];
+  legacyNote = data?.legacy || null;
+  renderNotes();
 }
 
-// 保存/復元 API のレスポンスをノート表示へ反映する共通処理
-function applyNotesResponse(saved) {
-  notesContent = saved?.content || "";
-  notesHasBackup = Boolean(saved?.has_backup);
+// 単一カードの保存/復元レスポンスを状態へ反映する
+function applyCardSaved(saved) {
+  const index = noteCards.findIndex((card) => card.key === saved?.key);
+  if (index >= 0) noteCards[index] = saved;
   renderNotes();
-  updateNotesRestoreButton();
+}
+
+// カード群の最新更新日時（ステータス表示用）
+function latestNotesUpdatedAt() {
+  const times = noteCards.map((card) => card.updated_at).filter(Boolean).sort();
+  return times.at(-1) || null;
 }
 
 // ISO 日時 → 「HH:MM 更新」（当日以外は日付付き）。不正値は空文字
@@ -217,19 +231,78 @@ function formatNotesUpdatedAt(iso) {
   return `${date.toLocaleDateString("ja-JP")} ${time} 更新`;
 }
 
+async function restoreNoteCard(key) {
+  if (!activeTicker) return;
+  const ticker = activeTicker;
+  try {
+    const saved = await api("POST", `/stocks/${encodeURIComponent(ticker)}/notes/${key}/restore`);
+    if (activeTicker !== ticker) return;
+    applyCardSaved(saved);
+    setNotesStatus(`「${saved.title}」を前の内容に戻しました`);
+  } catch (error) {
+    setNotesStatus(`戻せませんでした: ${error.message}`, true);
+  }
+}
+
+function buildNoteCardElement({ title, timeText, content, restoreKey }) {
+  const card = document.createElement("section");
+  card.className = "review-note-card";
+  const head = document.createElement("div");
+  head.className = "review-note-card-head";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  head.appendChild(heading);
+  if (timeText) {
+    const time = document.createElement("span");
+    time.className = "review-note-card-time";
+    time.textContent = timeText;
+    head.appendChild(time);
+  }
+  if (restoreKey) {
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.className = "ghost-button review-note-card-restore";
+    restore.textContent = "元に戻す";
+    restore.title = "このカードを直前の保存前の内容に戻します。もう一度押すと戻す前の内容に戻ります";
+    restore.addEventListener("click", () => restoreNoteCard(restoreKey));
+    head.appendChild(restore);
+  }
+  const body = document.createElement("div");
+  body.className = "chat-message-text review-note-card-body";
+  body.innerHTML = renderMarkdown(content);
+  card.append(head, body);
+  return card;
+}
+
 function renderNotes() {
   if (!notesBody) return;
-  if (!notesContent.trim()) {
-    notesBody.innerHTML = "";
+  notesBody.innerHTML = "";
+  const visibleCards = noteCards.filter((card) => card.content.trim());
+  if (!visibleCards.length && !legacyNote) {
     const empty = document.createElement("p");
     empty.className = "chat-empty-hint";
     empty.textContent = activeTicker
-      ? "まだノートがありません。チャットで会話すると自動で作成されます"
+      ? "まだノートがありません。回答の「ノートに反映」を押すとカテゴリー別カードに蓄積されます"
       : "銘柄を選択してください";
     notesBody.appendChild(empty);
     return;
   }
-  notesBody.innerHTML = renderMarkdown(notesContent);
+  visibleCards.forEach((card) => {
+    notesBody.appendChild(buildNoteCardElement({
+      title: card.title,
+      timeText: formatNotesUpdatedAt(card.updated_at),
+      content: card.content,
+      restoreKey: card.has_backup ? card.key : null,
+    }));
+  });
+  if (legacyNote) {
+    notesBody.appendChild(buildNoteCardElement({
+      title: "旧ノート（分割前）",
+      timeText: formatNotesUpdatedAt(legacyNote.updated_at),
+      content: legacyNote.content,
+      restoreKey: null,
+    }));
+  }
 }
 
 function switchReviewTab(tab) {
@@ -248,26 +321,57 @@ function stripMarkdownFences(text) {
   return match ? match[1] : trimmed;
 }
 
-function buildNotesUpdatePrompt(exchanges) {
+function formatExchanges(exchanges) {
+  return exchanges
+    .map((ex) => `User:\n${ex.user}\n\nAssistant:\n${ex.assistant}`)
+    .join("\n\n");
+}
+
+// 反映先カードを選ばせるルーティングプロンプト。key のカンマ区切りだけを出力させる
+function buildRoutingPrompt(exchanges) {
+  const categoryLines = noteCards.map((card) => `- ${card.key}: ${card.title} — ${card.description}`);
+  return [
+    `${activeTicker} についての以下の会話を、投資ノートのどのカテゴリーカードに反映すべきか選んでください。`,
+    "",
+    "カテゴリー一覧:",
+    ...categoryLines,
+    "",
+    "出力ルール:",
+    "- 該当するカテゴリーの key だけをカンマ区切りで1〜3個出力する（例: recent,financials）。",
+    "- 投資判断・企業分析に関わる内容が会話に無い場合だけ none と出力する。",
+    "- 説明や理由は一切書かない。",
+    "",
+    "【会話】",
+    formatExchanges(exchanges),
+  ].join("\n");
+}
+
+// ルーティング出力から既知の key を抽出する（順序はカテゴリー定義順、最大3件）
+function parseRoutedKeys(text) {
+  const lowered = String(text || "").toLowerCase();
+  const found = noteCards.map((card) => card.key).filter((key) => lowered.includes(key));
+  if (!found.length) return { keys: [], none: /\bnone\b/.test(lowered) };
+  return { keys: found.slice(0, 3), none: false };
+}
+
+function buildCardUpdatePrompt(card, exchanges) {
   const name = activeSnapshot?.name || activeTicker;
   return [
-    `${activeTicker}（${name}）の投資レビューノート（Markdown）を、新しい会話のやり取りを踏まえて更新してください。`,
+    `${activeTicker}（${name}）の投資ノートのうち「${card.title}」カード（${card.description}）を、新しい会話のやり取りを踏まえて更新してください。`,
     "",
     "ルール:",
+    "- このカードの範囲に該当する内容だけを反映する。他のカテゴリーに属する内容は書かない。",
     "- 既存の内容は保持し、新しい情報の追記や古い記述の修正だけを行う。",
     "- 会話に出ていない情報を推測で補わない。",
-    "- この銘柄の投資判断・企業分析に関係しない話題（雑談、アプリの操作の話、別銘柄だけの話など）はノートに書かない。反映すべき内容が無ければ既存のノートをそのまま出力する。",
-    "- 出典URLの羅列（リンク集・「出典」セクション）はノートに書かない。特に重要な出典を本文中に1〜2件添える程度にとどめ、既存ノートに出典リストが残っていれば削除する。",
-    `- ノートが空のときは「# ${activeTicker} ${name}」を先頭にし、システムプロンプトの基本構成で新規作成する。`,
-    "- ここ数年の経緯に追加できる事業・業績・経営方針・重要イベントの変化があれば、時系列に反映する。",
+    "- この銘柄の投資判断・企業分析に関係しない話題（雑談、アプリの操作の話、別銘柄だけの話など）は書かない。反映すべき内容が無ければ既存の内容をそのまま出力する。",
+    "- 出典URLの羅列（リンク集・「出典」セクション）は書かない。特に重要な出典を本文中に1〜2件添える程度にとどめる。",
+    "- カードのタイトル見出しは書かず、箇条書き中心の簡潔なMarkdownにする。",
     "",
-    "【現在のノート】",
-    notesContent.trim() || "(空)",
+    "【現在のカードの内容】",
+    card.content.trim() || "(空)",
     "",
     "【新しい会話】",
-    exchanges
-      .map((ex) => `User:\n${ex.user}\n\nAssistant:\n${ex.assistant}`)
-      .join("\n\n"),
+    formatExchanges(exchanges),
   ].join("\n");
 }
 
@@ -313,6 +417,20 @@ function markReflectResult(exchanges, succeeded) {
   });
 }
 
+// 1回のLLM呼び出しを行い、蓄積テキストを返す（失敗時は error を持つ）
+async function runNotesLLM(sessionId, userContent, systemPrompt) {
+  let text = "";
+  let error = null;
+  await streamChat(sessionId, [{ role: "user", content: userContent }], {
+    persistUser: false,
+    persistAssistant: false,
+    systemPrompt,
+    onToken: (chunk) => { text += chunk; },
+    onError: (err) => { error = err; },
+  });
+  return { text, error };
+}
+
 async function processNotesQueue() {
   if (notesUpdating || !notesQueue.length) return;
   notesUpdating = true;
@@ -321,47 +439,67 @@ async function processNotesQueue() {
 
   while (notesQueue.length && activeTicker === ticker) {
     const exchanges = notesQueue.splice(0, notesQueue.length);
-    setNotesStatus("ノートを更新中...");
+
+    // 1) どのカードへ反映するかをLLMに選ばせる
+    setNotesStatus("反映先のカードを判定中...");
     setAppStatus(`${ticker} のノートへ反映しています...`, "active");
-    let markdown = "";
-    let failed = null;
-    await streamChat(sessionId, [{ role: "user", content: buildNotesUpdatePrompt(exchanges) }], {
-      persistUser: false,
-      persistAssistant: false,
-      systemPrompt: buildNotesSystemPrompt(),
-      onToken: (chunk) => {
-        markdown += chunk;
-      },
-      onError: (error) => {
-        failed = error;
-      },
-    });
-
-    // 更新中に銘柄が切り替わったら結果を破棄する
+    const routing = await runNotesLLM(
+      sessionId,
+      buildRoutingPrompt(exchanges),
+      "あなたは投資ノートの分類器です。指示された形式だけで出力し、説明は書かないでください。"
+    );
     if (activeTicker !== ticker) break;
-
-    if (failed !== null || !stripMarkdownFences(markdown)) {
+    if (routing.error !== null) {
       setNotesStatus("ノートへの反映に失敗しました", true);
       setAppStatus("ノートへの反映に失敗しました。", "error");
       markReflectResult(exchanges, false);
       continue;
     }
-
-    try {
-      const saved = await api("PATCH", `/stocks/${encodeURIComponent(ticker)}/notes`, {
-        content: stripMarkdownFences(markdown),
-      });
-      if (activeTicker !== ticker) break;
-      applyNotesResponse(saved);
-      setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
-      markReflectResult(exchanges, true);
-      setAppStatus(`${ticker} のノートへ反映しました。`, "success");
-      if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
-    } catch (error) {
-      setNotesStatus("ノートの保存に失敗しました", true);
-      setAppStatus(`ノートの保存に失敗しました: ${error.message}`, "error");
+    const routed = parseRoutedKeys(routing.text);
+    if (!routed.keys.length) {
+      setNotesStatus(routed.none ? "反映すべき内容が見つかりませんでした" : "反映先を判定できませんでした", true);
+      setAppStatus("ノートに反映する内容が見つかりませんでした。", "neutral", 5000);
       markReflectResult(exchanges, false);
+      continue;
     }
+
+    // 2) 選ばれたカードごとに、そのカードの内容＋会話でマージする
+    let updatedTitles = [];
+    let allOk = true;
+    for (const key of routed.keys) {
+      const card = noteCards.find((item) => item.key === key);
+      if (!card) continue;
+      setNotesStatus(`「${card.title}」を更新中...`);
+      const merge = await runNotesLLM(sessionId, buildCardUpdatePrompt(card, exchanges), buildCardEditorSystemPrompt());
+      if (activeTicker !== ticker) { allOk = false; break; }
+      const cleaned = stripMarkdownFences(merge.text);
+      if (merge.error !== null || !cleaned) {
+        allOk = false;
+        continue;
+      }
+      if (cleaned.trim() === card.content.trim()) continue; // 変更なし（反映対象なしと判断された）
+      try {
+        const saved = await api("PATCH", `/stocks/${encodeURIComponent(ticker)}/notes/${key}`, { content: cleaned });
+        if (activeTicker !== ticker) { allOk = false; break; }
+        applyCardSaved(saved);
+        updatedTitles.push(card.title);
+      } catch (_error) {
+        allOk = false;
+      }
+    }
+    if (activeTicker !== ticker) break;
+
+    if (!allOk && !updatedTitles.length) {
+      setNotesStatus("ノートへの反映に失敗しました", true);
+      setAppStatus("ノートへの反映に失敗しました。", "error");
+      markReflectResult(exchanges, false);
+      continue;
+    }
+    const summary = updatedTitles.length ? `${updatedTitles.join("・")}を更新しました` : "反映する変更はありませんでした";
+    setNotesStatus(allOk ? summary : `${summary}（一部失敗）`, !allOk);
+    markReflectResult(exchanges, true);
+    setAppStatus(`${ticker} のノートへ反映しました（${updatedTitles.length ? updatedTitles.join("・") : "変更なし"}）。`, allOk ? "success" : "neutral");
+    if (updatedTitles.length && notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
   }
 
   notesUpdating = false;
@@ -374,13 +512,12 @@ async function loadTicker(ticker, snapshot) {
   activeSnapshot = snapshot || null;
   activeSessionId = null;
   history = [];
-  notesContent = "";
-  notesHasBackup = false;
+  noteCards = [];
+  legacyNote = null;
   notesQueue = [];
   setNotesStatus("");
   notesDot?.classList.add("is-hidden");
   renderNotes();
-  updateNotesRestoreButton();
 
   if (!activeTicker) {
     subtitle.textContent = "銘柄を表示すると会話できます";
@@ -399,9 +536,9 @@ async function loadTicker(ticker, snapshot) {
   try {
     const data = await api("GET", `/stocks/${encodeURIComponent(activeTicker)}/workspace`);
     sessions = data.sessions || [];
-    notePath.textContent = data.notes?.relative_path ? `保存先: ${data.notes.relative_path}` : "";
-    applyNotesResponse(data.notes);
-    setNotesStatus(formatNotesUpdatedAt(data.notes?.updated_at));
+    notePath.textContent = data.notes?.relative_dir ? `保存先: ${data.notes.relative_dir}` : "";
+    applyNotesData(data.notes);
+    setNotesStatus(formatNotesUpdatedAt(latestNotesUpdatedAt()));
     renderSessions();
     if (sessions.length) {
       await selectSession(sessions[0].id);
@@ -538,6 +675,37 @@ async function sendMessage() {
   });
 }
 
+// 全面再生成の出力（## カテゴリー名 見出し付きMarkdown）をカード別に分割する
+function splitRegeneratedNote(markdown) {
+  const byTitle = new Map(noteCards.map((card) => [card.title, card.key]));
+  const sections = new Map(); // key -> lines[]
+  let currentKey = null;
+  stripMarkdownFences(markdown).split("\n").forEach((line) => {
+    const heading = line.match(/^#{1,3}\s+(.+?)\s*$/);
+    if (heading) {
+      const title = heading[1].trim();
+      if (byTitle.has(title)) {
+        currentKey = byTitle.get(title);
+        if (!sections.has(currentKey)) sections.set(currentKey, []);
+        return;
+      }
+      // 未知の見出しは「その他」へ（見出しは太字行として残す）
+      if (currentKey === null) return; // 先頭のタイトル行など、最初の既知見出しより前は無視
+      currentKey = "misc";
+      if (!sections.has(currentKey)) sections.set(currentKey, []);
+      sections.get(currentKey).push(`**${title}**`);
+      return;
+    }
+    if (currentKey !== null) sections.get(currentKey).push(line);
+  });
+  const result = new Map();
+  sections.forEach((lines, key) => {
+    const content = lines.join("\n").trim();
+    if (content) result.set(key, content);
+  });
+  return result;
+}
+
 async function summarizeToMarkdown() {
   if (!activeTicker || !activeSessionId || !history.length || streaming) return;
 
@@ -547,19 +715,28 @@ async function summarizeToMarkdown() {
   assistant.wrap.classList.add("loading");
   setAppStatus(`${activeTicker} のノートを作り直しています...`, "active");
 
+  const titles = noteCards.map((card) => card.title);
   const prompt = [
     `${activeTicker} の会話内容を、投資レビュー用のMarkdownノートに整理してください。`,
-    "システムプロンプトの基本構成に従い、会話全体からノート全文を作り直してください。",
-    "ここ数年の経緯に該当する内容は、時系列に整理してください。",
+    "会話全体からノート全文を作り直します。次のカテゴリー見出し（##）だけを使い、この名称を一字も変えずに書いてください:",
+    ...noteCards.map((card) => `- ## ${card.title} — ${card.description}`),
+    "情報のないカテゴリーは見出しごと省略してください。各カテゴリーの本文は箇条書き中心の簡潔なMarkdownにしてください。",
+    "経緯・歴史に該当する内容は時系列に整理してください。",
     "",
     history.map((m) => `${m.role === "user" ? "User" : "Assistant"}:\n${m.content}`).join("\n\n"),
+  ].join("\n");
+
+  const regenSystemPrompt = [
+    "あなたは、個別銘柄の会話を投資レビューノートに整理する編集者です。",
+    "出力はMarkdownノート本文のみとし、前置き・説明・コードフェンスは書かないでください。",
+    ...NOTES_COMMON_RULES,
   ].join("\n");
 
   let markdown = "";
   await streamChat(activeSessionId, [{ role: "user", content: prompt }], {
     persistUser: false,
     persistAssistant: false,
-    systemPrompt: [buildStockSystemPrompt(), buildNotesSystemPrompt()].join("\n\n"),
+    systemPrompt: [buildStockSystemPrompt(), regenSystemPrompt].join("\n\n"),
     onToken: (chunk) => {
       assistant.wrap.classList.remove("loading");
       markdown += chunk;
@@ -567,16 +744,25 @@ async function summarizeToMarkdown() {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     },
     onDone: async (event) => {
-      const saved = await api("PATCH", `/stocks/${encodeURIComponent(activeTicker)}/notes`, {
-        content: stripMarkdownFences(markdown),
-      });
-      applyNotesResponse(saved);
-      setNotesStatus(formatNotesUpdatedAt(saved.updated_at) || "更新しました");
-      if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
+      const ticker = activeTicker;
+      try {
+        const sections = splitRegeneratedNote(markdown);
+        if (!sections.size) throw new Error(`カテゴリー見出し（${titles.join(" / ")}）を含む出力になりませんでした`);
+        for (const [key, content] of sections) {
+          const saved = await api("PATCH", `/stocks/${encodeURIComponent(ticker)}/notes/${key}`, { content });
+          if (activeTicker !== ticker) break;
+          applyCardSaved(saved);
+        }
+        setNotesStatus(`${sections.size}枚のカードを作り直しました`);
+        if (notesPane?.classList.contains("is-hidden")) notesDot?.classList.remove("is-hidden");
+        setAppStatus(`${ticker} のノートを作り直しました（${sections.size}カード）。`, "success");
+      } catch (error) {
+        setNotesStatus("ノートの作り直しの保存に失敗しました", true);
+        setAppStatus(`ノートの作り直しに失敗しました: ${error.message}`, "error");
+      }
       assistant.wrap.classList.remove("loading");
       streaming = false;
       setEnabled(true);
-      setAppStatus(`${activeTicker} のノートを作り直しました。`, "success");
       appendGenerationMetrics(assistant.wrap, event?.metrics);
     },
     onError: (error) => {
@@ -592,22 +778,6 @@ async function summarizeToMarkdown() {
 
 tabMetricsBtn?.addEventListener("click", () => switchReviewTab("metrics"));
 tabNotesBtn?.addEventListener("click", () => switchReviewTab("notes"));
-notesRestoreBtn?.addEventListener("click", async () => {
-  if (!activeTicker) return;
-  const ticker = activeTicker;
-  setAppStatus(`${ticker} のノートを元に戻しています...`, "active");
-  try {
-    const saved = await api("POST", `/stocks/${encodeURIComponent(ticker)}/notes/restore`);
-    if (activeTicker !== ticker) return;
-    applyNotesResponse(saved);
-    setNotesStatus("前のノートに戻しました");
-    setAppStatus(`${ticker} のノートを元に戻しました。`, "success");
-    switchReviewTab("notes");
-  } catch (error) {
-    setNotesStatus(`戻せませんでした: ${error.message}`, true);
-    setAppStatus(`ノートを元に戻せませんでした: ${error.message}`, "error");
-  }
-});
 newButton?.addEventListener("click", createSession);
 sendButton?.addEventListener("click", sendMessage);
 summarizeButton?.addEventListener("click", summarizeToMarkdown);

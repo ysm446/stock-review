@@ -369,7 +369,7 @@ def del_workspace(id: int):
 def get_stock_workspace(ticker: str):
     try:
         workspace = store.get_or_create_stock_workspace(ticker)
-        notes = store.get_stock_notes(ticker)
+        notes = store.get_stock_note_cards(ticker)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {
@@ -397,18 +397,25 @@ def post_stock_session(ticker: str, body: SessionBody):
 
 @app.get("/stocks/{ticker}/notes")
 def get_stock_notes(ticker: str):
-    return store.get_stock_notes(ticker)
-
-
-@app.patch("/stocks/{ticker}/notes")
-def patch_stock_notes(ticker: str, body: NotesBody):
-    return store.save_stock_notes(ticker, body.content)
-
-
-@app.post("/stocks/{ticker}/notes/restore")
-def restore_stock_notes(ticker: str):
+    """カード分割ノートの一覧（分割前の旧 notes.md があれば legacy として返す）。"""
     try:
-        return store.restore_stock_notes(ticker)
+        return store.get_stock_note_cards(ticker)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.patch("/stocks/{ticker}/notes/{key}")
+def patch_stock_note_card(ticker: str, key: str, body: NotesBody):
+    try:
+        return store.save_stock_note_card(ticker, key, body.content)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/stocks/{ticker}/notes/{key}/restore")
+def restore_stock_note_card(ticker: str, key: str):
+    try:
+        return store.restore_stock_note_card(ticker, key)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
