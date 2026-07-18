@@ -3829,12 +3829,27 @@ body.is-resizing-chat-sidebar {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  /* 左右比はドラッグで調整可能（--market-split、既定63% ≒ 1.7fr:1fr） */
+  grid-template-columns: minmax(280px, calc(var(--market-split, 63%) - 7px)) minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   margin-top: 14px;
 }
 .market-chart-panel { grid-column: 1; grid-row: 1; }
+/* チャート／まとめ列とニュース列の間のドラッグハンドル（列gapに重ねる） */
+.market-col-resizer {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  align-self: stretch;
+  width: 10px;
+  margin-right: -12px;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 5px;
+  z-index: 4;
+}
+.market-col-resizer:hover, .market-col-resizer.is-active { background: var(--control-border); }
 .market-summary-panel { grid-column: 1; grid-row: 2; overflow-y: auto; }
 .market-news-panel { grid-column: 2; grid-row: 1 / span 2; overflow-y: auto; }
 .market-candlestick-wrap { height: 320px; }

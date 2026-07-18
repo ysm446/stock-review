@@ -34,6 +34,8 @@ const dataDirStatus           = document.getElementById("data-dir-status");
 const marginBackfillRange     = document.getElementById("margin-backfill-range");
 const marginBackfillRun       = document.getElementById("margin-backfill-run");
 const marginBackfillStatus    = document.getElementById("margin-backfill-status");
+const marginAutoIngestToggle  = document.getElementById("margin-auto-ingest-toggle");
+const marginAutoIngestStatus  = document.getElementById("margin-auto-ingest-status");
 
 let downloading = false;
 
@@ -82,6 +84,7 @@ function openSettings() {
   refreshLlamaStatus();
   refreshEmbeddingStatus();
   refreshDataDir();
+  refreshMarginSettings();
 }
 
 function closeSettings() {
@@ -344,6 +347,40 @@ async function changeDataDir() {
 
 dataDirChangeBtn?.addEventListener("click", changeDataDir);
 dataDirOpenBtn?.addEventListener("click", () => window.stockReviewApi.openDataDir());
+
+// ── 信用残の自動取り込み設定（DB側 margin_meta に保存） ─────────
+async function refreshMarginSettings() {
+  if (!marginAutoIngestToggle) return;
+  try {
+    const res = await apiFetch("/margin/settings", { method: "GET" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    marginAutoIngestToggle.checked = data.autoIngest !== false;
+  } catch (_err) {
+    // バックエンド起動前は現状表示のまま（変更時にエラーとして通知される）
+  }
+}
+
+marginAutoIngestToggle?.addEventListener("change", async () => {
+  const next = marginAutoIngestToggle.checked;
+  try {
+    const res = await apiFetch("/margin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ autoIngest: next })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (marginAutoIngestStatus) {
+      marginAutoIngestStatus.textContent = next
+        ? "自動取り込み: オン"
+        : "自動取り込み: オフ（チャートには蓄積済みの分だけ表示されます）";
+    }
+  } catch (err) {
+    marginAutoIngestToggle.checked = !next;
+    if (marginAutoIngestStatus) marginAutoIngestStatus.textContent = `設定の保存に失敗しました: ${err.message}`;
+    setAppStatus(`信用残の設定保存に失敗しました: ${err.message}`, "error");
+  }
+});
 
 // ── 信用残の過去データ取り込み（Wayback バックフィル） ─────────
 let marginBackfilling = false;

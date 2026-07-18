@@ -103,7 +103,9 @@
                 <button type="button" class="ghost-button review-chart-step" id="market-chart-step-forward" title="1日進む" aria-label="1日進む">▶</button>
                 <button type="button" class="ghost-button review-chart-step" id="market-chart-latest" title="最新の日付に戻す">最新へ</button>
               </div>
+              <div class="review-chart-resizer" id="market-chart-resizer" title="ドラッグしてチャートの高さを調整（ダブルクリックで初期値に戻す）"></div>
             </article>
+            <div class="market-col-resizer" id="market-col-resizer" title="ドラッグして左右の幅を調整（ダブルクリックで初期値に戻す）"></div>
 
             <article class="panel market-panel market-summary-panel">
               <div class="panel-head">
@@ -765,6 +767,12 @@
                 <p class="settings-hint" id="data-dir-status"></p>
               </div>
               <div class="settings-section">
+                <p class="settings-label">信用残データ（信用買い残・売り残）</p>
+                <label class="settings-checkbox">
+                  <input type="checkbox" id="margin-auto-ingest-toggle" checked />
+                  <span>新しい週の残高を自動で取り込む（銘柄レビューの表示・日足再取得時、6時間に1回まで）</span>
+                </label>
+                <p class="settings-hint" id="margin-auto-ingest-status"></p>
                 <p class="settings-label">信用残の過去データ</p>
                 <div class="settings-row settings-row-actions">
                   <select id="margin-backfill-range" class="chart-color-select" title="どこまで過去の週末残高を取り込むか">

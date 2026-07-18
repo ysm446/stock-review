@@ -89,7 +89,9 @@ const marketChart = createCandlestickChart({
     stepForward: document.getElementById("market-chart-step-forward"),
     latest: document.getElementById("market-chart-latest")
   },
+  resizer: document.getElementById("market-chart-resizer"),
   storagePrefix: "stock-review.market",
+  heightDefault: 320,
   getRows: () => historyBySymbol.get(activeSymbol),
   getEmptyState: () => ({
     summary: isPending() ? "最新データを取得中..." : "データを取得できませんでした",
@@ -172,6 +174,54 @@ chartRefresh.addEventListener("click", async () => {
     chartRefresh.textContent = previousText;
   }
 });
+
+// ---- 左右カラムの境界ドラッグ ----
+// チャート/まとめ列とニュース列の比率を --market-split（%）で調整し、localStorageへ保存する。
+// チャートの再描画は candlestickWrap の ResizeObserver が追従する。
+const MARKET_SPLIT_KEY = "stock-review.marketSplitX";
+const SPLIT_MIN = 35, SPLIT_MAX = 80;
+const marketGrid = document.querySelector("#view-market .market-grid");
+const colResizer = document.getElementById("market-col-resizer");
+
+if (marketGrid && colResizer) {
+  const applySplit = (percent) => {
+    const next = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, Number(percent)));
+    if (!Number.isFinite(next)) return;
+    marketGrid.style.setProperty("--market-split", `${next}%`);
+  };
+  const savedSplit = Number(localStorage.getItem(MARKET_SPLIT_KEY));
+  if (Number.isFinite(savedSplit) && savedSplit > 0) applySplit(savedSplit);
+
+  let draggingSplit = false;
+  const moveSplit = (event) => {
+    if (!draggingSplit) return;
+    const rect = marketGrid.getBoundingClientRect();
+    if (rect.width > 0) applySplit((event.clientX - rect.left) / rect.width * 100);
+  };
+  const finishSplit = () => {
+    if (!draggingSplit) return;
+    draggingSplit = false;
+    colResizer.classList.remove("is-active");
+    const value = parseFloat(marketGrid.style.getPropertyValue("--market-split"));
+    if (Number.isFinite(value)) localStorage.setItem(MARKET_SPLIT_KEY, String(Math.round(value * 10) / 10));
+    window.removeEventListener("pointermove", moveSplit);
+    window.removeEventListener("pointerup", finishSplit);
+    window.removeEventListener("pointercancel", finishSplit);
+  };
+  colResizer.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    draggingSplit = true;
+    colResizer.classList.add("is-active");
+    colResizer.setPointerCapture?.(event.pointerId);
+    window.addEventListener("pointermove", moveSplit);
+    window.addEventListener("pointerup", finishSplit);
+    window.addEventListener("pointercancel", finishSplit);
+  });
+  colResizer.addEventListener("dblclick", () => {
+    marketGrid.style.removeProperty("--market-split");
+    localStorage.removeItem(MARKET_SPLIT_KEY);
+  });
+}
 
 // 表示領域の変化（画面切替・リサイズ）に追従して再描画する
 if (typeof ResizeObserver === "function") {

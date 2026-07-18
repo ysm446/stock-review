@@ -316,11 +316,41 @@ def load_margin_history(symbol: str) -> list[dict]:
         conn.close()
 
 
+def get_settings() -> dict:
+    """自動取り込み設定（margin_meta に保存。未設定はオン）。"""
+    conn = _connect()
+    try:
+        row = conn.execute("SELECT value FROM margin_meta WHERE key = 'auto_ingest'").fetchone()
+        return {"autoIngest": row is None or row[0] != "0"}
+    finally:
+        conn.close()
+
+
+def save_settings(auto_ingest: bool) -> dict:
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO margin_meta (key, value) VALUES ('auto_ingest', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            ("1" if auto_ingest else "0",),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"autoIngest": bool(auto_ingest)}
+
+
 def ingest_safely(symbol: str) -> None:
-    """日足再取得などに相乗りして蓄積を試みる。失敗しても呼び出し元を止めない。"""
+    """日足再取得などに相乗りして蓄積を試みる。失敗しても呼び出し元を止めない。
+
+    設定（margin_meta.auto_ingest）でオフのときは何もしない。手動実行
+    （CLI --force / バックフィル / 設定画面の取り込み）はこの関数を通らない。
+    """
     if not code_for_ticker(symbol):
         return
     try:
+        if not get_settings()["autoIngest"]:
+            return
         ingest(throttle=True)
     except Exception as error:
         print(f"margin ingest failed: {error}", file=sys.stderr)
