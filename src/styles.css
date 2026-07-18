@@ -2210,7 +2210,9 @@ button:focus-visible {
 
 .review-kv-value {
   color: var(--text);
-  text-align: left;
+  /* 3カラム化でカードが狭くなったため、右端揃えでも間延びしない。
+     左揃え（ラベル直後）だとカード右側が空く、との指摘を受けて右揃えに戻した */
+  text-align: right;
   font-size: 0.84rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
