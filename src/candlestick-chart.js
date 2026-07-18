@@ -121,6 +121,7 @@ function getTurningPoints(rows) {
 //   volumeProfileMenuButton / volumeProfileMenu / volumeProfileToggle … 価格帯別出来高（省略可。本数 radio は menu 内を自動検出）
 //   marginMenuButton / marginMenu … 信用残メニュー（省略可。買い残/売り残 checkbox を自動検出）
 //   scrub: { container, slider, stepBack, stepForward, latest } … タイムマシン操作（省略可）
+//   arrowKeyScrub() … ←→キーで1日戻る/進むを有効にする条件（省略可。例: ビュー表示中のみ true）
 //   resizer … 高さ調整ハンドル（省略可）
 //   storagePrefix … localStorage キーの前置詞（例 "stock-review.review"）
 //   getRows() … 全日足（古い順）。不正な行はチャート側で除外する
@@ -134,7 +135,7 @@ export function createCandlestickChart(config) {
     rangeSelect, maMenuButton, maMenu,
     volumeProfileMenuButton, volumeProfileMenu, volumeProfileToggle,
     marginMenuButton, marginMenu,
-    scrub, resizer,
+    scrub, resizer, arrowKeyScrub,
     storagePrefix,
     getRows,
     getMarginRows = () => [],
@@ -494,6 +495,24 @@ export function createCandlestickChart(config) {
     scrub.stepBack.addEventListener("click", () => setEndOffset(endOffset + 1));
     scrub.stepForward.addEventListener("click", () => setEndOffset(endOffset - 1));
     scrub.latest.addEventListener("click", () => setEndOffset(0));
+  }
+
+  // ←→キーで表示終端を1日ずつ移動する（タイムマシンのキーボード操作）。
+  // 入力欄・セレクト・モーダル表示中は通常のキー動作を優先する。
+  if (arrowKeyScrub) {
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
+      }
+      if (document.querySelector(".modal-backdrop:not(.is-hidden)")) return;
+      if (!arrowKeyScrub()) return;
+      event.preventDefault();
+      setEndOffset(endOffset + (event.key === "ArrowLeft" ? 1 : -1));
+    });
   }
 
   function setChartHeight(height, persist = false) {

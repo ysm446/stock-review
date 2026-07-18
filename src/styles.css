@@ -896,6 +896,17 @@ select:focus {
   box-shadow: 0 0 0 1px var(--control-border);
 }
 
+/* クリック後にOSアクセント色のフォーカスリングがボタンに残らないようにする。
+   キーボード操作時（:focus-visible）だけ控えめなリングを表示する */
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--control-border);
+  outline-offset: 1px;
+}
+
 .computed-cell {
   min-width: 110px;
   font-weight: 600;

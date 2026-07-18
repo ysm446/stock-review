@@ -2830,6 +2830,8 @@ const reviewChart = createCandlestickChart({
     latest: reviewChartLatest
   },
   resizer: reviewChartResizer,
+  // ←→キーでの1日移動はレビュー画面を表示しているときだけ効かせる
+  arrowKeyScrub: () => document.getElementById("view-review")?.classList.contains("is-visible"),
   storagePrefix: "stock-review.review",
   getRows: () => reviewSnapshot?.priceHistory,
   getMarginRows: () => reviewSnapshot?.marginHistory,
