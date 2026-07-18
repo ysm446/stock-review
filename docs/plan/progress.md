@@ -4,12 +4,22 @@
 
 ## 完了済み
 
+- **2026-07-18: マーケットページ第2・3弾（ニュースパネル＋AIまとめ）**。
+  - **ニュース収集**: `backend/market_news.py` 新設。`search_web.search_news`（ddgs、`include_image=True` でサムネイルURL取得。エージェントツール向けの既定は従来どおり画像なし）を市況クエリ4本（株式市場 / 日経平均 / 米国株 / 為替 ドル円）×8件で実行。
+  - **蓄積型キャッシュ**: 結果は `app.db` の `market_news` テーブル（url主キー）へupsertで蓄積し、`COALESCE(NULLIF(published_at,''), fetched_at)` 降順で古いものから100件超過分を削除（RETENTION_ITEMS=100、APIは最新40件返却）。再検索・再起動で一覧が消えない。検索間隔はメモリ上のTTL（15分、`threading.Lock`）で制御し、検索全滅時も蓄積を返す。検証: 隔離DATA_DIRで 取得20件（画像17件）→cached→メモリリセット＋検索全滅でも20件維持→150件fake投入で100件に刈り込み、を確認。
+  - **サムネイル**: カード上部に `img`（`loading="lazy"`、httpsのみ、onerror でカードから除去）。CSP `img-src` に `https:` を追加（Bing等のニュースCDNサムネイル読込のため）。
+  - **API**: `GET /market/news`（`?refresh=true` で強制再検索）と `POST /market/summary`（キャッシュ済みニュース見出し→ローカルLLMでMarkdownまとめをSSEストリーム、`/chat/stream` と同じ token/done/error イベント形式）。llama未起動は503、ニュース未取得は404。トークン認証は既存middlewareが自動適用。
+  - **フロント（renderer-market.js）**: ニュースはカードグリッド（`repeat(auto-fill, minmax(240px, 1fr))`、タイトル3行clamp／snippet 2行clamp／メタはflex+margin-top:autoで下端固定、**全てtextContentで描画**=外部由来テキストのXSS対策）。クリックは既存の `will-navigate` ガードで既定ブラウザへ。起動時取得（バックエンド起動待ちで8秒×3回リトライ）＋15分間隔の自動再取得＋「更新」ボタン。AIまとめは `streamChat`（`endpoint: "/market/summary"`、拡張フィールドはFastAPI側で無視される）でストリーム描画→`stock-review.marketSummary` にMarkdown+生成時刻をlocalStorageキャッシュし起動時復元。503/404はボタン下に案内文。
+  - **まとめの表示形式**: Markdownを見出し（#〜###）単位で分割し（`splitSummarySections`）、セクションごとのカードを `repeat(auto-fit, minmax(230px, 1fr))` のグリッドで横並び表示（`renderSummaryBlocks`、ストリーミング中も逐次再分割）。生成日時は見出し横のピルバッジ（`#market-summary-date`、`YYYY/M/D HH:MM 生成`）に常時表示。システムプロンプトで「## 見出し2〜4セクション・中身は箇条書きのみ」を強制。見た目はscratchpadのElectronハーネス（実styles.css読込）で4カード横並びを目視確認。
+  - **検証**: market_news 単体（20件取得・2回目cached=True）、uvicorn単体起動で `/market/news` 200・`/market/summary` 503（llama停止時）を確認。AUTOSHOTに `-market-news`（ニュース読み込み後の再撮影）を追加し、実画面でカード20件・件数/更新時刻表示を目視確認。AIまとめの実生成もユーザー操作で確認済み（4セクションのブロック表示・日時バッジ・再起動後の復元まで動作）。
+  - 補足: ddgsの日付は相対時刻由来で分単位が取得時刻に揃うことがある（表示上「7/14 10:51」等が並ぶのはデータ側の仕様）。
+
 - **2026-07-18: マーケットページ第1弾（骨格＋指数チャート）とチャート共通化**。
   - **チャート共通化**: レビュー画面のローソク足チャート（描画・MA・価格帯別出来高・山谷ラベル・タイムマシン・ツールチップ・十字線・高さリサイズ・メニュー開閉・localStorage永続化）を `src/candlestick-chart.js` の `createCandlestickChart(config)` へ全面切り出し。インスタンスごとに `storagePrefix`（review は `stock-review.review` で既存キー互換、market は `stock-review.market`）、`getRows`/`getEmptyState`/`getSummarySuffix`/`onAfterDraw` フックで画面固有処理（見出し・株価表示・取得中メッセージ）を注入する。`prepareHiDPICanvas` も同モジュールへ移動。renderer.js 側は `drawReviewCandlestickChart()` を薄いラッパーとして残したため呼び出し箇所は無変更。MAトグルは menu 内の checkbox、ビン選択 radio は menu 内から自動検出（グローバルクラス `.review-ma-toggle` は廃止）。旧 MA5→MA50 の保存値移行は renderer.js 側でチャート生成前に実施。
   - **マーケットページ**: ナビ最上位に `#view-market` を追加し初期表示に変更（portfolio から交代）。左上=指数チャート（`market-instrument-tabs` で ^N225 / ^DJI / JPY=X 切替、選択は `stock-review.marketInstrument` に保存）、右=ニュースパネル、左下=AIまとめパネル（どちらもプレースホルダー）。実装は `src/renderer-market.js`（renderer-dom を使わず自前で要素取得、専用ResizeObserverで再描画）。
   - **データ経路**: 指数も `review_price_history` に蓄積。キャッシュ読み出しは `review_cache.py --history-only`（スナップショット無しでも日足だけ返す）→ IPC `market:load-price-history`（`loadMarketPriceHistory`）。再取得は既存の `review:refresh-price-history` を流用（`fetch_review.py --price-history` は任意のyfinanceシンボルで動作、^N225=244日・JPY=X=260日で確認）。ページ表示時はキャッシュ即表示→セッション初回のみ背景で自動再取得、「日足を再取得」ボタンで手動更新。
   - **検証**: 隔離DATA_DIRで --history-only 空/蓄積後、^N225・JPY=X 取得（FXは出来高0、チャート側で出来高バー・価格帯別出来高は自動的に空になる）。AUTOSHOT実起動でマーケット（撮影ステップに `-market` を追加）・ポートフォリオ・レビュー・ノート・モデルモーダル撮影し、レビュー画面の無回帰とマーケット表示を目視確認。マーケットCanvasの `height:100%` 指定漏れによるはみ出しを修正済み。タブ切替・スクラブの実操作は未確認。
-  - **残課題（フェーズ2以降）**: ニュースパネル（ddgs軽量版）、AIまとめ（手動ボタン＋キャッシュ）。
+  - 残課題だったニュースパネル・AIまとめは同日の第2・3弾で実装済み（上記参照）。
 
 - **2026-07-18: 移動平均線にMA200を追加**。
   - `index.html` の移動平均線メニューにMA200チェックボックス（既定OFF）、`styles.css` にスウォッチ色 `is-ma200`（#ec4899 ピンク）、`renderer.js` の `REVIEW_MA_COLORS` に `200` を追加。既存の `calculateMovingAverage` / `drawReviewMovingAverages` は任意periodに対応済みのため計算・描画ロジックの変更は不要。

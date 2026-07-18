@@ -3852,3 +3852,87 @@ body.is-resizing-chat-sidebar {
   background: var(--control-bg-active);
   font-weight: 600;
 }
+
+/* マーケット: ニュース一覧とAIまとめ */
+.market-panel-status { margin: 3px 0 0; color: var(--muted); font-size: 0.72rem; }
+.market-news-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  align-items: stretch;
+}
+.market-news-item {
+  display: flex;
+  flex-direction: column;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  color: var(--text);
+  text-decoration: none;
+  min-width: 0;
+}
+.market-news-item:hover { background: var(--control-bg-hover); border-color: var(--control-border, var(--line)); }
+.market-news-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.market-news-meta { margin-top: auto; padding-top: 4px; font-size: 0.68rem; color: var(--muted); }
+.market-news-snippet {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.market-summary-body { margin-top: 10px; font-size: 0.82rem; line-height: 1.7; color: var(--text); }
+.market-summary-body h1, .market-summary-body h2, .market-summary-body h3 {
+  margin: 14px 0 6px;
+  font-size: 0.88rem;
+  color: var(--text-strong);
+}
+.market-summary-body h1:first-child, .market-summary-body h2:first-child, .market-summary-body h3:first-child { margin-top: 2px; }
+.market-summary-body p { margin: 6px 0; }
+.market-summary-body ul, .market-summary-body ol { margin: 6px 0; padding-left: 20px; }
+.market-summary-body li { margin: 3px 0; }
+
+/* AIまとめ: セクションごとのブロックを横並びに */
+.market-summary-title-row { display: flex; align-items: baseline; gap: 8px; }
+.market-summary-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  align-items: stretch;
+}
+.market-summary-block {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  min-width: 0;
+}
+.market-summary-block h3 { margin: 0 0 6px; font-size: 0.8rem; color: var(--text-strong); }
+.market-summary-block-body { font-size: 0.78rem; line-height: 1.6; }
+.market-summary-block-body > :first-child { margin-top: 0; }
+.market-summary-block-body > :last-child { margin-bottom: 0; }
+
+/* ニュースカードのサムネイル */
+.market-news-thumb {
+  width: 100%;
+  height: 108px;
+  margin-bottom: 7px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--control-bg);
+}

@@ -45,8 +45,18 @@ def search_text(query: str, max_results: int = 8, region: str = "jp-jp") -> list
     return results
 
 
-def search_news(query: str, max_results: int = 8, region: str = "jp-jp", timelimit: str = "w") -> list[dict]:
-    """ニュース検索。直近の報道・決算・イベントに使う。"""
+def search_news(
+    query: str,
+    max_results: int = 8,
+    region: str = "jp-jp",
+    timelimit: str = "w",
+    include_image: bool = False,
+) -> list[dict]:
+    """ニュース検索。直近の報道・決算・イベントに使う。
+
+    include_image はマーケットページのサムネイル用。エージェントのツール結果には
+    含めない（LLMに渡すJSONを太らせないため既定 False）。
+    """
     try:
         from ddgs import DDGS
 
@@ -71,5 +81,7 @@ def search_news(query: str, max_results: int = 8, region: str = "jp-jp", timelim
             continue
         normalized["source"] = str(item.get("source") or "").strip()
         normalized["date"] = str(item.get("date") or "").strip()
+        if include_image:
+            normalized["image"] = str(item.get("image") or "").strip()
         results.append(normalized)
     return results

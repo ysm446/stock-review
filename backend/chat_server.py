@@ -25,6 +25,7 @@ import chat_agent
 import llm_client
 import llama_updater
 import embed_manager
+import market_news
 from chat_embedder import warmup as embed_warmup
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
@@ -518,6 +519,67 @@ def memory_search(session_id: int, query: str, top_k: int = 5, half_life_days: i
 @app.get("/memory/stats")
 def memory_stats():
     return store.memory_stats()
+
+
+# ── マーケットページ ──────────────────────────────────────
+
+@app.get("/market/news")
+def market_news_feed(refresh: bool = False):
+    """市況ニュース一覧（サーバー内キャッシュ15分、refresh=true で強制再検索）。"""
+    return market_news.get_news(force=refresh)
+
+
+MARKET_SUMMARY_SYSTEM = (
+    "あなたは日本の個人投資家向けに市況を解説するアナリストです。"
+    "与えられた最近のニュース見出しから、いま市場で起きていることを日本語でまとめてください。"
+    "必ず「## 見出し」区切りの2〜4セクションに分けること"
+    "（内容に応じて「## 全体の流れ」「## 日本株」「## 米国株・海外」「## 為替」など）。"
+    "各セクションの中身は簡潔な箇条書き2〜4項目のみとし、見出しの外に文章を書かない。"
+    "ニュースに書かれていないことを推測で書かない。URLは書かない。全体で400〜600字程度に収める。"
+)
+
+
+@app.post("/market/summary")
+async def market_summary():
+    """キャッシュ済みの市況ニュース見出しからマーケットのまとめを生成してストリーム返却する。"""
+    if not llama.is_ready():
+        raise HTTPException(503, "モデルが読み込まれていません")
+    base_url = llama.base_url()
+    news = await asyncio.to_thread(market_news.get_news)
+    items = news.get("items") or []
+    if not items:
+        raise HTTPException(404, "ニュースを取得できていません。先にニュースを更新してください。")
+
+    lines = []
+    for item in items:
+        date = str(item.get("date") or "")[:10]
+        source = str(item.get("source") or "")
+        meta = "・".join(part for part in (source, date) if part)
+        snippet = str(item.get("snippet") or "")[:80]
+        lines.append(f"- {item.get('title')}{f'（{meta}）' if meta else ''} {snippet}".rstrip())
+    user_content = "最近のマーケットニュース:\n" + "\n".join(lines)
+    llm_messages = [
+        {"role": "system", "content": MARKET_SUMMARY_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
+
+    def generate():
+        try:
+            for kind, data in llm_client.chat_stream(
+                base_url, llm_messages, max_tokens=2048, enable_thinking=False
+            ):
+                if kind == "content":
+                    yield f"data: {json.dumps({'type': 'token', 'content': data}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+            return
+        yield f"data: {json.dumps({'type': 'done', 'newsFetchedAt': news.get('fetchedAt')})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Chat streaming ────────────────────────────────────────

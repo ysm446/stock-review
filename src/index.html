@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src http://127.0.0.1:8001;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src http://127.0.0.1:8001;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Stock Review</title>
@@ -108,19 +108,31 @@
             <article class="panel market-panel market-summary-panel">
               <div class="panel-head">
                 <div>
-                  <h2>AIまとめ</h2>
+                  <div class="market-summary-title-row"><h2>AIまとめ</h2><span class="review-chart-date" id="market-summary-date"></span></div>
+                  <p class="market-panel-status" id="market-summary-status"></p>
+                </div>
+                <div class="panel-actions">
+                  <button type="button" class="ghost-button" id="market-summary-generate" title="ニュース一覧の見出しからマーケットのまとめを生成します">まとめを生成</button>
                 </div>
               </div>
-              <p class="market-placeholder">最近のニュースのまとめをここに表示します（準備中）。</p>
+              <div class="market-summary-body" id="market-summary-body">
+                <p class="market-placeholder">「まとめを生成」を押すと、最近のニュースからマーケットのまとめを作成します。</p>
+              </div>
             </article>
 
             <article class="panel market-panel market-news-panel">
               <div class="panel-head">
                 <div>
                   <h2>ニュース</h2>
+                  <p class="market-panel-status" id="market-news-status"></p>
+                </div>
+                <div class="panel-actions">
+                  <button type="button" class="ghost-button" id="market-news-refresh" title="市況ニュースを再検索します">更新</button>
                 </div>
               </div>
-              <p class="market-placeholder">株式・マーケットの最新ニュースをここに表示します（準備中）。</p>
+              <div class="market-news-list" id="market-news-list">
+                <p class="market-placeholder">読み込み中...</p>
+              </div>
             </article>
           </div>
         </section>

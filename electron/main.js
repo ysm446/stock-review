@@ -232,6 +232,10 @@ function createWindow() {
           );
           setTimeout(async () => {
             await captureScreenshot(win, "-review-notes");
+            // ニュース読み込み後のマーケットページを再撮影する
+            await clickNav("market");
+            await new Promise((resolve) => setTimeout(resolve, 900));
+            await captureScreenshot(win, "-market-news");
             // モデル設定モーダルも撮影する
             await win.webContents.executeJavaScript(
               `document.getElementById('chat-model-bar')?.click()`
