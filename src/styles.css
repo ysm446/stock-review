@@ -1986,59 +1986,66 @@ button:focus-visible {
   display: none;
 }
 
+/* ノートカードはニュースと同様の小さめカードを行列で敷き詰める */
+.review-notes-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.review-notes-body .chat-empty-hint {
+  grid-column: 1 / -1;
+}
+
 .review-note-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-raised);
-  padding: 12px 14px;
+  padding: 10px 12px;
   min-width: 0;
 }
 
-.review-note-card + .review-note-card {
-  margin-top: 12px;
-}
 
 .review-note-card-head {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .review-note-card-head h3 {
   margin: 0;
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   color: var(--text-strong);
 }
 
 .review-note-card-time {
   color: var(--muted);
-  font-size: 0.68rem;
+  font-size: 0.64rem;
+  white-space: nowrap;
 }
 
 .review-note-card-restore {
   margin-left: auto;
-  height: 22px;
-  padding: 0 9px;
-  font-size: 0.66rem;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 0.62rem;
   white-space: nowrap;
 }
 
 .review-note-card-body {
-  font-size: 0.92rem;
-  line-height: 1.75;
+  font-size: 0.78rem;
+  line-height: 1.65;
 }
 
-.review-note-card-body h1 {
-  font-size: 1.08rem;
-}
-
+.review-note-card-body h1,
 .review-note-card-body h2 {
-  font-size: 1rem;
+  font-size: 0.86rem;
 }
 
 .review-note-card-body h3 {
-  font-size: 0.94rem;
+  font-size: 0.82rem;
 }
 
 .review-grid-layout {

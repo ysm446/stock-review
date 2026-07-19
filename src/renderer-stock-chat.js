@@ -33,9 +33,8 @@ let streaming = false;
 // ノート（カテゴリー別カード stocks/<ticker>/notes/<key>.md）の表示と
 // 「ノートに反映」ボタンからの更新。カード一覧はバックエンドの
 // NOTE_CATEGORIES 定義（key/title/description）をそのまま受け取る。
-let noteCards = [];    // [{key, title, description, content, updated_at, has_backup}]
-let legacyNote = null; // 分割前の旧 notes.md（あれば読み取り専用で表示）
-let notesQueue = [];   // 反映待ちのやり取り [{user, assistant, btn}]
+let noteCards = [];  // [{key, title, description, content, updated_at, has_backup}]
+let notesQueue = []; // 反映待ちのやり取り [{user, assistant, btn}]
 let notesUpdating = false;
 
 function setEnabled(enabled) {
@@ -204,7 +203,6 @@ function setNotesStatus(text, isError = false) {
 // ノート一覧 API（GET /stocks/{ticker}/notes 形式）のレスポンスを表示へ反映する
 function applyNotesData(data) {
   noteCards = Array.isArray(data?.cards) ? data.cards : [];
-  legacyNote = data?.legacy || null;
   renderNotes();
 }
 
@@ -278,7 +276,7 @@ function renderNotes() {
   if (!notesBody) return;
   notesBody.innerHTML = "";
   const visibleCards = noteCards.filter((card) => card.content.trim());
-  if (!visibleCards.length && !legacyNote) {
+  if (!visibleCards.length) {
     const empty = document.createElement("p");
     empty.className = "chat-empty-hint";
     empty.textContent = activeTicker
@@ -295,14 +293,6 @@ function renderNotes() {
       restoreKey: card.has_backup ? card.key : null,
     }));
   });
-  if (legacyNote) {
-    notesBody.appendChild(buildNoteCardElement({
-      title: "旧ノート（分割前）",
-      timeText: formatNotesUpdatedAt(legacyNote.updated_at),
-      content: legacyNote.content,
-      restoreKey: null,
-    }));
-  }
 }
 
 function switchReviewTab(tab) {
@@ -513,7 +503,6 @@ async function loadTicker(ticker, snapshot) {
   activeSessionId = null;
   history = [];
   noteCards = [];
-  legacyNote = null;
   notesQueue = [];
   setNotesStatus("");
   notesDot?.classList.add("is-hidden");

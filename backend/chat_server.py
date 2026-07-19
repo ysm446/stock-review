@@ -397,7 +397,7 @@ def post_stock_session(ticker: str, body: SessionBody):
 
 @app.get("/stocks/{ticker}/notes")
 def get_stock_notes(ticker: str):
-    """カード分割ノートの一覧（分割前の旧 notes.md があれば legacy として返す）。"""
+    """カード分割ノートの一覧。"""
     try:
         return store.get_stock_note_cards(ticker)
     except ValueError as e:
