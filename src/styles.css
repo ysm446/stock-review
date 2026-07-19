@@ -2034,17 +2034,19 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.review-note-card-body {
+/* 後方で定義される .chat-message-text（1.16rem・見出し1.48rem等）より
+   詳細度を上げるため、親カードを付けたセレクタで指定する */
+.review-note-card .review-note-card-body {
   font-size: 0.72rem;
   line-height: 1.6;
 }
 
-.review-note-card-body h1,
-.review-note-card-body h2 {
+.review-note-card .review-note-card-body h1,
+.review-note-card .review-note-card-body h2 {
   font-size: 0.78rem;
 }
 
-.review-note-card-body h3 {
+.review-note-card .review-note-card-body h3 {
   font-size: 0.75rem;
 }
 
