@@ -1976,9 +1976,9 @@ button:focus-visible {
   background: none;
 }
 
-/* ノート表示パネル（カテゴリー別カードの描画） */
+/* ノート表示（カテゴリー別カードの行列。外枠パネルは持たない） */
 .review-notes-pane {
-  padding: 16px 18px;
+  padding: 0;
 }
 
 .review-notes-pane.is-hidden,
@@ -2001,8 +2001,8 @@ button:focus-visible {
 .review-note-card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel-raised);
-  padding: 10px 12px;
+  background: var(--panel);
+  padding: 9px 11px;
   min-width: 0;
 }
 
@@ -2016,36 +2016,36 @@ button:focus-visible {
 
 .review-note-card-head h3 {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   color: var(--text-strong);
 }
 
 .review-note-card-time {
   color: var(--muted);
-  font-size: 0.64rem;
+  font-size: 0.6rem;
   white-space: nowrap;
 }
 
 .review-note-card-restore {
   margin-left: auto;
-  height: 20px;
-  padding: 0 8px;
-  font-size: 0.62rem;
+  height: 19px;
+  padding: 0 7px;
+  font-size: 0.6rem;
   white-space: nowrap;
 }
 
 .review-note-card-body {
-  font-size: 0.78rem;
-  line-height: 1.65;
+  font-size: 0.72rem;
+  line-height: 1.6;
 }
 
 .review-note-card-body h1,
 .review-note-card-body h2 {
-  font-size: 0.86rem;
+  font-size: 0.78rem;
 }
 
 .review-note-card-body h3 {
-  font-size: 0.82rem;
+  font-size: 0.75rem;
 }
 
 .review-grid-layout {
