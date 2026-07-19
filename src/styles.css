@@ -2016,7 +2016,7 @@ button:focus-visible {
 
 .review-note-card-head h3 {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   color: var(--text-strong);
 }
 
@@ -2037,17 +2037,17 @@ button:focus-visible {
 /* 後方で定義される .chat-message-text（1.16rem・見出し1.48rem等）より
    詳細度を上げるため、親カードを付けたセレクタで指定する */
 .review-note-card .review-note-card-body {
-  font-size: 0.72rem;
-  line-height: 1.6;
+  font-size: 0.8rem;
+  line-height: 1.65;
 }
 
 .review-note-card .review-note-card-body h1,
 .review-note-card .review-note-card-body h2 {
-  font-size: 0.78rem;
+  font-size: 0.88rem;
 }
 
 .review-note-card .review-note-card-body h3 {
-  font-size: 0.75rem;
+  font-size: 0.84rem;
 }
 
 .review-grid-layout {
@@ -4032,8 +4032,8 @@ body.is-resizing-chat-sidebar {
   background: var(--panel-raised);
   min-width: 0;
 }
-.market-summary-block h3 { margin: 0 0 6px; font-size: 0.8rem; color: var(--text-strong); }
-.market-summary-block-body { font-size: 0.78rem; line-height: 1.6; }
+.market-summary-block h3 { margin: 0 0 6px; font-size: 0.85rem; color: var(--text-strong); }
+.market-summary-block-body { font-size: 0.85rem; line-height: 1.65; }
 .market-summary-block-body > :first-child { margin-top: 0; }
 .market-summary-block-body > :last-child { margin-bottom: 0; }
 
