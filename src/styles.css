@@ -841,16 +841,27 @@ td {
   text-align: left;
 }
 
-#holdings-body tr {
+#holdings-body tr,
+#watchlist-body tr {
   transition: background-color 120ms ease, opacity 120ms ease;
 }
 
-#holdings-body tr.is-dragging {
+#holdings-body tr.is-dragging,
+#watchlist-body tr.is-dragging {
   opacity: 0.45;
 }
 
-#holdings-body tr.is-drag-target {
+#holdings-body tr.is-drag-target,
+#watchlist-body tr.is-drag-target {
   background: rgba(255, 255, 255, 0.03);
+}
+
+#watchlist-body tr[draggable="true"] .cell-ticker {
+  cursor: grab;
+}
+
+#watchlist-body tr.is-dragging .cell-ticker {
+  cursor: grabbing;
 }
 
 th {
@@ -1240,6 +1251,8 @@ button:focus-visible {
 .watchlist-category-tab.is-drag-target {
   border-color: var(--accent);
   color: var(--text-strong);
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel-raised));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .watchlist-category-tab-menu {

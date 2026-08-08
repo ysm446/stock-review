@@ -1631,15 +1631,29 @@ function attachHoldingDragEvents(row, index) {
   });
 }
 
-function attachWatchlistDragEvents(row, index) {
+function clearWatchlistDragState() {
+  watchlistBody.querySelectorAll("tr").forEach((item) => {
+    item.classList.remove("is-dragging", "is-drag-target");
+  });
+  watchlistCategoryTabs.querySelectorAll(".is-drag-target").forEach((tab) => {
+    tab.classList.remove("is-drag-target");
+  });
+}
+
+function attachWatchlistDragEvents(row, index, { allowReorder = true } = {}) {
   row.dataset.index = String(index);
+  row.draggable = true;
+  row.title = "ドラッグしてカテゴリーへ移動";
   const handle = row.querySelector('[data-action="drag-handle"]');
-  if (!handle) {
-    return;
+  if (handle) {
+    handle.draggable = true;
   }
 
-  handle.draggable = true;
-  handle.addEventListener("dragstart", (event) => {
+  row.addEventListener("dragstart", (event) => {
+    if (event.target.closest?.(".row-actions")) {
+      event.preventDefault();
+      return;
+    }
     draggingWatchlistIndex = index;
     row.classList.add("is-dragging");
     if (event.dataTransfer) {
@@ -1649,7 +1663,7 @@ function attachWatchlistDragEvents(row, index) {
   });
 
   row.addEventListener("dragover", (event) => {
-    if (draggingWatchlistIndex === null || draggingWatchlistIndex === index) {
+    if (!allowReorder || draggingWatchlistIndex === null || draggingWatchlistIndex === index) {
       return;
     }
     event.preventDefault();
@@ -1672,26 +1686,22 @@ function attachWatchlistDragEvents(row, index) {
   });
 
   row.addEventListener("drop", (event) => {
+    if (!allowReorder) return;
     event.preventDefault();
     row.classList.remove("is-drag-target");
     if (draggingWatchlistIndex === null || draggingWatchlistIndex === index) {
       return;
     }
     if (moveWatchlist(draggingWatchlistIndex, index)) {
+      draggingWatchlistIndex = null;
       renderWatchlistTable();
       queueAutosave();
     }
   });
 
-  handle.addEventListener("dragend", () => {
+  row.addEventListener("dragend", () => {
     draggingWatchlistIndex = null;
-    row.classList.remove("is-dragging", "is-drag-target");
-    watchlistBody.querySelectorAll("tr").forEach((item) => {
-      item.classList.remove("is-dragging", "is-drag-target");
-    });
-    watchlistCategoryTabs.querySelectorAll(".is-drag-target").forEach((tab) => {
-      tab.classList.remove("is-drag-target");
-    });
+    clearWatchlistDragState();
   });
 }
 
@@ -2536,13 +2546,18 @@ function renderWatchlistCategoryTabs() {
         if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
         tab.classList.add("is-drag-target");
       });
-      tab.addEventListener("dragleave", () => tab.classList.remove("is-drag-target"));
+      tab.addEventListener("dragleave", (event) => {
+        if (!event.relatedTarget || !tab.contains(event.relatedTarget)) {
+          tab.classList.remove("is-drag-target");
+        }
+      });
       tab.addEventListener("drop", (event) => {
         event.preventDefault();
         tab.classList.remove("is-drag-target");
         const item = draggingWatchlistIndex === null ? null : appState.watchlist[draggingWatchlistIndex];
         if (!item || getWatchlistGroupCategory(item) === value) return;
         item.category = value;
+        draggingWatchlistIndex = null;
         renderWatchlistTable();
         queueAutosave();
         setAppStatus(`${item.ticker} を「${value || "未分類"}」へ移動しました。`, "success");
@@ -2667,6 +2682,7 @@ function renderWatchlistMetricsTable() {
     const roaStyle = loading ? "" : buildPositiveMetricToneStyle(profitability.returnOnAssets, [2, 5, 8]);
     const dividendYieldStyle = loading ? "" : buildYieldToneStyle(getDisplayDividendYieldPercent(snapshot));
     const row = document.createElement("tr");
+    const index = appState.watchlist.indexOf(item);
 
     row.innerHTML = `
       <td class="cell-ticker">
@@ -2691,6 +2707,7 @@ function renderWatchlistMetricsTable() {
       reviewTickerInput.value = ticker;
       loadReviewSnapshot(ticker);
     });
+    attachWatchlistDragEvents(row, index, { allowReorder: false });
     watchlistBody.appendChild(row);
   });
 }
