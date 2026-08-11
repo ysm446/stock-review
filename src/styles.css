@@ -3381,11 +3381,14 @@ body.is-resizing-chat-sidebar {
   font-size: 0.9rem;
 }
 
-/* Markdown テーブル（チャット回答内） */
+/* Markdown テーブル（チャット回答内）。
+   グローバルの table { width: 100% } を打ち消し、内容の幅に合わせる。
+   列が少ないテーブルが全幅に引き伸ばされて間延びするのを防ぐ。 */
 .chat-message-text table {
   border-collapse: collapse;
   margin: 0.35em 0 0.85em;
   font-size: 0.94em;
+  width: auto;
   max-width: 100%;
 }
 
