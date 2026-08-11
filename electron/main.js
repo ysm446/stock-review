@@ -173,6 +173,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 780,
     backgroundColor: "#07111f",
+    icon: path.join(__dirname, "..", "assets", "app-icon.png"),
     title: "Stock Review",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
