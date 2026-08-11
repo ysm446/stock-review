@@ -2478,18 +2478,9 @@ button:focus-visible {
   gap: 12px;
 }
 
-.stock-chat-panel .chat-message-text,
-.stock-chat-panel .chat-message-bubble {
-  font-size: 0.92rem;
-  line-height: 1.75;
-}
-
-.stock-chat-panel .chat-message-meta {
-  font-size: 0.7rem;
-}
-
+/* 本文・メタ・入力欄はチャットビューと共通（style-guide.md §3.1）。
+   以前あった銘柄チャット専用のサイズ上書きは、共通側が同じ値になったため削除した。 */
 .stock-chat-panel .chat-input {
-  font-size: 0.9rem;
   min-height: 32px;
 }
 
@@ -2499,7 +2490,7 @@ button:focus-visible {
 }
 
 .stock-chat-panel .chat-empty-hint {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
 /* 入力欄の上に常時表示するテンプレート質問チップ */
@@ -2826,7 +2817,7 @@ body.is-resizing-chat-sidebar {
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-size: 1.14rem;
+  font-size: 0.84rem;
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -2865,7 +2856,7 @@ body.is-resizing-chat-sidebar {
 .chat-tree-empty {
   padding: 14px 12px;
   color: var(--muted);
-  font-size: 1.08rem;
+  font-size: 0.78rem;
 }
 
 /* Workspace section */
@@ -2947,7 +2938,7 @@ body.is-resizing-chat-sidebar {
 
 .chat-ws-label {
   flex: 1;
-  font-size: 1.14rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--muted);
   overflow: hidden;
@@ -2976,13 +2967,13 @@ body.is-resizing-chat-sidebar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 9px 8px 9px 22px;
+  padding: 8px 8px 8px 22px;
   margin: 1px 4px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1.14rem;
+  font-size: 0.84rem;
   color: var(--muted);
-  min-height: 54px;
+  min-height: 44px;
   transition: background 100ms ease, color 100ms ease;
   user-select: none;
 }
@@ -3013,8 +3004,8 @@ body.is-resizing-chat-sidebar {
 
 .chat-session-date {
   color: var(--muted);
-  font-size: 0.94rem;
-  line-height: 1.1;
+  font-size: 0.72rem;
+  line-height: 1.25;
   opacity: 0.78;
 }
 
@@ -3072,9 +3063,9 @@ body.is-resizing-chat-sidebar {
 .chat-doc-label {
   flex: 1;
   min-width: 0;
-  font-size: 0.98rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .chat-doc-actions {
@@ -3083,9 +3074,9 @@ body.is-resizing-chat-sidebar {
 }
 
 .chat-doc-empty {
-  padding: 3px 8px 5px 22px;
+  padding: 4px 8px 6px 22px;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 0.78rem;
   opacity: 0.7;
 }
 
@@ -3093,13 +3084,13 @@ body.is-resizing-chat-sidebar {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 9px 8px 9px 22px;
+  padding: 8px 8px 8px 22px;
   margin: 1px 0;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 1.14rem;
+  font-size: 0.84rem;
   color: var(--muted);
-  min-height: 54px;
+  min-height: 44px;
   transition: background 100ms ease, color 100ms ease;
   user-select: none;
 }
@@ -3157,7 +3148,7 @@ body.is-resizing-chat-sidebar {
   border-radius: 4px;
   color: var(--text);
   padding: 1px 5px;
-  font-size: 1.05rem;
+  font-size: 0.84rem;
   outline: none;
   min-width: 0;
 }
@@ -3283,9 +3274,9 @@ body.is-resizing-chat-sidebar {
 
 .chat-message-bubble {
   padding: 10px 14px;
-  border-radius: 12px;
+  border-radius: 8px;
   line-height: 1.65;
-  font-size: 1.16rem;
+  font-size: 0.88rem;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -3303,10 +3294,11 @@ body.is-resizing-chat-sidebar {
   padding: 0;
 }
 
+/* 本文はニュース・AIまとめ・ノートカードと同じ 0.88rem / 1.65（style-guide.md §3.1） */
 .chat-message-text {
   color: var(--text);
-  font-size: 1.16rem;
-  line-height: 1.85;
+  font-size: 0.88rem;
+  line-height: 1.65;
   word-break: break-word;
   width: 100%;
 }
@@ -3378,15 +3370,15 @@ body.is-resizing-chat-sidebar {
 }
 
 .chat-message-text h1 {
-  font-size: 1.48rem;
+  font-size: 1rem;
 }
 
 .chat-message-text h2 {
-  font-size: 1.34rem;
+  font-size: 0.94rem;
 }
 
 .chat-message-text h3 {
-  font-size: 1.24rem;
+  font-size: 0.9rem;
 }
 
 /* Markdown テーブル（チャット回答内） */
@@ -3409,19 +3401,6 @@ body.is-resizing-chat-sidebar {
   background: var(--panel-soft);
   font-weight: 700;
   white-space: nowrap;
-}
-
-/* 銘柄チャット内はデータパネルに合わせて見出しを小さく */
-.stock-chat-panel .chat-message-text h1 {
-  font-size: 1.08rem;
-}
-
-.stock-chat-panel .chat-message-text h2 {
-  font-size: 1rem;
-}
-
-.stock-chat-panel .chat-message-text h3 {
-  font-size: 0.94rem;
 }
 
 .chat-message-text ul {
@@ -3497,8 +3476,8 @@ body.is-resizing-chat-sidebar {
   outline: none;
   min-height: 36px;
   max-height: 160px;
-  font-size: 1.1rem;
-  line-height: 1.6;
+  font-size: 0.88rem;
+  line-height: 1.65;
   transition: border-color 140ms ease;
 }
 
@@ -3535,7 +3514,7 @@ body.is-resizing-chat-sidebar {
   border-bottom: 1px solid var(--line);
   color: var(--text);
   padding: 8px 2px;
-  font-size: 1.24rem;
+  font-size: 1rem;
   font-weight: 700;
   outline: none;
 }
@@ -3554,7 +3533,7 @@ body.is-resizing-chat-sidebar {
 .document-save-status {
   min-width: 42px;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 0.74rem;
   text-align: right;
 }
 
@@ -3573,8 +3552,8 @@ body.is-resizing-chat-sidebar {
   border-radius: 8px;
   color: var(--text);
   padding: 16px;
-  font-size: 1.16rem;
-  line-height: 1.85;
+  font-size: 0.88rem;
+  line-height: 1.65;
   outline: none;
 }
 
