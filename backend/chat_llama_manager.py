@@ -22,6 +22,7 @@ from urllib import request as urllib_request
 
 import llama_updater
 from shared import atomic_write_text
+from paths import LLAMA_LOG_FILE as _LOG_FILE
 from paths import LLAMA_PATHS_FILE as _PATHS_FILE
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,10 @@ PORT = 8091
 DEFAULT_CTX = 16384
 
 CTX_OPTIONS = (4096, 8192, 16384, 32768, 65536)
+
+# Windows でコンソールアプリ（llama-server / taskkill）を起動したときに、
+# コマンドプロンプトのウィンドウを出さない
+_NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
 def base_url() -> str:
@@ -155,7 +160,7 @@ def _kill_pid(pid) -> None:
     if sys.platform == "win32":
         result = subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, **_NO_WINDOW,
         )
         logger.info("taskkill /PID %s → rc=%s", pid, result.returncode)
     else:
@@ -207,13 +212,31 @@ def save_settings(model_path: str | None = None, ctx_size: int | None = None) ->
     _save_paths(paths)
 
 
-def _wait_for_server(timeout: int = 120) -> None:
+def _log_tail(max_lines: int = 12) -> str:
+    """llama-server のログの末尾（起動失敗の原因を伝えるため）。"""
+    try:
+        lines = _LOG_FILE.read_text("utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    return "\n".join(line for line in lines[-max_lines:] if line.strip())
+
+
+def _startup_error(message: str) -> RuntimeError:
+    tail = _log_tail()
+    detail = f"\n--- {_LOG_FILE.name} の末尾 ---\n{tail}" if tail else ""
+    return RuntimeError(f"{message}（ログ: {_LOG_FILE}）{detail}")
+
+
+def _wait_for_server(proc: subprocess.Popen, timeout: int = 120) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if is_ready():
             return
+        # 途中で落ちたら（メモリ不足・モデル非対応など）タイムアウトを待たずに知らせる
+        if proc.poll() is not None:
+            raise _startup_error(f"llama-server が起動中に終了しました（終了コード {proc.returncode}）")
         time.sleep(1.5)
-    raise TimeoutError("llama-server did not start within the timeout")
+    raise _startup_error("llama-server が時間内に起動しませんでした")
 
 
 def start(model_path: str | None = None, ctx_size: int | None = None,
@@ -260,15 +283,16 @@ def start(model_path: str | None = None, ctx_size: int | None = None,
     if mmproj_candidates:
         cmd += ["--mmproj", str(mmproj_candidates[0])]
 
-    kwargs: dict = {}
-    if sys.platform == "win32":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-
-    logger.info("Starting llama-server: %s", model_p.name)
-    proc = subprocess.Popen(cmd, cwd=exe.parent, **kwargs)
+    # ウィンドウは出さず、出力はログファイルへ（起動のたびに上書き）
+    logger.info("Starting llama-server: %s (log: %s)", model_p.name, _LOG_FILE)
+    _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(_LOG_FILE, "wb") as log:
+        proc = subprocess.Popen(
+            cmd, cwd=exe.parent, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, **_NO_WINDOW
+        )
     time.sleep(1)
     if proc.poll() is not None:
-        raise RuntimeError("llama-server exited immediately after launch")
+        raise _startup_error(f"llama-server が起動直後に終了しました（終了コード {proc.returncode}）")
 
     paths = _get_paths()
     state = _server_state(paths)
@@ -278,7 +302,7 @@ def start(model_path: str | None = None, ctx_size: int | None = None,
     state["exe"] = str(exe)
     _save_paths(paths)
 
-    _wait_for_server()
+    _wait_for_server(proc)
     _record_model_usage(str(model_p))
     logger.info("llama-server ready: %s", model_p.name)
 

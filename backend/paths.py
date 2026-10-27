@@ -47,6 +47,8 @@ STOCK_MASTER_FILE = DATA_DIR / "stock_master.json"
 
 # ── ② 環境設定 ────────────────────────────────────────────
 LLAMA_PATHS_FILE = CONFIG_DIR / "llama_paths.json"
+# llama-server の出力（ウィンドウを出さずに起動するため、起動のたびにここへ書き出す）
+LLAMA_LOG_FILE = CONFIG_DIR / "logs" / "llama-server.log"
 
 
 def ensure_data_dir() -> None:

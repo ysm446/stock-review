@@ -4,6 +4,8 @@
 
 ## 完了済み
 
+- **2026-10-27: llama-server をウィンドウなしで起動**。`chat_llama_manager.start()` の `CREATE_NEW_CONSOLE` を `CREATE_NO_WINDOW` に変更し、stdout/stderr を `paths.LLAMA_LOG_FILE`（`CONFIG_DIR/logs/llama-server.log`、起動ごとに上書き）へ。停止時の `taskkill` も `CREATE_NO_WINDOW`（バックエンドはコンソールを持たないため、子のコンソールアプリは新しいウィンドウを作ってしまう）。起動直後の終了・待機中の終了（`_wait_for_server(proc)` で `proc.poll()` を監視）・タイムアウトは、ログの場所と末尾12行を含むエラーにする。アプリ終了時の停止は従来どおり Electron（`taskkill` by pid）とバックエンドの lifespan が行う。**検証**: 隔離 CONFIG_DIR・別ポート（:8093）・CPU のみで、壊れた GGUF は 2.3 秒でログ末尾付きの失敗、正常なモデル（Ornith 9B）は起動し、プロセスに表示中のウィンドウもコンソールのウィンドウ（`GetConsoleWindow`）も無いこと、ログ出力、停止を確認（実運用中の :8091 には触れていない）。**実アプリからのロードでの見た目は未確認**（反映にはアプリの再起動が必要）。
+
 - **2026-10-27: 提案ボタンをページ別にし、押すと会話を開始**。
   - `renderer-chat.js` の `PAGE_SUGGESTIONS`（market / portfolio / review）を `currentView`（`stock-review:view` イベントで追従）に応じて描画。review は銘柄表示中のみ。以前は「銘柄に紐づいた会話のときだけ・押すと今の会話に送信」だったが、「表示中の画面の新しい会話として送信」（`startSuggestedChat`。空の下書き会話は再利用）に変更。モデル未ロード時は disabled＋ツールチップ。
   - 送信時の前提（`buildContextPrompt`）: 銘柄に紐づいた会話は従来どおり銘柄の指標。それ以外は表示中の画面で決まり、ポートフォリオ画面なら `renderer.js` の `buildPortfolioChatContext`（`setPortfolioContextProvider` で登録。銘柄ごとに合算した評価額・構成比・損益・セクター、現金・総資産・総損益・年間配当）、マーケット画面ならニュース／Web検索で最新を確認するよう促す一文。前提は送信のたびにその時点の画面で決まる（会話に保存はしない）。
