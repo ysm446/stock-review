@@ -36,11 +36,6 @@
               <path d="M15.5 7.5H18V10"></path>
             </svg>
           </button>
-          <button class="nav-button" data-view="chat" title="チャット" aria-label="チャット">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-            </svg>
-          </button>
         </nav>
         <button class="nav-button sidebar-settings-button" id="settings-button" title="設定" aria-label="設定">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -59,8 +54,15 @@
           </svg>
           <span id="chat-model-name">モデルを選択</span>
         </button>
+        <button class="chat-dock-toggle" id="chat-dock-toggle" type="button" title="チャットを開く" aria-label="チャット" aria-controls="chat-dock" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          チャット
+        </button>
       </div>
 
+      <div class="app-body">
       <main class="main-panel">
         <section class="view is-visible" id="view-market">
           <header class="hero">
@@ -477,41 +479,44 @@
 
           </section>
         </section>
-        <section class="view" id="view-chat">
-          <header class="hero">
-            <div>
-              <h1>チャット</h1>
-            </div>
-          </header>
-
-          <div class="chat-inner">
-            <aside class="chat-sidebar">
-              <div class="chat-sidebar-head">
-                <button class="chat-new-session-btn" id="chat-new-session-btn">+ 新しい会話</button>
-                <button class="chat-new-ws-btn" id="chat-new-ws-btn" title="ワークスペースを追加">
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-                    <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h3.586a1 1 0 0 1 .707.293L8 4H13.5A1.5 1.5 0 0 1 15 5.5v7A1.5 1.5 0 0 1 13.5 14h-11A1.5 1.5 0 0 1 1 12.5v-9Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-                    <path d="M8 7v4M6 9h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-                  </svg>
-                </button>
-              </div>
-              <div class="chat-tree" id="chat-tree"></div>
-            </aside>
-            <div class="chat-sidebar-resizer" id="chat-sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="サイドバーの幅を変更"></div>
-            <div class="chat-main">
-              <div class="chat-layout">
-                <div class="chat-messages" id="chat-messages">
-                  <p class="chat-empty-hint" id="chat-empty-hint">サイドバーから会話を選択してください</p>
-                </div>
-                <div class="chat-footer">
-                  <textarea class="chat-input" id="chat-input" placeholder="メッセージを入力...（Shift+Enter で改行）" rows="1" disabled></textarea>
-                  <button class="accent-button" id="chat-send" disabled>送信</button>
-                </div>
-              </div>
+      </main>
+      <aside class="chat-dock" id="chat-dock" aria-label="チャット">
+        <div class="chat-dock-resizer" id="chat-dock-resizer" role="separator" aria-orientation="vertical" aria-label="チャットの幅を変更" title="ドラッグで幅を調整（ダブルクリックで初期値に戻す）"></div>
+        <div class="chat-dock-inner">
+          <div class="chat-dock-head" id="chat-dock-head">
+            <span class="chat-dock-title" id="chat-dock-title">新しい会話</span>
+            <button class="chat-dock-icon-button" id="chat-history-button" type="button" title="会話一覧" aria-label="会話一覧" aria-haspopup="dialog" aria-expanded="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 6h12M8 12h12M8 18h12"></path>
+                <path d="M4 6h.01M4 12h.01M4 18h.01"></path>
+              </svg>
+            </button>
+            <button class="chat-dock-icon-button" id="chat-new-button" type="button" title="新しい会話" aria-label="新しい会話">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 12.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16l4-4h6.5"></path>
+                <path d="M18 15v6M15 18h6"></path>
+              </svg>
+            </button>
+            <button class="chat-dock-icon-button is-danger" id="chat-delete-button" type="button" title="今の会話を削除" aria-label="今の会話を削除" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M10 11v6M14 11v6"></path>
+                <path d="M6 7l1 14h10l1-14M9 7V4h6v3"></path>
+              </svg>
+            </button>
+            <div class="chat-history-popover is-hidden" id="chat-history-popover" role="dialog" aria-label="会話一覧">
+              <div class="chat-history-list" id="chat-history-list"></div>
             </div>
           </div>
-        </section>
-      </main>
+          <div class="chat-messages chat-dock-messages" id="chat-messages">
+            <p class="chat-empty-hint">メッセージを入力して会話を始めます</p>
+          </div>
+          <div class="chat-footer chat-dock-footer">
+            <textarea class="chat-input" id="chat-input" placeholder="メッセージを入力...（Shift+Enter で改行）" rows="1"></textarea>
+            <button class="accent-button" id="chat-send" type="button" disabled>送信</button>
+          </div>
+        </div>
+      </aside>
+      </div>
       <footer class="app-statusbar" aria-label="アプリケーションの状態">
         <div class="app-status-message" id="app-status-message" role="status" aria-live="polite">
           <span class="app-status-indicator" aria-hidden="true"></span>

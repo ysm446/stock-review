@@ -476,6 +476,17 @@ def patch_sessions_reorder(workspace_id: int, body: ReorderBody):
     return {"ok": True}
 
 
+@app.get("/chat/sessions")
+def get_chat_sessions():
+    """右サイドバーのチャット用。全般ワークスペースの会話を新しい順に返す。"""
+    return store.list_general_sessions()
+
+
+@app.post("/chat/sessions", status_code=201)
+def post_chat_session(body: SessionBody):
+    return store.create_general_session(body.title)
+
+
 @app.patch("/sessions/{id}")
 def patch_session(id: int, body: SessionBody):
     store.rename_session(id, body.title)

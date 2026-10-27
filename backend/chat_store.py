@@ -595,6 +595,31 @@ def create_session(workspace_id: int, title: str = "新しい会話") -> dict:
         }
 
 
+# ── サイドバーチャット（全般ワークスペースの会話をまとめて扱う） ──
+
+def list_general_sessions() -> list[dict]:
+    """全般（scope='general'）ワークスペースの会話を、新しく更新された順に返す。"""
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(
+            """
+            SELECT s.* FROM sessions s
+            JOIN workspaces w ON w.id = s.workspace_id
+            WHERE w.scope = 'general'
+            ORDER BY s.updated_at DESC, s.id DESC
+            """
+        )]
+
+
+def create_general_session(title: str = "新しい会話") -> dict:
+    """先頭の全般ワークスペースに会話を作る。全般ワークスペースが無ければ作る。"""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM workspaces WHERE scope = 'general' ORDER BY sort_order, created_at LIMIT 1"
+        ).fetchone()
+    workspace_id = int(row["id"]) if row else int(create_workspace("デフォルト")["id"])
+    return create_session(workspace_id, title)
+
+
 def rename_session(id: int, title: str) -> None:
     with _connect() as conn:
         conn.execute("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?", (title, _now(), id))
