@@ -4,6 +4,11 @@
 
 ## 完了済み
 
+- **2026-10-27: 提案ボタンをページ別にし、押すと会話を開始**。
+  - `renderer-chat.js` の `PAGE_SUGGESTIONS`（market / portfolio / review）を `currentView`（`stock-review:view` イベントで追従）に応じて描画。review は銘柄表示中のみ。以前は「銘柄に紐づいた会話のときだけ・押すと今の会話に送信」だったが、「表示中の画面の新しい会話として送信」（`startSuggestedChat`。空の下書き会話は再利用）に変更。モデル未ロード時は disabled＋ツールチップ。
+  - 送信時の前提（`buildContextPrompt`）: 銘柄に紐づいた会話は従来どおり銘柄の指標。それ以外は表示中の画面で決まり、ポートフォリオ画面なら `renderer.js` の `buildPortfolioChatContext`（`setPortfolioContextProvider` で登録。銘柄ごとに合算した評価額・構成比・損益・セクター、現金・総資産・総損益・年間配当）、マーケット画面ならニュース／Web検索で最新を確認するよう促す一文。前提は送信のたびにその時点の画面で決まる（会話に保存はしない）。
+  - **検証**: 実アプリで、`/llama/status`・`POST /chat/sessions`・`/chat/agent-stream` を画面内だけ差し替え（実DBに書かない）、マーケット→ポートフォリオ→個別銘柄の順に提案を押して、各ページの提案文言、押すたびに新しい会話になること、送られる質問と前提（市場の一文／保有10銘柄の要約／285A.T の指標）を確認。セクターは起動後に yfinance から順に取得するため、取得前の銘柄はセクターを省く（取得後は Technology 等が入ることを確認）。**実モデルでの回答品質は未確認**。
+
 - **2026-10-27: モデル一覧で「よく使うモデル」を先頭に**。`chat_llama_manager.start()` がロード成功（`_wait_for_server` 通過）時に `llama_paths.json` の `model_usage[<path>] = {count, last_used}` を更新（`_record_model_usage`、起動済みで何もしない場合は数えない）。`GET /models` は各モデルに `use_count` / `last_used` / `frequent` を付け、使用回数→最終使用の降順で上位5件（`FREQUENT_MODELS`）を先頭、残りは相対パス順。モーダルは「よく使うモデル」「その他のモデル」の見出しで分け（使用履歴が無いときは見出しなし）、ツールチップに回数と前回日時。検証: 隔離 CONFIG_DIR で同数時は最近使った方が上・6件目以降は「その他」に回ることを確認。実アプリでは実設定を書き換えないよう、画面内で `/models` の応答だけ差し替えて見出し表示を確認。**履歴はこの変更以降のロードから数える**（過去の使用は記録されていない）。
 
 - **2026-10-27: llama-server 更新処理の見直し**（レビュー → 修正）。

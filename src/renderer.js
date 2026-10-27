@@ -1,4 +1,4 @@
-import "./renderer-chat.js";
+import { setPortfolioContextProvider } from "./renderer-chat.js";
 import "./renderer-settings.js";
 import "./renderer-resources.js";
 import "./renderer-market.js";
@@ -1735,6 +1735,51 @@ function calculateStats() {
     }
   ];
 }
+
+// 右サイドバーのチャットへ、ポートフォリオ画面から送るときに添える要約（アプリ内の計算値）
+function buildPortfolioChatContext() {
+  const byTicker = new Map();
+  appState.holdings.map(normalizeHolding).forEach((holding) => {
+    const ticker = String(holding.ticker || "").trim();
+    if (!ticker) return;
+    const key = ticker.toUpperCase();
+    const entry = byTicker.get(key) || { ticker, marketValue: 0, costBasis: 0 };
+    entry.marketValue += holding.marketValue;
+    entry.costBasis += holding.costBasis;
+    byTicker.set(key, entry);
+  });
+  const positions = [...byTicker.values()].sort((a, b) => b.marketValue - a.marketValue);
+  const totalValue = positions.reduce((sum, item) => sum + item.marketValue, 0);
+  const totalCost = positions.reduce((sum, item) => sum + item.costBasis, 0);
+  const cash = Math.max(0, parseNumericInput(appState.cashJpy));
+  const annualDividend = parseNumericInput(appState.dividendSummary?.totalAnnualDividendJpy);
+  const profitText = (profit, cost) =>
+    `${formatSignedCurrency(profit)}${cost > 0 ? `（${formatSignedPercent((profit / cost) * 100)}）` : ""}`;
+
+  const lines = [
+    "ユーザーはアプリのポートフォリオ画面を見ながら質問しています。以下はアプリが計算した現在の保有状況です（円換算）。",
+  ];
+  if (!positions.length) {
+    lines.push("保有銘柄は登録されていません。");
+  } else {
+    lines.push(
+      `株式評価額: ${formatCurrency(totalValue)} / 現金: ${formatCurrency(cash)} / 総資産: ${formatCurrency(totalValue + cash)}`,
+      `総取得金額: ${formatCurrency(totalCost)} / 総損益: ${profitText(totalValue - totalCost, totalCost)}`,
+      `年間配当金（見込み）: ${annualDividend > 0 ? formatCurrency(annualDividend) : "-"}`,
+      "保有銘柄（評価額の大きい順）:",
+      ...positions.map((item) => {
+        const weight = totalValue > 0 ? formatPercent((item.marketValue / totalValue) * 100) : "-";
+        // セクターは起動後に yfinance から順に取得するため、まだ無い銘柄は省く
+        const sector = getHoldingSector(item.ticker);
+        return `- ${item.ticker} ${getDisplayName(item.ticker)}${sector ? ` | セクター: ${sector}` : ""} | 評価額 ${formatCurrency(item.marketValue)}（構成比 ${weight}） | 損益 ${profitText(item.marketValue - item.costBasis, item.costBasis)}`;
+      })
+    );
+  }
+  lines.push("株価は最後に取得した値で、リアルタイムではありません。売買を断定的に勧めず、判断材料を整理してください。");
+  return lines.join("\n");
+}
+
+setPortfolioContextProvider(buildPortfolioChatContext);
 
 function buildTopStats() {
   const holdings = appState.holdings.map(normalizeHolding);

@@ -49,7 +49,9 @@ let streaming        = false;
 let currentModelName = "";
 let renamingSessionId = null;
 let draftTicker      = null;  // 新しい会話（未保存）が紐づく予定の銘柄
-let reviewVisible    = Boolean(document.getElementById("view-review")?.classList.contains("is-visible"));
+// 表示中の画面（market / portfolio / review）。提案ボタンと、送信時に添える前提を決める
+let currentView      = document.querySelector(".view.is-visible")?.id.replace(/^view-/, "") || "market";
+let portfolioContextProvider = null; // renderer.js が登録する、ポートフォリオ要約の作成関数
 
 const CHAT_DOCK_OPEN_KEY = "stock-review.chatDockOpen";
 const CHAT_DOCK_WIDTH_KEY = "stock-review.chatDockWidth";
@@ -59,13 +61,30 @@ const CHAT_DOCK_MIN_WIDTH = 320;
 const CHAT_DOCK_MAX_WIDTH = 900;
 const CTX_OPTIONS = [4096, 8192, 16384, 32768, 65536];
 
-// 銘柄に紐づいた会話の入力欄の上に出すテンプレート質問
-const TEMPLATE_QUESTIONS = [
-  "最近のニュースを教えて",
-  "直近の決算のポイントは？",
-  "強みと競合優位性を整理して",
-  "ここ数年の会社の経緯と変化を整理して",
-];
+// 入力欄の上に出す提案（表示中の画面ごと）。押すとその質問で新しい会話を始める
+const PAGE_SUGGESTIONS = {
+  market: [
+    "今日の相場のポイントは？",
+    "日経平均の最近の動きを解説して",
+    "ドル円の動向と株価への影響は？",
+    "今週注目のイベントは？",
+  ],
+  portfolio: [
+    "ポートフォリオの偏りやリスクを点検して",
+    "損益の大きい銘柄を整理して",
+    "セクター配分を評価して",
+    "配当の見通しを整理して",
+  ],
+  // 個別銘柄画面は、銘柄を表示しているときだけ出す
+  review: [
+    "最近のニュースを教えて",
+    "直近の決算のポイントは？",
+    "強みと競合優位性を整理して",
+    "ここ数年の会社の経緯と変化を整理して",
+  ],
+};
+
+const MARKET_CONTEXT_PROMPT = "ユーザーはアプリのマーケット画面（日経平均・NYダウ・ドル円のチャートと最新ニュース）を見ながら質問しています。相場や指数・為替の最新状況が必要なら、ニュース検索・Web検索ツールで確認してから答えてください。";
 
 // ── Helpers ──────────────────────────────────────────────
 function setModelStatus(state, label) {
@@ -90,6 +109,7 @@ function updateComposerState() {
   chatHistoryButton.disabled = streaming;
   chatSuggestions.querySelectorAll(".chat-suggestion").forEach(btn => {
     btn.disabled = streaming || !serverLoaded;
+    btn.title = serverLoaded ? "この質問で新しい会話を始めます" : "モデルを読み込むと使えます";
   });
   updateRegenerateButton();
 }
@@ -246,7 +266,7 @@ function activeTicker() {
 
 // 個別銘柄画面で銘柄を表示しているときだけ、新しい会話をその銘柄に紐づける
 function currentReviewTicker() {
-  return reviewVisible ? getReviewTicker() || null : null;
+  return currentView === "review" ? getReviewTicker() || null : null;
 }
 
 // まだ何も送っていない新しい会話は、見ている画面・銘柄に合わせて紐づけ先を変える
@@ -264,25 +284,52 @@ function renderDockTitle() {
   chatDockTicker.textContent = ticker || "";
   chatDockTicker.title = ticker ? `${ticker} に紐づいた会話` : "";
   chatDockTicker.classList.toggle("is-hidden", !ticker);
-  chatSuggestions.classList.toggle("is-hidden", !ticker);
   chatInput.placeholder = ticker
     ? `${ticker} について質問...（Shift+Enter で改行）`
     : "メッセージを入力...（Shift+Enter で改行）";
 }
 
+function currentSuggestions() {
+  if (currentView === "review" && !getReviewTicker()) return [];
+  return PAGE_SUGGESTIONS[currentView] || [];
+}
+
 function renderSuggestions() {
-  TEMPLATE_QUESTIONS.forEach(question => {
+  chatSuggestions.innerHTML = "";
+  const questions = currentSuggestions();
+  questions.forEach(question => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "chat-suggestion";
     btn.textContent = question;
-    btn.addEventListener("click", () => {
-      if (streaming || !serverLoaded) return;
-      chatInput.value = question;
-      sendMessage();
-    });
+    btn.addEventListener("click", () => startSuggestedChat(question));
     chatSuggestions.appendChild(btn);
   });
+  chatSuggestions.classList.toggle("is-hidden", !questions.length);
+  updateComposerState();
+}
+
+// 提案ボタン: 表示中の画面の新しい会話として、その質問を送る（空の新しい会話ならそのまま使う）
+function startSuggestedChat(question) {
+  if (streaming || !serverLoaded) return;
+  closeHistory();
+  if (activeSessionId !== null || chatHistory.length) startNewChat({ focus: false });
+  else syncDraftTicker();
+  chatInput.value = question;
+  sendMessage();
+}
+
+// 送信時に添える前提。銘柄に紐づいた会話はその銘柄、それ以外は表示中の画面の内容
+function buildContextPrompt(ticker) {
+  if (ticker) return buildStockSystemPrompt(ticker);
+  if (currentView === "portfolio" && portfolioContextProvider) return portfolioContextProvider();
+  if (currentView === "market") return MARKET_CONTEXT_PROMPT;
+  return "";
+}
+
+// renderer.js から、ポートフォリオ画面の要約を作る関数を登録する
+export function setPortfolioContextProvider(provider) {
+  portfolioContextProvider = provider;
 }
 
 async function loadSessions() {
@@ -632,7 +679,7 @@ async function streamAssistantReply({ persistUser, userWrap = null, userText = "
   await streamChat(sidAtSend, chatHistory, {
     persistUser,
     endpoint: "/chat/agent-stream",
-    systemPrompt: ticker ? buildStockSystemPrompt(ticker) : "",
+    systemPrompt: buildContextPrompt(ticker),
     onToken: chunk => {
       wrap.classList.remove("loading");
       accumulated += chunk;
@@ -856,10 +903,14 @@ window.addEventListener("keydown", e => {
   if (e.key === "Escape" && !chatHistoryPopover.classList.contains("is-hidden")) closeHistory();
 });
 window.addEventListener("stock-review:view", e => {
-  reviewVisible = e.detail?.view === "review";
+  currentView = e.detail?.view || currentView;
   syncDraftTicker();
+  renderSuggestions();
 });
-onReviewTickerChange(() => syncDraftTicker());
+onReviewTickerChange(() => {
+  syncDraftTicker();
+  renderSuggestions();
+});
 setRegenerateSource(() => ({
   ticker: activeTicker(),
   sessionId: activeSessionId,
