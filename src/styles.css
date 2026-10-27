@@ -3230,6 +3230,14 @@ body.is-resizing-chat-dock {
 }
 
 /* モデル一覧の行（クリックでロード） */
+/* モデル一覧の見出し（よく使うモデル / その他のモデル） */
+.chat-model-group-label {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .chat-model-item {
   display: flex;
   align-items: center;

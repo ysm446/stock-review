@@ -766,8 +766,17 @@ async function renderModelModal() {
   }
   chatModelList.appendChild(head);
 
-  // モデル一覧: クリックでロード
-  models.forEach(({ name, path, relative_path }) => {
+  // モデル一覧: クリックでロード。よく使うモデル（バックエンドが先頭に並べる）は見出しで分ける
+  const hasFrequent = models.some(m => m.frequent);
+  const appendGroupLabel = text => {
+    const groupLabel = document.createElement("p");
+    groupLabel.className = "chat-model-group-label";
+    groupLabel.textContent = text;
+    chatModelList.appendChild(groupLabel);
+  };
+  models.forEach(({ name, path, relative_path, frequent, use_count, last_used }, index) => {
+    if (hasFrequent && index === 0) appendGroupLabel("よく使うモデル");
+    if (hasFrequent && !frequent && models[index - 1]?.frequent) appendGroupLabel("その他のモデル");
     const isCurrent = path === status.model_path;
     const isRunning = isCurrent && status.ready;
 
@@ -777,7 +786,10 @@ async function renderModelModal() {
     const label = document.createElement("span");
     label.className = "chat-model-item-name";
     label.textContent = name;
-    item.title = relative_path || name;
+    const usageText = use_count
+      ? `\n${use_count}回使用・前回 ${new Date(last_used * 1000).toLocaleString("ja-JP")}`
+      : "";
+    item.title = `${relative_path || name}${usageText}`;
     const badge = document.createElement("span");
     badge.className = "chat-model-item-state";
     badge.textContent = isRunning ? "稼働中" : "ロード";

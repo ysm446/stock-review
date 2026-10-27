@@ -217,9 +217,32 @@ def _validate_ctx_size(ctx_size: int | None) -> int | None:
     return ctx_size
 
 
+# モデル一覧の先頭に「よく使うモデル」として出す件数
+FREQUENT_MODELS = 5
+
+
 @app.get("/models")
 def get_models():
-    return _find_gguf_files(llama.get_models_dir())
+    """モデル一覧。よく使うモデル（ロード回数が多い順、同数なら最近使った順）を先頭に最大5件、
+    残りはフォルダ内の相対パス順。frequent が先頭グループかどうかを表す。"""
+    usage = llama.get_model_usage()
+    models = []
+    for model in _find_gguf_files(llama.get_models_dir()):
+        entry = usage.get(model["path"]) or {}
+        models.append({
+            **model,
+            "use_count": int(entry.get("count") or 0),
+            "last_used": float(entry.get("last_used") or 0),
+        })
+    used = sorted(
+        (m for m in models if m["use_count"] > 0),
+        key=lambda m: (m["use_count"], m["last_used"]),
+        reverse=True,
+    )
+    frequent = used[:FREQUENT_MODELS]
+    frequent_paths = {m["path"] for m in frequent}
+    rest = [m for m in models if m["path"] not in frequent_paths]
+    return [{**m, "frequent": True} for m in frequent] + [{**m, "frequent": False} for m in rest]
 
 
 @app.get("/llama/models-dir")

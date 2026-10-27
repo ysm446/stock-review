@@ -4,6 +4,8 @@
 
 ## 完了済み
 
+- **2026-10-27: モデル一覧で「よく使うモデル」を先頭に**。`chat_llama_manager.start()` がロード成功（`_wait_for_server` 通過）時に `llama_paths.json` の `model_usage[<path>] = {count, last_used}` を更新（`_record_model_usage`、起動済みで何もしない場合は数えない）。`GET /models` は各モデルに `use_count` / `last_used` / `frequent` を付け、使用回数→最終使用の降順で上位5件（`FREQUENT_MODELS`）を先頭、残りは相対パス順。モーダルは「よく使うモデル」「その他のモデル」の見出しで分け（使用履歴が無いときは見出しなし）、ツールチップに回数と前回日時。検証: 隔離 CONFIG_DIR で同数時は最近使った方が上・6件目以降は「その他」に回ることを確認。実アプリでは実設定を書き換えないよう、画面内で `/models` の応答だけ差し替えて見出し表示を確認。**履歴はこの変更以降のロードから数える**（過去の使用は記録されていない）。
+
 - **2026-10-27: llama-server 更新処理の見直し**（レビュー → 修正）。
   - **最新の判定**: llama.cpp はビルド（bNNNN）をプレリリースで公開し、Latest は v0.7.0（`nightly-tag.txt` のみ）になっていたため、`/releases/latest` では更新できない状態だった（修正前から）。`/releases?per_page=30` から「下書きでない・`b\d+`・Windows x64 ビルドを持つ」最初のリリースを採用（`_find_latest_build_release`）。
   - **ダウンロード**: `POST /llama/download` に `tag` を追加し、`/releases/tags/{tag}` で確認時の版を取得（数十分おきにリリースされるため、取り直すと asset 名が合わなくなっていた）。zip はメモリではなく一時ファイルへ保存し、Content-Length と sha256（GitHub の `digest`）を照合。

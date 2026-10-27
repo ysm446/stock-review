@@ -4,8 +4,10 @@
 ロードすると、その1台がチャット・ノート要約などすべての処理を担当する。
 
 設定と PID は llama_paths.json に保存する:
-  {"models_dir": ..., "server": {"model_path": ..., "ctx_size": ..., "pid": ...}}
+  {"models_dir": ..., "model_usage": {<path>: {"count": n, "last_used": epoch}},
+   "server": {"model_path": ..., "ctx_size": ..., "pid": ..., "exe": ...}}
 models_dir はモデル一覧を探すフォルダ（未設定ならリポジトリ直下の models/）。
+model_usage はロードに成功した回数と最終使用時刻（モデル一覧で「よく使うモデル」を上に出すため）。
 """
 from __future__ import annotations
 
@@ -56,6 +58,22 @@ def _save_paths(paths: dict) -> None:
 
 def _server_state(paths: dict) -> dict:
     return paths.setdefault("server", {})
+
+
+def get_model_usage() -> dict:
+    """モデルごとのロード回数と最終使用時刻 {path: {"count": int, "last_used": float}}。"""
+    usage = _get_paths().get("model_usage")
+    return usage if isinstance(usage, dict) else {}
+
+
+def _record_model_usage(model_path: str) -> None:
+    paths = _get_paths()
+    usage = paths.get("model_usage")
+    if not isinstance(usage, dict):
+        usage = paths["model_usage"] = {}
+    entry = usage.get(model_path) if isinstance(usage.get(model_path), dict) else {}
+    usage[model_path] = {"count": int(entry.get("count") or 0) + 1, "last_used": time.time()}
+    _save_paths(paths)
 
 
 def get_models_dir() -> Path:
@@ -261,6 +279,7 @@ def start(model_path: str | None = None, ctx_size: int | None = None,
     _save_paths(paths)
 
     _wait_for_server()
+    _record_model_usage(str(model_p))
     logger.info("llama-server ready: %s", model_p.name)
 
 
