@@ -271,6 +271,7 @@ def llama_settings(req: LlamaSettingsRequest):
 
 class LlamaDownloadRequest(BaseModel):
     asset_name: str
+    tag: str  # 「最新を確認」で表示したリリースのタグ（例: b11913）
 
 
 @app.get("/llama/local-status")
@@ -290,7 +291,7 @@ async def llama_latest_release():
 def llama_download(req: LlamaDownloadRequest):
     def event_stream():
         try:
-            for event in llama_updater.download_build(req.asset_name):
+            for event in llama_updater.download_build(req.asset_name, req.tag):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"

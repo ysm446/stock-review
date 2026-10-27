@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import socket
 import subprocess
 import sys
@@ -19,15 +18,13 @@ import time
 from pathlib import Path
 from urllib import request as urllib_request
 
+import llama_updater
 from shared import atomic_write_text
 from paths import LLAMA_PATHS_FILE as _PATHS_FILE
 
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
-# Downloaded llama-server builds live under runtime/; bin/ is the legacy location.
-_RUNTIME_DIR = _ROOT / "runtime" / "llama-server"
-_LEGACY_BIN_DIR = _ROOT / "bin" / "llama-server"
 
 # モデルフォルダの既定値（設定画面で別のフォルダに変更できる）
 DEFAULT_MODELS_DIR = _ROOT / "models"
@@ -41,23 +38,6 @@ CTX_OPTIONS = (4096, 8192, 16384, 32768, 65536)
 
 def base_url() -> str:
     return f"http://127.0.0.1:{PORT}"
-
-
-def _find_latest_exe() -> Path:
-    builds = [
-        child
-        for base in (_RUNTIME_DIR, _LEGACY_BIN_DIR)
-        if base.exists()
-        for child in base.iterdir()
-        if child.is_dir() and (child / "llama-server.exe").exists()
-    ]
-    builds.sort(
-        key=lambda d: int(m.group(1)) if (m := re.search(r"b(\d+)", d.name)) else 0,
-        reverse=True,
-    )
-    if not builds:
-        raise RuntimeError("No llama-server builds found in runtime/llama-server/")
-    return builds[0] / "llama-server.exe"
 
 
 def _get_paths() -> dict:
@@ -194,6 +174,8 @@ def get_status() -> dict:
         "model_path": model_path,
         "model_name": Path(model_path).name if model_path else "",
         "ctx_size": int(state.get("ctx_size") or DEFAULT_CTX),
+        # 最後に起動したときの llama-server のビルド（例: llama-b11913-bin-win-cuda-13.4-x64）
+        "build": Path(state["exe"]).parent.name if state.get("exe") else "",
     }
 
 
@@ -226,14 +208,20 @@ def start(model_path: str | None = None, ctx_size: int | None = None,
         raise ValueError("モデルが設定されていません")
     target_ctx = int(ctx_size or state.get("ctx_size") or DEFAULT_CTX)
 
-    if is_ready() and state.get("model_path") == target_path and int(state.get("ctx_size") or 0) == target_ctx:
+    exe = llama_updater.find_server_exe()
+    # ビルドを更新した後は、同じモデル・同じ ctx でも新しいビルドで起動し直す
+    if (
+        is_ready()
+        and state.get("model_path") == target_path
+        and int(state.get("ctx_size") or 0) == target_ctx
+        and state.get("exe") == str(exe)
+    ):
         logger.info("llama-server already running: %s", Path(target_path).name)
         return
 
     stop()
     time.sleep(1)
 
-    exe = _find_latest_exe()
     model_p = Path(target_path)
     if not model_p.exists():
         raise ValueError(f"Model file not found: {target_path}")
@@ -269,6 +257,7 @@ def start(model_path: str | None = None, ctx_size: int | None = None,
     state["model_path"] = str(model_p)
     state["ctx_size"] = target_ctx
     state["pid"] = proc.pid
+    state["exe"] = str(exe)
     _save_paths(paths)
 
     _wait_for_server()

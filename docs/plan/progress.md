@@ -4,6 +4,15 @@
 
 ## 完了済み
 
+- **2026-10-27: llama-server 更新処理の見直し**（レビュー → 修正）。
+  - **最新の判定**: llama.cpp はビルド（bNNNN）をプレリリースで公開し、Latest は v0.7.0（`nightly-tag.txt` のみ）になっていたため、`/releases/latest` では更新できない状態だった（修正前から）。`/releases?per_page=30` から「下書きでない・`b\d+`・Windows x64 ビルドを持つ」最初のリリースを採用（`_find_latest_build_release`）。
+  - **ダウンロード**: `POST /llama/download` に `tag` を追加し、`/releases/tags/{tag}` で確認時の版を取得（数十分おきにリリースされるため、取り直すと asset 名が合わなくなっていた）。zip はメモリではなく一時ファイルへ保存し、Content-Length と sha256（GitHub の `digest`）を照合。
+  - **インストール**: `runtime/llama-server/.staging-<asset>/` に本体＋cudart を展開し、`install.json`（tag / asset_name / installed_at）を書いてから `<asset名>/` へ rename。失敗・切断時（ジェネレータ close 含む）はステージングを削除、`.` 始まりのフォルダはビルドとして数えない。CUDA 版で cudart が無ければダウンロード前にエラー。同じ種類の入れ直しは既存フォルダを rename で退避してから置き換え（使用中なら rename が失敗するので、壊さずに「モデルを停止して」と返す）。
+  - **起動側**: `chat_llama_manager._find_latest_exe` を廃止し `llama_updater.find_server_exe()` に一本化（同じ番号なら `installed_at` が新しい方）。起動時の exe を `server.exe` に記録し、`start()` の「起動済みなら何もしない」判定に exe の一致を追加。`/llama/status` に `build`（起動中のビルドのフォルダ名）を追加。
+  - **フロント**: 完了イベントが無いまま終わったら失敗扱い。完了後にモデルが古いビルドで動いていれば、読み込み直すか確認して `POST /llama/start` を呼ぶ。バリアント一覧は textContent で描画。インストール済み表示に種類を併記。
+  - **検証**: GitHub とダウンロードを差し替えたオフラインテスト（scratchpad の test_updater.py）32項目: 正常系（入れ子 zip・cudart 同梱・install.json）、cudart 失敗／チェックサム不一致／途中切れ／cudart 無し／切断でいずれも何も残らない、種類違いのフォルダ分離と後勝ち、入れ直しで古いファイルが消える、ファイルを開いたままの入れ直しは既存を壊さずエラー、古いステージングの無視と掃除、不正タグ、v0.7.0 と下書きを飛ばす、ROCm 表示名、旧形式の認識。実 GitHub で b11913（7種類、cudart 12.4/13.4、全 asset に digest）をタグ指定で取得できること、`start()` が exe 不一致・未記録なら再起動し一致なら維持することを確認。実アプリの設定画面で「最新: b11913（更新あり / 現在 b9966）」と7種類の表示を確認。**実際のダウンロード〜インストール、起動中の llama-server を入れ直したときの挙動（実 exe のロック）は未確認**。
+  - **未対応**: 古いビルドの自動削除（現在 `bin/llama-server/llama-b8809-…` と `runtime/llama-server/b9966` が残っている）。
+
 - **2026-10-27: モデルフォルダを設定画面から変更可能に**。
   - **保存先**: `llama_paths.json`（環境設定 = `CONFIG_DIR`、マシン固有）の `models_dir`。未設定なら従来どおりリポジトリ直下 `models/`（`chat_llama_manager.DEFAULT_MODELS_DIR`）。`get_models_dir()` / `set_models_dir()`（存在しないフォルダは 400、空で既定に戻す）。
   - **API**: `GET /llama/models-dir`（パス・既定パス・既定か・存在するか・GGUF 件数）、`PUT /llama/models-dir`。`GET /models` は設定フォルダを rglob し、相対パス順に並べる。mmproj は名前のどこかに含まれていれば除外（`xxx.mmproj-f16.gguf` 形式の配布があるため。従来は先頭一致のみ）。

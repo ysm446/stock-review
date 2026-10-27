@@ -100,7 +100,7 @@ async function refreshLlamaStatus() {
   try {
     const status = await settingsApi("GET", "/llama/local-status");
     llamaCurrentBuild.textContent = status.installed
-      ? `${status.build}${status.count > 1 ? `（他 ${status.count - 1} 件）` : ""}`
+      ? `${status.build}${status.variant ? ` ${status.variant}` : ""}${status.count > 1 ? `（他 ${status.count - 1} 件）` : ""}`
       : "未インストール";
   } catch (err) {
     llamaCurrentBuild.textContent = "バックエンドに接続できません";
@@ -117,7 +117,7 @@ async function checkLatestRelease() {
     llamaLatestInfo.textContent = release.update_available
       ? `最新: ${release.tag}（更新あり / 現在 ${local.build || "未インストール"}）`
       : `最新: ${release.tag}（最新の状態です）`;
-    renderVariants(release.variants || []);
+    renderVariants(release.variants || [], release.tag);
   } catch (err) {
     llamaLatestInfo.textContent = `取得失敗: ${err.message}`;
   } finally {
@@ -125,7 +125,9 @@ async function checkLatestRelease() {
   }
 }
 
-function renderVariants(variants) {
+// tag は「最新を確認」で取得したリリース。ダウンロードはこの版を指定して行う
+// （llama.cpp は頻繁にリリースされ、押すまでの間に「最新」が変わりうるため）
+function renderVariants(variants, tag) {
   llamaVariantList.innerHTML = "";
   if (!variants.length) {
     llamaVariantList.innerHTML = '<p class="settings-hint">ダウンロード可能なビルドが見つかりません。</p>';
@@ -135,11 +137,14 @@ function renderVariants(variants) {
     const btn = document.createElement("button");
     btn.className = "llama-variant-item";
     btn.type = "button";
-    btn.innerHTML = `
-      <span class="llama-variant-label">${variant.label}</span>
-      <span class="llama-variant-size">${formatBytes(variant.size)}</span>
-    `;
-    btn.addEventListener("click", () => downloadVariant(variant));
+    const label = document.createElement("span");
+    label.className = "llama-variant-label";
+    label.textContent = variant.label;
+    const size = document.createElement("span");
+    size.className = "llama-variant-size";
+    size.textContent = formatBytes(variant.size);
+    btn.append(label, size);
+    btn.addEventListener("click", () => downloadVariant(variant, tag));
     llamaVariantList.appendChild(btn);
   }
 }
@@ -150,7 +155,41 @@ function setProgress(percent, text) {
   llamaProgressText.textContent = text;
 }
 
-async function downloadVariant(variant) {
+// 更新したビルドは、動いている llama-server には反映されない。モデルが動いていれば読み込み直すか確認する
+async function offerReloadWithNewBuild(installedPath) {
+  let status;
+  try {
+    status = await settingsApi("GET", "/llama/status");
+  } catch (_err) {
+    return;
+  }
+  const newBuild = installedPath.split(/[\\/]/).pop();
+  if (!status.ready || !status.model_path || status.build === newBuild) return;
+  const ok = window.confirm(
+    `読み込み中のモデル（${status.model_name}）は古いビルドで動いています。\n今すぐ新しいビルドで読み込み直しますか？（数十秒かかります）`
+  );
+  if (!ok) {
+    setProgress(100, "インストールしました。新しいビルドは次にモデルを読み込んだときから使われます。");
+    return;
+  }
+  setProgress(100, "新しいビルドでモデルを読み込み直しています…");
+  setAppStatus(`${status.model_name} を新しいビルドで読み込み直しています...`, "active");
+  try {
+    const res = await apiFetch("/llama/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_path: status.model_path, ctx_size: status.ctx_size }),
+    });
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => "")}`);
+    setProgress(100, "新しいビルドでモデルを読み込み直しました。");
+    setAppStatus(`${status.model_name} を新しいビルドで読み込み直しました。`, "success");
+  } catch (err) {
+    setProgress(100, `読み込み直しに失敗しました: ${err.message}`);
+    setAppStatus(`モデルの読み込み直しに失敗しました: ${err.message}`, "error");
+  }
+}
+
+async function downloadVariant(variant, tag) {
   if (downloading) return;
   downloading = true;
   llamaCheckUpdate.disabled = true;
@@ -159,23 +198,25 @@ async function downloadVariant(variant) {
   setAppStatus(`${variant.label} をダウンロードしています...`, "active");
 
   try {
-    let finished = false;
-    await streamPost("/llama/download", { asset_name: variant.asset_name }, evt => {
+    let installedPath = "";
+    await streamPost("/llama/download", { asset_name: variant.asset_name, tag }, evt => {
       if (evt.type === "progress") {
         const stageLabel = evt.stage === "cudart" ? "CUDA ランタイム" : evt.stage === "extract" ? "展開中" : variant.label;
         const detail = evt.total ? ` (${formatBytes(evt.received)} / ${formatBytes(evt.total)})` : "";
         setProgress(evt.percent || 0, `${stageLabel}${detail}`);
       } else if (evt.type === "done") {
-        finished = true;
-        setProgress(100, `完了: ${evt.build} をインストールしました`);
+        installedPath = evt.path || "";
+        setProgress(100, `完了: ${evt.build} ${evt.variant || ""} をインストールしました`);
       } else if (evt.type === "error") {
         throw new Error(evt.message);
       }
     });
 
-    if (!finished) setProgress(100, "完了");
+    // 完了の通知が来ないまま終わった（通信切断・バックエンド停止）ときは成功扱いにしない
+    if (!installedPath) throw new Error("ダウンロードが途中で終了しました");
     await refreshLlamaStatus();
     setAppStatus(`${variant.label} をインストールしました。`, "success");
+    await offerReloadWithNewBuild(installedPath);
   } catch (err) {
     setProgress(0, `失敗: ${err.message}`);
     setAppStatus(`llama-server の更新に失敗しました: ${err.message}`, "error");
