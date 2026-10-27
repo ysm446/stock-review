@@ -476,15 +476,23 @@ def patch_sessions_reorder(workspace_id: int, body: ReorderBody):
     return {"ok": True}
 
 
+class ChatSessionBody(BaseModel):
+    title: str = "新しい会話"
+    ticker: str | None = None
+
+
 @app.get("/chat/sessions")
 def get_chat_sessions():
-    """右サイドバーのチャット用。全般ワークスペースの会話を新しい順に返す。"""
-    return store.list_general_sessions()
+    """右サイドバーのチャット用。全般・銘柄の会話を新しい順に返す（銘柄の会話は ticker 付き）。"""
+    return store.list_chat_sessions()
 
 
 @app.post("/chat/sessions", status_code=201)
-def post_chat_session(body: SessionBody):
-    return store.create_general_session(body.title)
+def post_chat_session(body: ChatSessionBody):
+    try:
+        return store.create_chat_session(body.title, body.ticker)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.patch("/sessions/{id}")

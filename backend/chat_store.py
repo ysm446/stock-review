@@ -595,29 +595,36 @@ def create_session(workspace_id: int, title: str = "新しい会話") -> dict:
         }
 
 
-# ── サイドバーチャット（全般ワークスペースの会話をまとめて扱う） ──
+# ── サイドバーチャット（全般と銘柄の会話をまとめて扱う） ──
 
-def list_general_sessions() -> list[dict]:
-    """全般（scope='general'）ワークスペースの会話を、新しく更新された順に返す。"""
+def list_chat_sessions() -> list[dict]:
+    """右サイドバーの会話一覧。全般・銘柄ワークスペースの会話を新しく更新された順に返す。
+
+    ticker は銘柄に紐づいた会話のときだけ値を持つ（全般の会話は None）。
+    """
     with _connect() as conn:
         return [dict(r) for r in conn.execute(
             """
-            SELECT s.* FROM sessions s
+            SELECT s.*, CASE WHEN w.scope = 'stock' THEN w.ticker END AS ticker
+            FROM sessions s
             JOIN workspaces w ON w.id = s.workspace_id
-            WHERE w.scope = 'general'
+            WHERE w.scope IN ('general', 'stock')
             ORDER BY s.updated_at DESC, s.id DESC
             """
         )]
 
 
-def create_general_session(title: str = "新しい会話") -> dict:
-    """先頭の全般ワークスペースに会話を作る。全般ワークスペースが無ければ作る。"""
+def create_chat_session(title: str = "新しい会話", ticker: str | None = None) -> dict:
+    """ticker があればその銘柄のワークスペースに、無ければ先頭の全般ワークスペースに会話を作る。"""
+    if ticker and normalize_stock_ticker(ticker):
+        session = create_stock_session(ticker, title)
+        return {**session, "ticker": normalize_stock_ticker(ticker)}
     with _connect() as conn:
         row = conn.execute(
             "SELECT id FROM workspaces WHERE scope = 'general' ORDER BY sort_order, created_at LIMIT 1"
         ).fetchone()
     workspace_id = int(row["id"]) if row else int(create_workspace("デフォルト")["id"])
-    return create_session(workspace_id, title)
+    return {**create_session(workspace_id, title), "ticker": None}
 
 
 def rename_session(id: int, title: str) -> None:

@@ -374,6 +374,7 @@
               <button type="button" class="review-left-tab is-active" id="review-tab-metrics">指標</button>
               <button type="button" class="review-left-tab" id="review-tab-notes">ノート<span class="review-notes-dot is-hidden" id="review-notes-dot"></span></button>
               <span class="review-notes-status" id="review-notes-status"></span>
+              <button type="button" class="ghost-button review-notes-regenerate is-hidden" id="review-notes-regenerate" disabled>ノートを作り直す</button>
             </div>
             <div class="review-lower-scroll">
             <div class="review-grid-layout" id="review-metrics-pane">
@@ -439,42 +440,6 @@
             </div>
             </div>
 
-            <section class="stock-chat-panel" id="stock-chat-panel">
-              <div class="panel-head stock-chat-head">
-                <div>
-                  <h2>銘柄チャット</h2>
-                  <p id="stock-chat-subtitle">銘柄を表示すると会話できます</p>
-                </div>
-                <div class="stock-chat-actions">
-                  <button class="ghost-button" id="stock-chat-summarize" title="会話全体からノートを全面的に再生成します" disabled>ノートを作り直す</button>
-                </div>
-              </div>
-              <div class="stock-chat-shell">
-                <aside class="stock-chat-sidebar">
-                  <div class="stock-chat-sidebar-head">
-                    <span class="stock-chat-sidebar-title">会話</span>
-                    <button class="stock-chat-new-btn" id="stock-chat-new" title="新しい会話" aria-label="新しい会話" disabled>
-                      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
-                        <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                      </svg>
-                    </button>
-                  </div>
-                  <div class="stock-chat-session-list" id="stock-chat-sessions"></div>
-                  <div class="stock-chat-note-path" id="stock-chat-note-path"></div>
-                </aside>
-                <div class="stock-chat-main">
-                  <div class="chat-messages stock-chat-messages" id="stock-chat-messages">
-                    <p class="chat-empty-hint" id="stock-chat-empty">銘柄を選択してください</p>
-                  </div>
-                  <div class="stock-chat-suggestions is-hidden" id="stock-chat-suggestions"></div>
-                  <div class="chat-footer stock-chat-footer">
-                    <textarea class="chat-input" id="stock-chat-input" placeholder="この銘柄について質問..." rows="1" disabled></textarea>
-                    <button class="accent-button" id="stock-chat-send" disabled>送信</button>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <div class="review-col-resizer" id="review-col-resizer" title="ドラッグして左右の幅を調整（ダブルクリックで初期値に戻す）"></div>
             </div>
 
           </section>
@@ -484,6 +449,7 @@
         <div class="chat-dock-resizer" id="chat-dock-resizer" role="separator" aria-orientation="vertical" aria-label="チャットの幅を変更" title="ドラッグで幅を調整（ダブルクリックで初期値に戻す）"></div>
         <div class="chat-dock-inner">
           <div class="chat-dock-head" id="chat-dock-head">
+            <span class="chat-ticker-badge is-hidden" id="chat-dock-ticker"></span>
             <span class="chat-dock-title" id="chat-dock-title">新しい会話</span>
             <button class="chat-dock-icon-button" id="chat-history-button" type="button" title="会話一覧" aria-label="会話一覧" aria-haspopup="dialog" aria-expanded="false">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -510,6 +476,7 @@
           <div class="chat-messages chat-dock-messages" id="chat-messages">
             <p class="chat-empty-hint">メッセージを入力して会話を始めます</p>
           </div>
+          <div class="chat-suggestions is-hidden" id="chat-suggestions"></div>
           <div class="chat-footer chat-dock-footer">
             <textarea class="chat-input" id="chat-input" placeholder="メッセージを入力...（Shift+Enter で改行）" rows="1"></textarea>
             <button class="accent-button" id="chat-send" type="button" disabled>送信</button>

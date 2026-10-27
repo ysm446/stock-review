@@ -38,7 +38,7 @@ export async function api(method, path, body = null) {
   return res.json();
 }
 
-// SSEチャットストリームの共通処理。renderer-chat / renderer-stock-chat 共用。
+// SSEチャットストリームの共通処理。renderer-chat / renderer-market 等で共用。
 // コールバックもオプションも1つのオブジェクトで受ける（呼び出し側での引数順の食い違いを防ぐ）。
 export async function streamChat(sessionId, messages, {
   onToken = () => {},
@@ -111,7 +111,7 @@ const TOOL_LABELS = {
 };
 
 // エージェントの活動イベント（tool_call / tool_result / thinking / turn_reset）を
-// メッセージ内の活動領域に描画するハンドラーを作る。renderer-chat / renderer-stock-chat 共用。
+// メッセージ内の活動領域に描画するハンドラーを作る。右サイドバーのチャット（renderer-chat）で使う。
 export function createActivityRenderer(activityEl, { onTextReset, onUpdate, onModel } = {}) {
   let lastToolLine = null;
   return (evt) => {

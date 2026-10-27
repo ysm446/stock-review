@@ -1,4 +1,4 @@
-// チャット共通の軽量 Markdown レンダラー（renderer-chat / renderer-stock-chat 共用）。
+// チャット共通の軽量 Markdown レンダラー（チャット・ノート・AIまとめで共用）。
 // 出力前に必ずエスケープするので、LLM 出力をそのまま渡してよい。
 
 export function escapeHtml(value) {

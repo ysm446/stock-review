@@ -2,9 +2,19 @@ import { api, apiFetch, streamChat, createActivityRenderer } from "./chat-api.js
 import { renderMarkdown } from "./chat-markdown.js";
 import { appendGenerationMetrics } from "./chat-metrics.js";
 import { setAppStatus } from "./renderer-status.js";
+import {
+  buildStockSystemPrompt,
+  getReviewTicker,
+  onReviewTickerChange,
+  queueNotesReflect,
+  setRegenerateSource,
+  updateRegenerateButton,
+} from "./renderer-stock-notes.js";
 
-// 右サイドバーに常設するチャット。会話は全般ワークスペースの会話をまとめて扱い、
+// 右サイドバーに常設するチャット。会話は全般・銘柄の会話をまとめて扱い、
 // ヘッダーの一覧アイコンから切り替える。新しい会話は最初の送信時に保存する。
+// 個別銘柄画面で始めた会話はその銘柄に紐づき、銘柄の前提・テンプレート質問・
+// 「ノートに反映」が使える（一度紐づいた会話は、画面を移っても紐づいたまま）。
 
 // ── DOM refs ─────────────────────────────────────────────
 const chatModelBar        = document.getElementById("chat-model-bar");
@@ -15,6 +25,8 @@ const chatDockToggle      = document.getElementById("chat-dock-toggle");
 const chatDockResizer     = document.getElementById("chat-dock-resizer");
 const chatDockHead        = document.getElementById("chat-dock-head");
 const chatDockTitle       = document.getElementById("chat-dock-title");
+const chatDockTicker      = document.getElementById("chat-dock-ticker");
+const chatSuggestions     = document.getElementById("chat-suggestions");
 const chatHistoryButton   = document.getElementById("chat-history-button");
 const chatNewButton       = document.getElementById("chat-new-button");
 const chatDeleteButton    = document.getElementById("chat-delete-button");
@@ -36,6 +48,8 @@ let loadingModel     = false;
 let streaming        = false;
 let currentModelName = "";
 let renamingSessionId = null;
+let draftTicker      = null;  // 新しい会話（未保存）が紐づく予定の銘柄
+let reviewVisible    = Boolean(document.getElementById("view-review")?.classList.contains("is-visible"));
 
 const CHAT_DOCK_OPEN_KEY = "stock-review.chatDockOpen";
 const CHAT_DOCK_WIDTH_KEY = "stock-review.chatDockWidth";
@@ -44,6 +58,14 @@ const CHAT_DOCK_DEFAULT_WIDTH = 420;
 const CHAT_DOCK_MIN_WIDTH = 320;
 const CHAT_DOCK_MAX_WIDTH = 900;
 const CTX_OPTIONS = [4096, 8192, 16384, 32768, 65536];
+
+// 銘柄に紐づいた会話の入力欄の上に出すテンプレート質問
+const TEMPLATE_QUESTIONS = [
+  "最近のニュースを教えて",
+  "直近の決算のポイントは？",
+  "強みと競合優位性を整理して",
+  "ここ数年の会社の経緯と変化を整理して",
+];
 
 // ── Helpers ──────────────────────────────────────────────
 function setModelStatus(state, label) {
@@ -66,6 +88,10 @@ function updateComposerState() {
   chatNewButton.disabled = streaming;
   chatDeleteButton.disabled = streaming || activeSessionId === null;
   chatHistoryButton.disabled = streaming;
+  chatSuggestions.querySelectorAll(".chat-suggestion").forEach(btn => {
+    btn.disabled = streaming || !serverLoaded;
+  });
+  updateRegenerateButton();
 }
 
 async function refreshModelStatus() {
@@ -212,10 +238,51 @@ function activeSession() {
   return sessions.find(s => s.id === activeSessionId) || null;
 }
 
+// 今の会話が紐づく銘柄（全般の会話は null）
+function activeTicker() {
+  if (activeSessionId === null) return draftTicker;
+  return activeSession()?.ticker || null;
+}
+
+// 個別銘柄画面で銘柄を表示しているときだけ、新しい会話をその銘柄に紐づける
+function currentReviewTicker() {
+  return reviewVisible ? getReviewTicker() || null : null;
+}
+
+// まだ何も送っていない新しい会話は、見ている画面・銘柄に合わせて紐づけ先を変える
+function syncDraftTicker() {
+  if (activeSessionId !== null || streaming) return;
+  draftTicker = currentReviewTicker();
+  renderDockTitle();
+}
+
 function renderDockTitle() {
   const label = activeSession()?.title || (activeSessionId === null ? "新しい会話" : "会話を読み込み中…");
   chatDockTitle.textContent = label;
   chatDockTitle.title = label;
+  const ticker = activeTicker();
+  chatDockTicker.textContent = ticker || "";
+  chatDockTicker.title = ticker ? `${ticker} に紐づいた会話` : "";
+  chatDockTicker.classList.toggle("is-hidden", !ticker);
+  chatSuggestions.classList.toggle("is-hidden", !ticker);
+  chatInput.placeholder = ticker
+    ? `${ticker} について質問...（Shift+Enter で改行）`
+    : "メッセージを入力...（Shift+Enter で改行）";
+}
+
+function renderSuggestions() {
+  TEMPLATE_QUESTIONS.forEach(question => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chat-suggestion";
+    btn.textContent = question;
+    btn.addEventListener("click", () => {
+      if (streaming || !serverLoaded) return;
+      chatInput.value = question;
+      sendMessage();
+    });
+    chatSuggestions.appendChild(btn);
+  });
 }
 
 async function loadSessions() {
@@ -233,6 +300,7 @@ function startNewChat({ focus = true } = {}) {
   if (streaming) return;
   activeSessionId = null;
   chatHistory = [];
+  draftTicker = currentReviewTicker();
   rememberActiveSession();
   clearMessages("メッセージを入力して会話を始めます");
   renderDockTitle();
@@ -256,12 +324,15 @@ async function reloadActiveSessionMessages() {
   if (sid !== activeSessionId) return; // 読み込み中に別の会話へ切り替えた
   chatHistory = [];
   clearMessages();
+  let prevUserContent = null;
   for (const m of msgs) {
     chatHistory.push({ id: m.id, role: m.role, content: m.content });
-    appendBubble(m.role, m.content, m.created_at, m.id);
+    appendBubble(m.role, m.content, m.created_at, m.id, prevUserContent);
+    prevUserContent = m.role === "user" ? m.content : null;
   }
   if (!msgs.length) clearMessages("メッセージを入力して会話を始めます");
   scrollToBottom();
+  updateRegenerateButton();
 }
 
 async function renameSession(id, title) {
@@ -338,6 +409,12 @@ function renderHistory() {
     const time = document.createElement("span");
     time.className = "chat-history-row-time";
     time.textContent = formatUpdatedAgo(session.updated_at);
+    if (session.ticker) {
+      const badge = document.createElement("span");
+      badge.className = "chat-ticker-badge";
+      badge.textContent = session.ticker;
+      main.append(badge);
+    }
     main.append(title, time);
     main.addEventListener("click", () => {
       closeHistory();
@@ -404,7 +481,25 @@ function makeMessageActionBtn(icon, title, handler) {
   return btn;
 }
 
-function appendMessageActions(wrap, role, messageId, content) {
+// 銘柄に紐づいた会話の回答に付ける「ノートに反映」ボタン
+function makeReflectButton(userContent, assistantContent) {
+  const ticker = activeTicker();
+  const sessionId = activeSessionId;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "chat-reflect-btn";
+  btn.textContent = "ノートに反映";
+  btn.title = `このやり取りの内容を ${ticker} のノートに反映します`;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    btn.textContent = "反映中...";
+    queueNotesReflect({ ticker, sessionId, user: userContent, assistant: assistantContent, btn });
+  });
+  return btn;
+}
+
+// userContent はアシスタント回答の直前のユーザー発言（ノートに反映するやり取りの片側）
+function appendMessageActions(wrap, role, messageId, content, userContent = null) {
   if (!messageId) return;
   const actions = document.createElement("div");
   actions.className = "chat-message-actions";
@@ -414,11 +509,12 @@ function appendMessageActions(wrap, role, messageId, content) {
     actions.appendChild(makeMessageActionBtn("trash", "削除", () => deleteUserMessage(messageId)));
   } else if (role === "assistant") {
     actions.appendChild(makeMessageActionBtn("trash", "削除", () => deleteAssistantMessage(messageId)));
+    if (activeTicker() && userContent !== null) actions.appendChild(makeReflectButton(userContent, content));
   }
   wrap.appendChild(actions);
 }
 
-function appendBubble(role, content, createdAt = Date.now(), messageId = null) {
+function appendBubble(role, content, createdAt = Date.now(), messageId = null, userContent = null) {
   chatMessages.querySelectorAll(".chat-empty-hint").forEach(el => el.remove());
   const wrap = document.createElement("div");
   wrap.className = `chat-message ${role}`;
@@ -430,7 +526,7 @@ function appendBubble(role, content, createdAt = Date.now(), messageId = null) {
   body.className = role === "user" ? "chat-message-bubble" : "chat-message-text";
   setMessageBodyContent(body, role, content);
   wrap.append(meta, body);
-  appendMessageActions(wrap, role, messageId, content);
+  appendMessageActions(wrap, role, messageId, content, userContent);
   chatMessages.appendChild(wrap);
   scrollToBottom();
   return wrap;
@@ -485,7 +581,7 @@ async function sendMessage() {
   // 新しい会話は最初の送信時に保存する（空の会話を一覧に残さない）
   if (activeSessionId === null) {
     try {
-      const session = await api("POST", "/chat/sessions", { title: "新しい会話" });
+      const session = await api("POST", "/chat/sessions", { title: "新しい会話", ticker: draftTicker });
       activeSessionId = session.id;
       rememberActiveSession();
       sessions.unshift(session);
@@ -525,6 +621,8 @@ async function streamAssistantReply({ persistUser, userWrap = null, userText = "
 
   let accumulated = "";
   const sidAtSend = activeSessionId;
+  const ticker = activeTicker();
+  const lastUser = chatHistory.at(-1)?.role === "user" ? chatHistory.at(-1).content : null;
   const finish = () => {
     streaming = false;
     updateComposerState();
@@ -534,6 +632,7 @@ async function streamAssistantReply({ persistUser, userWrap = null, userText = "
   await streamChat(sidAtSend, chatHistory, {
     persistUser,
     endpoint: "/chat/agent-stream",
+    systemPrompt: ticker ? buildStockSystemPrompt(ticker) : "",
     onToken: chunk => {
       wrap.classList.remove("loading");
       accumulated += chunk;
@@ -553,7 +652,7 @@ async function streamAssistantReply({ persistUser, userWrap = null, userText = "
       chatHistory.push({ id: assistantId, role: "assistant", content: accumulated });
       if (assistantId) {
         wrap.dataset.messageId = assistantId;
-        appendMessageActions(wrap, "assistant", assistantId, accumulated);
+        appendMessageActions(wrap, "assistant", assistantId, accumulated, lastUser);
       }
       appendGenerationMetrics(wrap, evt?.metrics);
       finish();
@@ -740,6 +839,17 @@ window.addEventListener("mousedown", e => {
 window.addEventListener("keydown", e => {
   if (e.key === "Escape" && !chatHistoryPopover.classList.contains("is-hidden")) closeHistory();
 });
+window.addEventListener("stock-review:view", e => {
+  reviewVisible = e.detail?.view === "review";
+  syncDraftTicker();
+});
+onReviewTickerChange(() => syncDraftTicker());
+setRegenerateSource(() => ({
+  ticker: activeTicker(),
+  sessionId: activeSessionId,
+  history: chatHistory,
+  busy: streaming,
+}));
 chatSendButton.addEventListener("click", sendMessage);
 chatInput.addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
@@ -752,7 +862,10 @@ chatInput.addEventListener("input", () => {
 
 // ── Init ──────────────────────────────────────────────────
 async function initChat() {
+  renderSuggestions();
   initDock();
+  // startNewChat は保存中の会話IDを消すため、先に読んでおく
+  const savedId = Number(localStorage.getItem(CHAT_ACTIVE_SESSION_KEY));
   startNewChat({ focus: false });
   const ready = await waitForServer();
   if (!ready) {
@@ -766,9 +879,9 @@ async function initChat() {
     setAppStatus(`会話一覧の取得に失敗しました: ${err.message}`, "error");
     return;
   }
-  // 前回開いていた会話を復元する（消えていれば新しい会話のまま）
-  const savedId = Number(localStorage.getItem(CHAT_ACTIVE_SESSION_KEY));
-  if (savedId && sessions.some(s => s.id === savedId)) await selectSession(savedId);
+  // 前回開いていた会話を復元する（消えていれば新しい会話のまま。待っている間に会話を始めていたら復元しない）
+  const untouched = activeSessionId === null && !chatHistory.length && !streaming;
+  if (untouched && savedId && sessions.some(s => s.id === savedId)) await selectSession(savedId);
 }
 
 initChat();
