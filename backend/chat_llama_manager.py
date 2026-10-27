@@ -4,7 +4,8 @@
 ロードすると、その1台がチャット・ノート要約などすべての処理を担当する。
 
 設定と PID は llama_paths.json に保存する:
-  {"server": {"model_path": ..., "ctx_size": ..., "pid": ...}}
+  {"models_dir": ..., "server": {"model_path": ..., "ctx_size": ..., "pid": ...}}
+models_dir はモデル一覧を探すフォルダ（未設定ならリポジトリ直下の models/）。
 """
 from __future__ import annotations
 
@@ -27,6 +28,9 @@ _ROOT = Path(__file__).resolve().parent.parent
 # Downloaded llama-server builds live under runtime/; bin/ is the legacy location.
 _RUNTIME_DIR = _ROOT / "runtime" / "llama-server"
 _LEGACY_BIN_DIR = _ROOT / "bin" / "llama-server"
+
+# モデルフォルダの既定値（設定画面で別のフォルダに変更できる）
+DEFAULT_MODELS_DIR = _ROOT / "models"
 
 # 注意: news-picker が同一マシンで 8081/8082 を使うため、衝突しないポートを選ぶこと
 PORT = 8091
@@ -72,6 +76,27 @@ def _save_paths(paths: dict) -> None:
 
 def _server_state(paths: dict) -> dict:
     return paths.setdefault("server", {})
+
+
+def get_models_dir() -> Path:
+    """モデル一覧を探すフォルダ。未設定なら既定の models/。"""
+    value = str(_get_paths().get("models_dir") or "").strip()
+    return Path(value) if value else DEFAULT_MODELS_DIR
+
+
+def set_models_dir(models_dir: str | None) -> Path:
+    """モデルフォルダを保存する。空なら既定（models/）に戻す。存在しないフォルダは受け付けない。"""
+    paths = _get_paths()
+    value = str(models_dir or "").strip()
+    if value:
+        folder = Path(value).expanduser()
+        if not folder.is_dir():
+            raise ValueError(f"フォルダが見つかりません: {value}")
+        paths["models_dir"] = str(folder.resolve())
+    else:
+        paths.pop("models_dir", None)
+    _save_paths(paths)
+    return get_models_dir()
 
 
 def migrate_legacy_state() -> None:

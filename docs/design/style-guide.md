@@ -208,7 +208,7 @@
 
 - **1 つの操作群にアクセントボタンは 1 つまで。**
 - 状態は `background` / `color` / `border-color` の変化で表す。移動やスケールは使わない。
-- 無効時は `opacity: 0.5` ＋ `cursor: default`。
+- 無効時は `opacity: 0.5` ＋ `cursor: default`（`.ghost-button` / `.accent-button` は共通ルールで適用済み）。
 
 ### 5.2 入力（`input` / `textarea` / `select`）
 
@@ -256,6 +256,7 @@
 - カード: `width: min(100%, 420px)`（設定など幅広は 560px）・角丸 12px・背景 `--modal-bg`・枠 `--modal-border`・影あり。
 - ヘッダ: padding `14px 16px`・下罫線 `--line`・`h2` は `1rem`。
 - 開閉は `.is-hidden`（`display: none`）で切り替える。
+- 一覧が長くなりうるモーダル（モデル設定など）は、カードに `max-height: calc(100vh - 48px)` ＋ 縦 flex を指定し、一覧部分だけを `overflow-y: auto` でスクロールさせる。一覧の上の操作行は `position: sticky` で残す。
 
 ### 5.7 メニュー・ツールチップ
 

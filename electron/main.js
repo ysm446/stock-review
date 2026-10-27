@@ -367,6 +367,20 @@ ipcMain.handle("data-dir:open", () => {
   return shell.openPath(dir);
 });
 
+// フォルダ選択ダイアログ（モデルフォルダなど、保存は呼び出し側が行う）
+ipcMain.handle("dialog:choose-folder", async (_event, options = {}) => {
+  const defaultPath = typeof options.defaultPath === "string" && options.defaultPath
+    ? options.defaultPath
+    : app.getPath("documents");
+  const result = await dialog.showOpenDialog(getMainWindow(), {
+    title: typeof options.title === "string" ? options.title : "フォルダを選択",
+    defaultPath,
+    properties: ["openDirectory"]
+  });
+  if (result.canceled || !result.filePaths?.length) return { canceled: true };
+  return { canceled: false, path: result.filePaths[0] };
+});
+
 // 初回セットアップ完了 → メイン画面へ遷移
 ipcMain.handle("app:enter-main", () => {
   const win = getMainWindow();

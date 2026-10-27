@@ -702,7 +702,11 @@ async function renderModelModal() {
   }
 
   if (!models.length) {
-    chatModelList.innerHTML = '<p style="padding:16px;color:var(--muted)">models/ に GGUF ファイルが見つかりません</p>';
+    const info = await api("GET", "/llama/models-dir").catch(() => null);
+    const empty = document.createElement("p");
+    empty.className = "chat-model-empty";
+    empty.textContent = `モデルフォルダ${info ? `（${info.models_dir}）` : ""}に GGUF ファイルが見つかりません。設定画面の llama-cpp タブでフォルダを変更できます。`;
+    chatModelList.appendChild(empty);
     return;
   }
 

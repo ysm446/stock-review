@@ -18,5 +18,6 @@ contextBridge.exposeInMainWorld("stockReviewApi", {
   getDataDir: () => ipcRenderer.invoke("data-dir:get"),
   chooseDataDir: () => ipcRenderer.invoke("data-dir:choose"),
   openDataDir: () => ipcRenderer.invoke("data-dir:open"),
+  chooseFolder: (options) => ipcRenderer.invoke("dialog:choose-folder", options),
   enterMainApp: () => ipcRenderer.invoke("app:enter-main")
 });

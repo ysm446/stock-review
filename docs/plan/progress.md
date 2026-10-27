@@ -4,6 +4,15 @@
 
 ## 完了済み
 
+- **2026-10-27: モデルフォルダを設定画面から変更可能に**。
+  - **保存先**: `llama_paths.json`（環境設定 = `CONFIG_DIR`、マシン固有）の `models_dir`。未設定なら従来どおりリポジトリ直下 `models/`（`chat_llama_manager.DEFAULT_MODELS_DIR`）。`get_models_dir()` / `set_models_dir()`（存在しないフォルダは 400、空で既定に戻す）。
+  - **API**: `GET /llama/models-dir`（パス・既定パス・既定か・存在するか・GGUF 件数）、`PUT /llama/models-dir`。`GET /models` は設定フォルダを rglob し、相対パス順に並べる。mmproj は名前のどこかに含まれていれば除外（`xxx.mmproj-f16.gguf` 形式の配布があるため。従来は先頭一致のみ）。
+  - **フォルダ選択**: Electron に汎用の `dialog:choose-folder` IPC（preload `chooseFolder`）を追加。選んだパスは renderer から API で保存する。
+  - **UI**: 設定 > llama-cpp タブの先頭に「モデルフォルダ」節（データフォルダ節と同じ構成: パス表示＋「既定に戻す」「変更…」＋件数表示）。モデル設定モーダルは `max-height: calc(100vh - 48px)` で一覧のみスクロール、状態行は sticky。モデルが無いときはフォルダのパスと変更方法を表示。`.ghost-button` / `.accent-button` の `:disabled` を style-guide §5.1 どおり opacity 0.5 に（これまで未定義だった）。
+  - **影響しないもの**: 埋め込みモデル（`models/embeddings/`）の保存先、ロード済みモデルのパス（`server.model_path` は絶対パスなのでフォルダ変更後も起動可能）。
+  - **検証**: 隔離 CONFIG_DIR の TestClient で既定値・`D:/ai-models/llm` 設定（25件、mmproj 15件を除外）・存在しないフォルダの 400・既定への復帰・`llama_paths.json` への保存を確認。実アプリで設定画面の表示（既定時は「既定に戻す」が無効表示）と、`D:/ai-models/llm` を一時設定してモデル一覧25件が画面内でスクロール表示されることを確認し、設定は既定に戻した。**フォルダ選択ダイアログの操作と、別フォルダのモデルの実ロードは未確認**。
+  - **注意**: 指定フォルダに埋め込み用 GGUF（例: Qwen3-Embedding）があるとチャット用一覧にも並ぶ（ファイル名だけでは用途を判別できないため除外していない）。
+
 - **2026-10-27: 銘柄チャットを右サイドバーのチャットへ統合**。
   - **会話と銘柄の紐づけ**: 銘柄ワークスペース（scope='stock'）の会話＝銘柄に紐づいた会話として扱う。`GET /chat/sessions` は全般＋銘柄の会話を `ticker` 付きで返し（`chat_store.list_chat_sessions`）、`POST /chat/sessions` は `ticker` があれば銘柄ワークスペースに作成（`create_chat_session`）。既存の銘柄チャットの会話はそのまま一覧に出る。
   - **紐づけのルール**: 未送信の新しい会話は「個別銘柄画面を表示中ならその銘柄、それ以外は全般」に追従する（`renderer.js` の `activateView` が `stock-review:view` イベントを発火、銘柄切替は `onReviewTickerChange`）。最初の送信で確定し、以後は画面を移っても紐づいたまま。

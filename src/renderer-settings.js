@@ -1,4 +1,5 @@
-// 設定ウィンドウ。現状は llama-cpp（llama-server）のバージョン確認とダウンロード。
+// 設定ウィンドウ。llama-cpp（モデルフォルダ、llama-server のバージョン確認とダウンロード）・
+// 埋め込み・表示・データの各タブ。
 // GitHub への通信は CSP の都合でレンダラから直接できないため、すべて
 // バックエンド（chat_server, :8001）経由で行う。
 import { apiFetch } from "./chat-api.js";
@@ -25,6 +26,11 @@ const embedProgressText       = document.getElementById("embed-progress-text");
 
 const resourceMonitorToggle   = document.getElementById("resource-monitor-toggle");
 const RESOURCE_MONITOR_KEY    = "stock-review.resourceMonitor";
+
+const modelsDirCurrent        = document.getElementById("models-dir-current");
+const modelsDirResetBtn       = document.getElementById("models-dir-reset");
+const modelsDirChangeBtn      = document.getElementById("models-dir-change");
+const modelsDirStatus         = document.getElementById("models-dir-status");
 
 const dataDirCurrent          = document.getElementById("data-dir-current");
 const dataDirOpenBtn          = document.getElementById("data-dir-open");
@@ -79,6 +85,7 @@ function formatBytes(bytes) {
 function openSettings() {
   settingsBackdrop.classList.remove("is-hidden");
   refreshLlamaStatus();
+  refreshModelsDir();
   refreshEmbeddingStatus();
   refreshDataDir();
   refreshMarginSettings();
@@ -304,6 +311,80 @@ settingsBackdrop?.addEventListener("click", e => {
 });
 llamaCheckUpdate?.addEventListener("click", checkLatestRelease);
 embedDownloadBtn?.addEventListener("click", onEmbedButtonClick);
+
+// ── モデルフォルダ（モデル設定の一覧に出す GGUF の場所） ─────────
+let modelsDirInfo = null;
+
+function renderModelsDir(info, message = "") {
+  modelsDirInfo = info;
+  modelsDirCurrent.textContent = info.models_dir;
+  modelsDirResetBtn.disabled = info.is_default;
+  if (message) {
+    modelsDirStatus.textContent = message;
+  } else if (!info.exists) {
+    modelsDirStatus.textContent = "このフォルダが見つかりません。";
+  } else {
+    modelsDirStatus.textContent = `${info.count} 個のモデルが見つかりました。`;
+  }
+}
+
+async function refreshModelsDir() {
+  if (!modelsDirCurrent) return;
+  try {
+    renderModelsDir(await settingsApi("GET", "/llama/models-dir"));
+  } catch (_err) {
+    modelsDirCurrent.textContent = "バックエンドに接続できません";
+  }
+}
+
+async function saveModelsDir(modelsDir) {
+  const res = await apiFetch("/llama/models-dir", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ models_dir: modelsDir }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let detail = text;
+    try { detail = JSON.parse(text).detail || text; } catch (_) {}
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function changeModelsDir() {
+  modelsDirChangeBtn.disabled = true;
+  try {
+    const result = await window.stockReviewApi.chooseFolder({
+      title: "モデルフォルダを選択",
+      defaultPath: modelsDirInfo?.exists ? modelsDirInfo.models_dir : "",
+    });
+    if (result?.canceled) return;
+    const info = await saveModelsDir(result.path);
+    renderModelsDir(info, `変更しました。${info.count} 個のモデルが見つかりました。`);
+    setAppStatus("モデルフォルダを変更しました。", "success");
+  } catch (err) {
+    modelsDirStatus.textContent = `変更に失敗しました: ${err.message}`;
+    setAppStatus(`モデルフォルダの変更に失敗しました: ${err.message}`, "error");
+  } finally {
+    modelsDirChangeBtn.disabled = false;
+  }
+}
+
+async function resetModelsDir() {
+  modelsDirResetBtn.disabled = true;
+  try {
+    const info = await saveModelsDir(null);
+    renderModelsDir(info, `既定のフォルダに戻しました。${info.count} 個のモデルが見つかりました。`);
+    setAppStatus("モデルフォルダを既定に戻しました。", "success");
+  } catch (err) {
+    modelsDirStatus.textContent = `変更に失敗しました: ${err.message}`;
+    modelsDirResetBtn.disabled = false;
+  }
+}
+
+modelsDirChangeBtn?.addEventListener("click", changeModelsDir);
+modelsDirResetBtn?.addEventListener("click", resetModelsDir);
 
 // ── データフォルダ（保存先ルート） ─────────────────────────
 async function refreshDataDir() {

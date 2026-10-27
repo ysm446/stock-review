@@ -624,7 +624,7 @@
           <h2 id="chat-model-modal-title">モデル設定</h2>
           <button class="icon-remove" id="close-chat-model-modal" aria-label="close">×</button>
         </div>
-        <p class="chat-model-note">models/ フォルダのモデルから選んでロードします。ロードした1つのモデルが、チャット・ノート更新などすべての処理を担当します。</p>
+        <p class="chat-model-note">設定画面（llama-cpp タブ）で指定したモデルフォルダのモデルから選んでロードします。ロードした1つのモデルが、チャット・ノート更新などすべての処理を担当します。</p>
         <div class="chat-model-list" id="chat-model-list"></div>
       </section>
     </div>
@@ -644,6 +644,16 @@
           </nav>
           <div class="settings-panels">
             <section class="settings-panel is-active" id="settings-panel-llama" data-tab="llama">
+              <div class="settings-section">
+                <p class="settings-label">モデルフォルダ</p>
+                <p class="settings-value settings-path" id="models-dir-current">確認中…</p>
+                <div class="settings-row settings-row-actions">
+                  <button class="ghost-button" id="models-dir-reset" type="button">既定に戻す</button>
+                  <button class="accent-button" id="models-dir-change" type="button">変更…</button>
+                </div>
+                <p class="settings-hint">モデル設定の一覧には、このフォルダ以下（サブフォルダを含む）の GGUF ファイルが表示されます。既定はアプリの models フォルダです。埋め込みモデルの保存先は変わりません。</p>
+                <p class="settings-hint" id="models-dir-status"></p>
+              </div>
               <div class="settings-section">
                 <div class="settings-row">
                   <div>

@@ -33,7 +33,6 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(messa
 logger = logging.getLogger(__name__)
 
 _ROOT = Path(__file__).resolve().parent.parent
-MODELS_DIR = _ROOT / "models"
 
 
 @asynccontextmanager
@@ -164,16 +163,39 @@ def system_install_deps():
 
 # ── Model management ──────────────────────────────────────
 
-def _find_gguf_files() -> list[dict]:
+def _find_gguf_files(models_dir: Path) -> list[dict]:
+    """モデルフォルダ配下の GGUF を探す。
+
+    mmproj（画像入力用の付属ファイル）は単体でロードできないので除く。
+    名前の先頭（mmproj-xxx.gguf）だけでなく途中（xxx.mmproj-f16.gguf）に付く配布もある。
+    """
+    if not models_dir.is_dir():
+        return []
     results = []
-    for p in MODELS_DIR.rglob("*.gguf"):
-        if not p.name.lower().startswith("mmproj"):
+    for p in models_dir.rglob("*.gguf"):
+        if "mmproj" not in p.name.lower():
             results.append({
                 "name": p.name,
                 "path": str(p),
-                "relative_path": str(p.relative_to(MODELS_DIR)),
+                "relative_path": str(p.relative_to(models_dir)),
             })
+    results.sort(key=lambda m: m["relative_path"].lower())
     return results
+
+
+class ModelsDirBody(BaseModel):
+    models_dir: str | None = None
+
+
+def _models_dir_info() -> dict:
+    models_dir = llama.get_models_dir()
+    return {
+        "models_dir": str(models_dir),
+        "default_dir": str(llama.DEFAULT_MODELS_DIR),
+        "is_default": models_dir == llama.DEFAULT_MODELS_DIR,
+        "exists": models_dir.is_dir(),
+        "count": len(_find_gguf_files(models_dir)),
+    }
 
 
 class LlamaStartRequest(BaseModel):
@@ -197,7 +219,22 @@ def _validate_ctx_size(ctx_size: int | None) -> int | None:
 
 @app.get("/models")
 def get_models():
-    return _find_gguf_files()
+    return _find_gguf_files(llama.get_models_dir())
+
+
+@app.get("/llama/models-dir")
+def get_models_dir():
+    return _models_dir_info()
+
+
+@app.put("/llama/models-dir")
+def put_models_dir(body: ModelsDirBody):
+    """モデルフォルダを変更する。models_dir が空なら既定（models/）に戻す。"""
+    try:
+        llama.set_models_dir(body.models_dir)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return _models_dir_info()
 
 
 @app.get("/llama/status")
