@@ -1,8 +1,10 @@
 # Progress
 
-最終更新: 2026-10-27
+最終更新: 2026-10-31
 
 ## 完了済み
+
+- **2026-10-31: 変更履歴をルート直下へ移動**。`docs/changelog.md` を `CHANGELOG.md` に改名・移動し、参照元（`CLAUDE.md`、`AGENTS.md`、`progress.md`）を修正。アプリの動作は変わらない。過去の履歴は `git log --follow -- CHANGELOG.md` で追える。
 
 - **2026-10-27: llama-server をウィンドウなしで起動**。`chat_llama_manager.start()` の `CREATE_NEW_CONSOLE` を `CREATE_NO_WINDOW` に変更し、stdout/stderr を `paths.LLAMA_LOG_FILE`（`CONFIG_DIR/logs/llama-server.log`、起動ごとに上書き）へ。停止時の `taskkill` も `CREATE_NO_WINDOW`（バックエンドはコンソールを持たないため、子のコンソールアプリは新しいウィンドウを作ってしまう）。起動直後の終了・待機中の終了（`_wait_for_server(proc)` で `proc.poll()` を監視）・タイムアウトは、ログの場所と末尾12行を含むエラーにする。アプリ終了時の停止は従来どおり Electron（`taskkill` by pid）とバックエンドの lifespan が行う。**検証**: 隔離 CONFIG_DIR・別ポート（:8093）・CPU のみで、壊れた GGUF は 2.3 秒でログ末尾付きの失敗、正常なモデル（Ornith 9B）は起動し、プロセスに表示中のウィンドウもコンソールのウィンドウ（`GetConsoleWindow`）も無いこと、ログ出力、停止を確認（実運用中の :8091 には触れていない）。**実アプリからのロードでの見た目は未確認**（反映にはアプリの再起動が必要）。
 
@@ -288,7 +290,7 @@
   - フロント: `chat-api.js` に `createActivityRenderer` を追加し、renderer-chat / renderer-stock-chat 両方の送信を agent-stream 化（活動ログ + 折りたたみ思考 + turn_reset 対応）。
   - E2E 検証済み: Ornith 9B 実ロード → 日本語ニュース質問 → news_search×2 + web_search×1 が自動実行され、thinking 4回・token 59・done まで全イベント正常。FTS `ORDER BY rank` / `/documents/search` ルート順も修正・確認済み。
   - Ornith-1.0 9B（5.2GB）/ 35B（19.7GB）Q4_K_M は `models/` に配置済み。
-- **2026-07-05: プロジェクト全体レビューを実施し、フェーズ1（正確性・データ損失）とフェーズ2（セキュリティ）+ F12 スクリーンショットを完了**（詳細は `docs/changelog.md` 2026-07-05 参照）。
+- **2026-07-05: プロジェクト全体レビューを実施し、フェーズ1（正確性・データ損失）とフェーズ2（セキュリティ）+ F12 スクリーンショットを完了**（詳細は `CHANGELOG.md` 2026-07-05 参照）。
   - `holdings` をロット単位スキーマへ移行（`id INTEGER PRIMARY KEY AUTOINCREMENT`、既存 DB は起動時自動移行）。save は全量置き換え（DELETE→INSERT）。配当集計もロット合算に修正。
   - 通貨換算を `shared.py` に一本化（`portfolio_store.py` の重複 `get_latest_quote`/`convert_price_to_jpy` を削除）。GBp 等の補助単位は `normalize_price_currency` で正規化。通貨欠損時は推測せずエラー。FX 欠損日は直近過去レートで補完（`_fx_rate_for_date`、bisect）。
   - `app.db` を WAL + busy_timeout=10000 に。JSON/notes の書き込みはアトミック化（`shared.atomic_write_text` / data-files.js の tmp+rename+.bak）。
